@@ -1,4 +1,5 @@
-import { createClient } from './supabase/client'
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
 
 export interface Form {
   id: string
@@ -89,6 +90,42 @@ export async function getForms(): Promise<Form[]> {
 
   if (error) {
     console.error('Error fetching forms:', error)
+    throw error
+  }
+
+  return data || []
+}
+
+// Get forms for a specific project
+export async function getProjectForms(projectId: string): Promise<Form[]> {
+  const supabase = createClient()
+  
+  // First get the current user's account_id
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('User not authenticated')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile) throw new Error('Profile not found')
+
+  // Get forms for the specific project with client and project information
+  const { data, error } = await supabase
+    .from('forms')
+    .select(`
+      *,
+      clients:clients(first_name, last_name, company),
+      projects:projects(name)
+    `)
+    .eq('account_id', profile.account_id)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching project forms:', error)
     throw error
   }
 
@@ -243,6 +280,175 @@ export async function updateForm(formId: string, updates: Partial<{
   return data
 }
 
+// Update form draft (for editing existing forms)
+export async function updateFormDraft(
+  formId: string,
+  formTitle: string,
+  fields: FormField[],
+  clientId?: string | null,
+  projectId?: string | null,
+  notifyOnSubmission?: boolean,
+  submissionDeadline?: string | null,
+  instructions?: string,
+  silent: boolean = false
+) {
+  try {
+    // Validate that we have a proper title
+    if (!formTitle.trim()) {
+      console.error("Cannot update draft with empty title")
+      return { success: false, error: "Title cannot be empty" }
+    }
+
+    const supabase = createClient()
+    
+    // Create form structure from fields
+    const formStructure = {
+      fields: fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        description: field.description,
+        required: field.required,
+        placeholder: field.placeholder,
+        options: field.options
+      })),
+      settings: {
+        title: formTitle.trim(),
+      }
+    }
+
+    // Build update object - only include client_id and project_id if they are explicitly provided
+    const updateData: any = {
+      title: formTitle.trim(),
+      instructions: instructions || "",
+      form_structure: formStructure,
+      updated_at: new Date().toISOString()
+    }
+
+    // Only update client_id if explicitly provided (not null)
+    if (clientId !== null && clientId !== undefined) {
+      updateData.client_id = clientId
+    }
+
+    // Only update project_id if explicitly provided (not null)
+    if (projectId !== null && projectId !== undefined) {
+      updateData.project_id = projectId
+    }
+
+    // Only update notify_on_submission if explicitly provided
+    if (notifyOnSubmission !== undefined) {
+      updateData.notify_on_submission = notifyOnSubmission
+    }
+
+    // Only update submission_deadline if explicitly provided
+    if (submissionDeadline !== null && submissionDeadline !== undefined) {
+      updateData.submission_deadline = submissionDeadline
+    }
+
+    const { data, error } = await supabase
+      .from('forms')
+      .update(updateData)
+      .eq('id', formId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error updating draft:", error)
+      if (!silent) {
+        toast.error("Failed to update draft. Please try again.")
+      }
+      return { success: false, error }
+    }
+
+    if (!silent) {
+      toast.success("Draft updated successfully!")
+    }
+    console.log("Draft updated in database:", data)
+    return { success: true, data }
+    
+  } catch (error) {
+    console.error("Error updating draft:", error)
+    if (!silent) {
+      toast.error("Failed to update draft. Please try again.")
+    }
+    return { success: false, error }
+  }
+}
+
+// Update and publish form (for editing existing forms)
+export async function updateAndPublishForm(
+  formId: string,
+  publishFormData: {
+    title: string
+    description: string
+    instructions: string
+    clientId: string
+    projectId: string
+    submissionDeadline: Date | null
+    accessLevel: 'private' | 'team' | 'client' | 'public'
+    maxSubmissions: string
+    notifyEmails: string[]
+  },
+  fields: FormField[]
+) {
+  try {
+    const supabase = createClient()
+    
+    // Create form structure from fields
+    const formStructure = {
+      fields: fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        description: field.description,
+        required: field.required,
+        placeholder: field.placeholder,
+        options: field.options
+      })),
+      settings: {
+        title: publishFormData.title,
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('forms')
+      .update({
+        title: publishFormData.title,
+        description: publishFormData.description,
+        instructions: publishFormData.instructions,
+        form_structure: formStructure,
+        status: 'published',
+        client_id: publishFormData.clientId === "none" ? null : publishFormData.clientId,
+        project_id: publishFormData.projectId === "none" ? null : publishFormData.projectId,
+        notify_on_submission: publishFormData.notifyEmails.length > 0,
+        submission_deadline: publishFormData.submissionDeadline?.toISOString() || null,
+        access_level: publishFormData.accessLevel,
+        max_submissions: publishFormData.maxSubmissions ? parseInt(publishFormData.maxSubmissions) : null,
+        notify_emails: publishFormData.notifyEmails,
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', formId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error updating and publishing form:", error)
+      toast.error("Failed to update and publish form. Please try again.")
+      return { success: false, error }
+    }
+
+    toast.success("Form updated and published successfully!")
+    console.log("Form updated and published in database:", data)
+    return { success: true, data }
+    
+  } catch (error) {
+    console.error("Error updating and publishing form:", error)
+    toast.error("Failed to update and publish form. Please try again.")
+    return { success: false, error }
+  }
+}
+
 // Delete a form
 export async function deleteForm(formId: string): Promise<void> {
   const supabase = createClient()
@@ -302,6 +508,389 @@ export async function getForm(formId: string): Promise<Form | null> {
 
   if (error) {
     console.error('Error fetching form:', error)
+    return null
+  }
+
+  return data
+}
+
+// =====================================================
+// FORM BUILDER FUNCTIONS (New additions)
+// =====================================================
+
+export interface FormField {
+  id: string
+  type: string
+  label: string
+  description?: string
+  required: boolean
+  placeholder?: string
+  options?: string[]
+  settings?: Record<string, any>
+}
+
+export interface FormBuilderData {
+  title: string
+  description?: string
+  instructions?: string
+  form_structure: {
+    fields: FormField[]
+    settings: {
+      title: string
+    }
+  }
+  status: 'draft' | 'published' | 'archived' | 'deleted'
+  client_id?: string | null
+  project_id?: string | null
+  notify_on_submission?: boolean
+  submission_deadline?: string | null
+  access_level?: 'private' | 'team' | 'client' | 'public'
+  max_submissions?: number | null
+  notify_emails?: string[]
+  published_at?: string
+}
+
+export interface TemplateData {
+  name: string
+  description?: string
+  template_data: {
+    fields: FormField[]
+    settings: {
+      title: string
+    }
+  }
+  is_public?: boolean
+  is_featured?: boolean
+  usage_count?: number
+}
+
+export async function saveFormDraft(
+  formTitle: string,
+  fields: FormField[],
+  clientId?: string | null,
+  projectId?: string | null,
+  notifyOnSubmission?: boolean,
+  submissionDeadline?: string | null,
+  instructions?: string,
+  silent: boolean = false
+) {
+  try {
+    // Validate that we have a proper title
+    if (!formTitle.trim()) {
+      console.error("Cannot save draft with empty title")
+      return { success: false, error: "Title cannot be empty" }
+    }
+
+    const supabase = createClient()
+    
+    // Get current user's account_id
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_id, first_name, last_name')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!profile) throw new Error('Profile not found')
+    
+    // Create form structure from fields
+    const formStructure = {
+      fields: fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        description: field.description,
+        required: field.required,
+        placeholder: field.placeholder,
+        options: field.options
+      })),
+      settings: {
+        title: formTitle.trim(),
+      }
+    }
+
+    const formData: FormBuilderData = {
+      title: formTitle.trim(),
+      description: "",
+      instructions: instructions || "",
+      form_structure: formStructure,
+      status: 'draft',
+      client_id: clientId,
+      project_id: projectId,
+      notify_on_submission: notifyOnSubmission,
+      submission_deadline: submissionDeadline,
+      access_level: 'private',
+      max_submissions: null,
+      notify_emails: []
+    }
+
+    // Save to Supabase
+    const { data, error } = await supabase
+      .from('forms')
+      .insert({
+        ...formData,
+        account_id: profile.account_id,
+        created_by: user.id,
+        created_by_name: `${profile.first_name} ${profile.last_name}`,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error saving draft:", error)
+      if (!silent) {
+        toast.error("Failed to save draft. Please try again.")
+      }
+      return { success: false, error }
+    }
+
+    if (!silent) {
+      toast.success("Draft saved successfully!")
+    }
+    console.log("Draft saved to database:", data)
+    return { success: true, data }
+    
+  } catch (error) {
+    console.error("Error saving draft:", error)
+    if (!silent) {
+      toast.error("Failed to save draft. Please try again.")
+    }
+    return { success: false, error }
+  }
+}
+
+export async function saveFormTemplate(
+  templateName: string,
+  templateDescription: string,
+  formTitle: string,
+  fields: FormField[]
+) {
+  try {
+    const supabase = createClient()
+    
+    // Get current user's account_id
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_id, first_name, last_name')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!profile) throw new Error('Profile not found')
+    
+    // Create template data from form structure
+    const templateData = {
+      fields: fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        description: field.description,
+        required: field.required,
+        placeholder: field.placeholder,
+        options: field.options
+      })),
+      settings: {
+        title: formTitle,
+      }
+    }
+
+    const templateFormData: TemplateData = {
+      name: templateName,
+      description: templateDescription,
+      template_data: templateData,
+      is_public: false,
+      is_featured: false,
+      usage_count: 0
+    }
+
+    // Save template to Supabase
+    const { data, error } = await supabase
+      .from('form_templates')
+      .insert({
+        ...templateFormData,
+        account_id: profile.account_id,
+        created_by: user.id,
+        created_by_name: `${profile.first_name} ${profile.last_name}`,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error saving template:", error)
+      toast.error("Failed to save template. Please try again.")
+      return { success: false, error }
+    }
+
+    toast.success("Template saved successfully!")
+    console.log("Template saved to database:", data)
+    return { success: true, data }
+    
+  } catch (error) {
+    console.error("Error saving template:", error)
+    toast.error("Failed to save template. Please try again.")
+    return { success: false, error }
+  }
+}
+
+export async function publishForm(
+  publishFormData: {
+    title: string
+    description: string
+    instructions: string
+    clientId: string
+    projectId: string
+    submissionDeadline: Date | null
+    accessLevel: 'private' | 'team' | 'client' | 'public'
+    maxSubmissions: string
+    notifyEmails: string[]
+  },
+  fields: FormField[]
+) {
+  try {
+    const supabase = createClient()
+    
+    // Get current user's account_id
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_id, first_name, last_name')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!profile) throw new Error('Profile not found')
+    
+    // Create form structure from fields
+    const formStructure = {
+      fields: fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        description: field.description,
+        required: field.required,
+        placeholder: field.placeholder,
+        options: field.options
+      })),
+      settings: {
+        title: publishFormData.title,
+      }
+    }
+
+    const formData: FormBuilderData = {
+      title: publishFormData.title,
+      description: publishFormData.description,
+      instructions: publishFormData.instructions,
+      form_structure: formStructure,
+      status: 'published',
+      client_id: publishFormData.clientId === "none" ? null : publishFormData.clientId,
+      project_id: publishFormData.projectId === "none" ? null : publishFormData.projectId,
+      notify_on_submission: publishFormData.notifyEmails.length > 0,
+      submission_deadline: publishFormData.submissionDeadline?.toISOString() || null,
+      access_level: publishFormData.accessLevel,
+      max_submissions: publishFormData.maxSubmissions ? parseInt(publishFormData.maxSubmissions) : null,
+      notify_emails: publishFormData.notifyEmails,
+      published_at: new Date().toISOString()
+    }
+
+    // Save to Supabase
+    const { data, error } = await supabase
+      .from('forms')
+      .insert({
+        ...formData,
+        account_id: profile.account_id,
+        created_by: user.id,
+        created_by_name: `${profile.first_name} ${profile.last_name}`,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error publishing form:", error)
+      toast.error("Failed to publish form. Please try again.")
+      return { success: false, error }
+    }
+
+    toast.success("Form published successfully!")
+    console.log("Form published to database:", data)
+    return { success: true, data }
+    
+  } catch (error) {
+    console.error("Error publishing form:", error)
+    toast.error("Failed to publish form. Please try again.")
+    return { success: false, error }
+  }
+} 
+
+// Get form templates for the current user's account
+export async function getFormTemplates(): Promise<{
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  template_data: any
+  is_public: boolean
+  is_featured: boolean
+  usage_count: number
+  created_by_name: string | null
+  created_at: string
+}[]> {
+  const supabase = createClient()
+  
+  // First get the current user's account_id
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('User not authenticated')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile) throw new Error('Profile not found')
+
+  // Get templates from the user's account and public templates
+  const { data, error } = await supabase
+    .from('form_templates')
+    .select('*')
+    .or(`account_id.eq.${profile.account_id},is_public.eq.true`)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching templates:', error)
+    throw error
+  }
+
+  return data || []
+}
+
+// Get a specific form template by ID
+export async function getFormTemplate(templateId: string): Promise<{
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  template_data: any
+  is_public: boolean
+  is_featured: boolean
+  usage_count: number
+  created_by_name: string | null
+  created_at: string
+} | null> {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('form_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single()
+
+  if (error) {
+    console.error('Error fetching template:', error)
     return null
   }
 

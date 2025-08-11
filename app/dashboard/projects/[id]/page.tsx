@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -43,6 +43,9 @@ import {
   Trash2,
   XCircle,
   X,
+  CheckSquare,
+  Star,
+
 } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -69,6 +72,8 @@ import {
 } from "@/lib/projects"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getFiles, uploadFile, downloadFile, getFileUrl, approveFile, rejectFile, deleteFile, getFileComments, addFileComment, updateFile, type File } from "@/lib/files"
+import { getProjectForms, deleteForm, type Form } from "@/lib/forms"
+import { FormPreviewModal } from "@/components/forms/form-preview-modal"
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -138,6 +143,15 @@ export default function ProjectDetailPage() {
   const [newTag, setNewTag] = useState("")
   const [newTagColor, setNewTagColor] = useState("#3B82F6")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Forms state
+  const [projectForms, setProjectForms] = useState<Form[]>([])
+  const [loadingForms, setLoadingForms] = useState(false)
+
+  // Form preview modal state
+  const [showFormPreview, setShowFormPreview] = useState(false)
+  const [previewForm, setPreviewForm] = useState<Form | null>(null)
+  const [deletingForm, setDeletingForm] = useState<string | null>(null)
 
   // File viewer modal state
   const [selectedFileForView, setSelectedFileForView] = useState<File | null>(null)
@@ -224,11 +238,12 @@ export default function ProjectDetailPage() {
       setLoading(true)
       const projectId = params.id as string
 
-      const [projectData, milestonesData, tasksData, filesData] = await Promise.all([
+      const [projectData, milestonesData, tasksData, filesData, formsData] = await Promise.all([
         getProjectWithClient(projectId),
         getProjectMilestones(projectId),
         getProjectTasks(projectId),
-        getFiles() // Get all files, we'll filter by project
+        getFiles(), // Get all files, we'll filter by project
+        getProjectForms(projectId) // Get forms for this project
       ])
 
       if (projectData) {
@@ -250,6 +265,11 @@ export default function ProjectDetailPage() {
       if (filesData) {
         const projectFiles = filesData.filter(file => file.project_id === projectId)
         setProjectFiles(projectFiles)
+      }
+
+      // Set project forms
+      if (formsData) {
+        setProjectForms(formsData)
       }
 
       // Load clients and tags for edit modal
@@ -933,6 +953,50 @@ export default function ProjectDetailPage() {
     setIsInternalComment(false)
   }
 
+  // Form action functions
+  const handleViewForm = (form: Form) => {
+    setPreviewForm(form)
+    setShowFormPreview(true)
+  }
+
+  const handleEditForm = (form: Form) => {
+    const formData = {
+      id: form.id,
+      title: form.title,
+      fields: form.form_structure?.fields || [],
+      client_id: form.client_id,
+      project_id: form.project_id,
+      instructions: form.instructions
+    }
+    
+    const encodedData = encodeURIComponent(JSON.stringify(formData))
+    router.push(`/dashboard/forms/builder?edit=${encodedData}`)
+  }
+
+  const handleDeleteForm = async (formId: string) => {
+    if (!confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingForm(formId)
+    try {
+      await deleteForm(formId)
+      toast.success('Form deleted successfully')
+      // Reload project data to refresh the forms list
+      await loadProjectData()
+    } catch (error) {
+      console.error('Error deleting form:', error)
+      toast.error('Failed to delete form')
+    } finally {
+      setDeletingForm(null)
+    }
+  }
+
+  const closeFormPreview = () => {
+    setShowFormPreview(false)
+    setPreviewForm(null)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1441,10 +1505,10 @@ export default function ProjectDetailPage() {
                                 <Badge
                                   variant="outline"
                                   className={`text-xs ${milestone.status === "completed"
-                                      ? "bg-green-50 text-green-700 border-green-200"
-                                      : milestone.status === "in-progress"
-                                        ? "bg-blue-50 text-blue-700 border-blue-200"
-                                        : "bg-gray-50 text-gray-700 border-gray-200"
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : milestone.status === "in-progress"
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : "bg-gray-50 text-gray-700 border-gray-200"
                                     }`}
                                 >
                                   {milestone.status.replace("-", " ")}
@@ -2407,10 +2471,10 @@ export default function ProjectDetailPage() {
                             </div>
                             <Badge
                               className={`${file.approval_status === "approved"
-                                  ? "bg-green-100 text-green-700 border-green-200"
-                                  : file.approval_status === "rejected"
-                                    ? "bg-red-100 text-red-700 border-red-200"
-                                    : "bg-yellow-100 text-yellow-700 border-yellow-200"
+                                ? "bg-green-100 text-green-700 border-green-200"
+                                : file.approval_status === "rejected"
+                                  ? "bg-red-100 text-red-700 border-red-200"
+                                  : "bg-yellow-100 text-yellow-700 border-yellow-200"
                                 }`}
                             >
                               {file.approval_status === "approved" ? "Approved" :
@@ -2527,19 +2591,232 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="forms" className="space-y-6">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="text-gray-500">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Forms coming soon</h3>
-                  <p className="mb-4">Form management functionality will be available soon</p>
-                  <Button disabled>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Manage Forms
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Project Forms</h2>
+                <p className="text-gray-600 mt-1">Manage forms assigned to this project</p>
+              </div>
+              <Button 
+                className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                onClick={() => router.push('/dashboard/forms/builder')}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Form
+              </Button>
+            </div>
+
+            {/* Forms List */}
+            <div className="space-y-4">
+              {loadingForms ? (
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-12 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">Loading forms...</p>
+                  </CardContent>
+                </Card>
+              ) : projectForms.length === 0 ? (
+                /* Empty State */
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-12">
+                    <div className="text-center">
+                      <div className="text-6xl mb-4">📋</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No forms have been added to this project yet</h3>
+                      <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                        Create forms to collect information, feedback, and approvals from your client.
+                      </p>
+                      <Button 
+                        className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                        onClick={() => router.push('/dashboard/forms/builder')}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Your First Form
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                /* Forms List */
+                projectForms.map((form) => {
+                  const getStatusColor = (status: string) => {
+                    switch (status) {
+                      case "published":
+                        return "bg-green-100 text-green-700 border-green-200"
+                      case "draft":
+                        return "bg-yellow-100 text-yellow-700 border-yellow-200"
+                      case "archived":
+                        return "bg-gray-100 text-gray-700 border-gray-200"
+                      default:
+                        return "bg-gray-100 text-gray-700 border-gray-200"
+                    }
+                  }
+
+                  const getStatusIcon = (status: string) => {
+                    switch (status) {
+                      case "published":
+                        return <CheckCircle className="h-4 w-4 text-green-500" />
+                      case "draft":
+                        return <Clock className="h-4 w-4 text-yellow-500" />
+                      case "archived":
+                        return <Archive className="h-4 w-4 text-gray-400" />
+                      default:
+                        return <Circle className="h-4 w-4 text-gray-400" />
+                    }
+                  }
+
+                  const getActionButton = (status: string) => {
+                    if (status === "published") {
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF] bg-transparent"
+                          onClick={() => handleViewForm(form)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      )
+                    } else {
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF] bg-transparent"
+                          onClick={() => router.push(`/dashboard/forms/builder?edit=${encodeURIComponent(JSON.stringify({
+                            id: form.id,
+                            title: form.title,
+                            fields: form.form_structure?.fields || [],
+                            client_id: form.client_id,
+                            project_id: form.project_id,
+                            instructions: form.instructions
+                          }))}`)}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      )
+                    }
+                  }
+
+                  return (
+                    <Card
+                      key={form.id}
+                      className="bg-white border-0 shadow-sm rounded-2xl hover:shadow-md transition-all duration-200"
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-4 flex-1">
+                            <div className="flex-shrink-0 mt-1">
+                              <div className="text-2xl">📝</div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3 mb-2">
+                                <h4 className="font-semibold text-gray-900">{form.title}</h4>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    form.status === "published"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : form.status === "draft"
+                                        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                        : "bg-blue-50 text-blue-700 border-blue-200"
+                                  }`}
+                                >
+                                  {form.status === "published" ? "Published" : 
+                                   form.status === "draft" ? "Draft" : 
+                                   form.status === "archived" ? "Archived" : form.status}
+                                </Badge>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Status:</span>
+                                  <div className="flex items-center space-x-1">
+                                    {getStatusIcon(form.status)}
+                                    <Badge variant="outline" className={`text-xs ${getStatusColor(form.status)}`}>
+                                      {form.status === "draft" ? "Draft" : 
+                                       form.status === "published" ? "Published" : 
+                                       form.status === "archived" ? "Archived" : form.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Submissions:</span>
+                                  <span className="text-sm text-gray-900">{form.total_submissions || 0}</span>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Last updated:</span>
+                                  <span className="text-sm text-gray-900">{formatTimeAgo(form.updated_at)}</span>
+                                </div>
+                              </div>
+
+                              {form.description && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                                  <p className="text-sm text-gray-700">{form.description}</p>
+                                </div>
+                              )}
+
+                              {form.status === "published" && form.total_submissions > 0 && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                                  <div className="flex items-center space-x-2">
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                    <span className="text-sm text-green-700">
+                                      <span className="font-medium">{form.total_submissions} submission{form.total_submissions !== 1 ? 's' : ''}</span>
+                                      {form.last_submission_at && ` • Last submitted ${formatTimeAgo(form.last_submission_at)}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            {getActionButton(form.status)}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-gray-600">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleViewForm(form)}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditForm(form)}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Form
+                                </DropdownMenuItem>
+                                {form.status === "published" && (
+                                  <DropdownMenuItem>
+                                    <MessageCircle className="h-4 w-4 mr-2" />
+                                    View Submissions
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteForm(form.id)}
+                                  disabled={deletingForm === form.id}
+                                >
+                                  {deletingForm === form.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  Delete Form
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="contracts" className="space-y-6">
@@ -2868,6 +3145,13 @@ export default function ProjectDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Form Preview Modal */}
+      <FormPreviewModal
+        open={showFormPreview}
+        onOpenChange={setShowFormPreview}
+        form={previewForm}
+      />
     </div>
   )
 }

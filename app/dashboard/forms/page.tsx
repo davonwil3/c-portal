@@ -1,14 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import {
   Plus,
@@ -26,6 +30,16 @@ import {
   Loader2,
   Archive,
   RotateCcw,
+  Type,
+  AlignLeft,
+  Mail,
+  Phone,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  Upload,
+  PenTool,
+  Star,
 } from "lucide-react"
 import { 
   getForms, 
@@ -37,6 +51,7 @@ import {
 } from "@/lib/forms"
 import { CreateFormModal } from "@/components/forms/create-form-modal"
 import { PickTemplateModal } from "@/components/forms/pick-template-modal"
+import { FormPreviewModal } from "@/components/forms/form-preview-modal"
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -75,6 +90,10 @@ export default function FormsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [selectedFormForPreview, setSelectedFormForPreview] = useState<Form | null>(null)
+
+  const router = useRouter()
 
   // Load forms and stats on component mount
   useEffect(() => {
@@ -137,12 +156,26 @@ export default function FormsPage() {
       
       switch (action) {
         case "view":
-          // TODO: Navigate to form view/edit page
-          toast.info('Form view/edit functionality coming soon')
+          setSelectedFormForPreview(form)
+          setShowPreviewModal(true)
           break
         case "edit":
-          // TODO: Navigate to form builder
-          toast.info('Form builder functionality coming soon')
+          // Navigate to form builder with form data
+          const formData = encodeURIComponent(JSON.stringify({
+            id: form.id,
+            title: form.title,
+            description: form.description,
+            instructions: form.instructions,
+            client_id: form.client_id,
+            project_id: form.project_id,
+            notify_on_submission: form.notify_on_submission,
+            submission_deadline: form.submission_deadline,
+            access_level: form.access_level,
+            max_submissions: form.max_submissions,
+            notify_emails: form.notify_emails,
+            fields: form.form_structure?.fields || []
+          }))
+          router.push(`/dashboard/forms/builder?edit=${formData}`)
           break
         case "duplicate":
           // TODO: Implement form duplication
@@ -399,11 +432,27 @@ export default function FormsPage() {
                   </thead>
                   <tbody>
                     {filteredForms.map((form) => (
-                      <tr key={form.id} className="border-b hover:bg-gray-50">
+                      <tr 
+                        key={form.id} 
+                        className="border-b hover:bg-gray-50 cursor-pointer"
+                        onClick={(e) => {
+                          // Don't trigger row click if clicking on checkbox, dropdown, or action buttons
+                          if (
+                            (e.target as HTMLElement).closest('input[type="checkbox"]') ||
+                            (e.target as HTMLElement).closest('[role="menuitem"]') ||
+                            (e.target as HTMLElement).closest('button')
+                          ) {
+                            return
+                          }
+                          setSelectedFormForPreview(form)
+                          setShowPreviewModal(true)
+                        }}
+                      >
                         <td className="p-4">
                           <Checkbox
                             checked={selectedForms.includes(form.id)}
                             onCheckedChange={(checked) => handleSelectForm(form.id, checked as boolean)}
+                            onClick={(e) => e.stopPropagation()}
                           />
                         </td>
                         <td className="p-4">
@@ -436,27 +485,43 @@ export default function FormsPage() {
                         <td className="p-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleFormAction("view", form)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
+                                handleFormAction("view", form)
+                              }}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 View
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleFormAction("edit", form)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
+                                handleFormAction("edit", form)
+                              }}>
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleFormAction("duplicate", form)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
+                                handleFormAction("duplicate", form)
+                              }}>
                                 <Copy className="h-4 w-4 mr-2" />
                                 Duplicate
                               </DropdownMenuItem>
                               
                               {form.status === "archived" ? (
                                 <DropdownMenuItem 
-                                  onClick={() => handleFormAction("restore", form)}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleFormAction("restore", form)
+                                  }}
                                   className="text-green-600"
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />
@@ -464,7 +529,10 @@ export default function FormsPage() {
                                 </DropdownMenuItem>
                               ) : (
                                 <DropdownMenuItem 
-                                  onClick={() => handleFormAction("archive", form)}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleFormAction("archive", form)
+                                  }}
                                   className="text-yellow-600"
                                 >
                                   <Archive className="h-4 w-4 mr-2" />
@@ -473,7 +541,10 @@ export default function FormsPage() {
                               )}
                               
                               <DropdownMenuItem 
-                                onClick={() => handleFormAction("delete", form)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleFormAction("delete", form)
+                                }}
                                 className="text-red-600"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
@@ -498,6 +569,11 @@ export default function FormsPage() {
       {/* Modals */}
       <CreateFormModal open={showCreateModal} onOpenChange={setShowCreateModal} />
       <PickTemplateModal open={showTemplateModal} onOpenChange={setShowTemplateModal} />
+      <FormPreviewModal 
+        open={showPreviewModal} 
+        onOpenChange={setShowPreviewModal} 
+        form={selectedFormForPreview} 
+      />
     </DashboardLayout>
   )
 }

@@ -35,7 +35,6 @@ export function CreateFormModal({ open, onOpenChange }: CreateFormModalProps) {
   const [selectedProject, setSelectedProject] = useState("")
   const [clients, setClients] = useState<Client[]>([])
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
-  const [enableNotifications, setEnableNotifications] = useState(true)
   const [dueDate, setDueDate] = useState<Date>()
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [loading, setLoading] = useState(true)
@@ -67,7 +66,6 @@ export function CreateFormModal({ open, onOpenChange }: CreateFormModalProps) {
     setSelectedClient("")
     setSelectedProject("")
     setAvailableProjects([])
-    setEnableNotifications(true)
     setDueDate(undefined)
     setDatePickerOpen(false)
     setErrors({})
@@ -94,7 +92,6 @@ export function CreateFormModal({ open, onOpenChange }: CreateFormModalProps) {
         title: formName,
         client_id: selectedClient === "none" ? null : selectedClient,
         project_id: selectedProject === "none" ? null : selectedProject,
-        notify_on_submission: enableNotifications,
         submission_deadline: dueDate ? dueDate.toISOString() : null,
       }
       
@@ -108,7 +105,6 @@ export function CreateFormModal({ open, onOpenChange }: CreateFormModalProps) {
         title: formName,
         client_id: selectedClient === "none" ? "" : selectedClient,
         project_id: selectedProject === "none" ? "" : selectedProject,
-        notify_on_submission: enableNotifications.toString(),
         submission_deadline: dueDate ? dueDate.toISOString() : "",
       })
       
@@ -255,19 +251,6 @@ export function CreateFormModal({ open, onOpenChange }: CreateFormModalProps) {
 
           {/* Additional Options */}
           <div className="space-y-4 pt-4 border-t border-gray-100">
-            {/* Notifications Toggle */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <Label>Email Notifications</Label>
-                <p className="text-sm text-gray-600">Get notified when clients submit responses</p>
-              </div>
-              <Switch
-                checked={enableNotifications}
-                onCheckedChange={setEnableNotifications}
-                className="data-[state=checked]:bg-[#3C3CFF]"
-              />
-            </div>
-
             {/* Due Date */}
             <div className="space-y-2">
               <Label>Due Date (Optional)</Label>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Storage Test</h1>
+    <button onclick="testStorage()">Test Storage Access</button>
+    <button onclick="testUpload()">Test File Upload</button>
+    <div id="results"></div>
+
+    <script>
+        // Replace with your actual Supabase credentials
+        const supabaseUrl = 'YOUR_SUPABASE_URL'
+        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'
+        
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey)
+
+        async function testStorage() {
+            const resultsDiv = document.getElementById('results')
+            resultsDiv.innerHTML = '<p>Testing storage access...</p>'
+            
+            try {
+                const { data, error } = await supabase.storage
+                    .from('files')
+                    .list('', { limit: 10 })
+                
+                if (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Success! Found ${data.length} files</p>`
+                    resultsDiv.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`
+                }
+            } catch (err) {
+                resultsDiv.innerHTML += `<p style="color: red;">Exception: ${err.message}</p>`
+            }
+        }
+
+        async function testUpload() {
+            const resultsDiv = document.getElementById('results')
+            resultsDiv.innerHTML = '<p>Testing file upload...</p>'
+            
+            try {
+                const testContent = 'Test file content - ' + new Date().toISOString()
+                const testBlob = new Blob([testContent], { type: 'text/plain' })
+                
+                const { data, error } = await supabase.storage
+                    .from('files')
+                    .upload(`test-${Date.now()}.txt`, testBlob, {
+                        contentType: 'text/plain',
+                        upsert: true
+                    })
+                
+                if (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Upload Error: ${error.message}</p>`
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Upload Success!</p>`
+                    resultsDiv.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`
+                }
+            } catch (err) {
+                resultsDiv.innerHTML += `<p style="color: red;">Upload Exception: ${err.message}</p>`
+            }
+        }
+    </script>
+</body>
+</html> 

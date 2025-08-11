@@ -606,7 +606,7 @@ const getFileIcon = (type: string) => {
       return customTagColors[tagName]
     }
     return getTagColor(tagName)
-  }
+}
 
 const getApprovalBadge = (status: string) => {
   switch (status) {
