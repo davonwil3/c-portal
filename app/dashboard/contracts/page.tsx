@@ -31,6 +31,7 @@ import {
   Loader2,
   X,
   Clock,
+  CheckCircle,
 } from "lucide-react"
 import Link from "next/link"
 import { getContracts, deleteContract, type Contract, createContract, updateContract } from "@/lib/contracts"
@@ -38,6 +39,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from "sonner"
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
+import { useRouter } from "next/navigation"
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-800" },
@@ -51,6 +53,7 @@ const statusConfig = {
 }
 
 export default function ContractsPage() {
+  const router = useRouter()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -59,12 +62,9 @@ export default function ContractsPage() {
   const [deletingContract, setDeletingContract] = useState<string | null>(null)
   
   // Modal states
-  const [viewModalOpen, setViewModalOpen] = useState(false)
   const [sendModalOpen, setSendModalOpen] = useState(false)
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
-  const [contractHtml, setContractHtml] = useState<string>("")
-  const [loadingContract, setLoadingContract] = useState(false)
-
+  
   // Send/Resend modal states
   const [emailSettings, setEmailSettings] = useState({
     to: "",
@@ -110,55 +110,24 @@ export default function ContractsPage() {
   }
 
   const handleViewContract = async (contract: Contract) => {
-    try {
-      setSelectedContract(contract)
-      setViewModalOpen(true)
-      setLoadingContract(true)
-      setContractHtml("")
+    // Navigate to contract details page using contract number
+    router.push(`/dashboard/contracts/${contract.contract_number}`)
+  }
 
-      const supabase = createClient()
+  const handleStatusChange = async (contract: Contract, newStatus: string) => {
+    try {
+      // Update contract status in database
+      await updateContract(contract.id, { status: newStatus as any })
       
-      console.log('Loading contract:', contract.id)
-      console.log('Contract HTML path:', contract.contract_html)
-      console.log('Contract content:', contract.contract_content)
+      // Update local state
+      setContracts(prev => prev.map(c => 
+        c.id === contract.id ? { ...c, status: newStatus as any } : c
+      ))
       
-      // Try to get the contract HTML from storage
-      if (contract.contract_html) {
-        const { data, error } = await supabase.storage
-          .from('files')
-          .download(contract.contract_html)
-        
-        if (error) {
-          console.error('Error loading contract HTML from storage:', error)
-          // Fallback to contract content from database
-          if (contract.contract_content) {
-            console.log('Using fallback: generating HTML from contract content')
-            setContractHtml(generateContractDocument(contract.contract_content))
-          } else {
-            console.log('No contract content available')
-            setContractHtml('<div class="p-8 text-center text-gray-500">No contract content available</div>')
-          }
-        } else {
-          // Convert blob to text
-          const htmlText = await data.text()
-          console.log('Loaded HTML from storage, length:', htmlText.length)
-          console.log('HTML preview:', htmlText.substring(0, 500) + '...')
-          setContractHtml(htmlText)
-        }
-      } else if (contract.contract_content) {
-        // Fallback to contract content from database
-        console.log('No storage path, generating HTML from contract content')
-        setContractHtml(generateContractDocument(contract.contract_content))
-      } else {
-        console.log('No contract content or storage path available')
-        setContractHtml('<div class="p-8 text-center text-gray-500">No contract content available</div>')
-      }
+      toast.success(`Contract status updated to ${newStatus}`)
     } catch (error) {
-      console.error('Error viewing contract:', error)
-      toast.error('Failed to load contract')
-      setContractHtml('<div class="p-8 text-center text-red-500">Error loading contract</div>')
-    } finally {
-      setLoadingContract(false)
+      console.error('Error updating contract status:', error)
+      toast.error('Failed to update contract status')
     }
   }
 
@@ -964,7 +933,7 @@ export default function ContractsPage() {
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <Link
-                            href={`/dashboard/contracts/${contract.id}`}
+                            href={`/dashboard/contracts/${contract.contract_number}`}
                             className="text-lg font-semibold text-gray-900 hover:text-[#3C3CFF] transition-colors"
                           >
                             {contract.name}
@@ -1017,9 +986,21 @@ export default function ContractsPage() {
                                 <Send className="h-4 w-4 mr-2" />
                                 Send/Resend
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copy Link
+                              <DropdownMenuItem onClick={() => handleStatusChange(contract, 'draft')}>
+                                <FileText className="h-4 w-4 mr-2" />
+                                Make Draft
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(contract, 'awaiting_signature')}>
+                                <Clock className="h-4 w-4 mr-2" />
+                                Make Pending
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(contract, 'signed')}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Mark as Signed
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(contract, 'archived')}>
+                                <Package className="h-4 w-4 mr-2" />
+                                Archive
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleDownloadPDF(contract)}>
                                 <Download className="h-4 w-4 mr-2" />
@@ -1058,44 +1039,6 @@ export default function ContractsPage() {
           </div>
         )}
       </div>
-
-      {/* Contract View Modal */}
-      <Dialog open={viewModalOpen} onOpenChange={setViewModalOpen}>
-        <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>
-                {selectedContract?.name || 'Contract View'}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewModalOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-hidden">
-            {loadingContract ? (
-              <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading contract...</span>
-              </div>
-            ) : (
-              <div className="h-full overflow-auto">
-                <iframe
-                  srcDoc={contractHtml}
-                  className="w-full h-[85vh] border-0 rounded-lg"
-                  title="Contract Preview"
-                  sandbox="allow-same-origin allow-scripts"
-                />
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Send Contract Modal */}
       <Dialog open={sendModalOpen} onOpenChange={setSendModalOpen}>

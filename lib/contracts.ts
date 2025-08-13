@@ -199,6 +199,40 @@ export async function getContract(id: string): Promise<Contract | null> {
   } : null
 }
 
+export async function getContractByNumber(contractNumber: string): Promise<Contract | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile?.account_id) throw new Error('No account found')
+
+  const { data, error } = await supabase
+    .from('contracts')
+    .select(`
+      *,
+      clients:client_id(first_name, last_name, company),
+      projects:project_id(name)
+    `)
+    .eq('contract_number', contractNumber)
+    .eq('account_id', profile.account_id)
+    .single()
+
+  if (error) throw error
+
+  return data ? {
+    ...data,
+    client_name: data.clients ? 
+      (data.clients.company || `${data.clients.first_name} ${data.clients.last_name}`) : 
+      null,
+    project_name: data.projects?.name || null
+  } : null
+}
+
 export async function createContract(contractData: Partial<Contract>): Promise<Contract> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -375,6 +409,29 @@ export async function getContractTemplate(id: string): Promise<ContractTemplate 
     .select('*')
     .eq('id', id)
     .or(`account_id.eq.${profile.account_id},is_public.eq.true`)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getContractTemplateByNumber(templateNumber: string): Promise<ContractTemplate | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile?.account_id) throw new Error('No account found')
+
+  const { data, error } = await supabase
+    .from('contract_templates')
+    .select('*')
+    .eq('template_number', templateNumber)
+    .eq('account_id', profile.account_id)
     .single()
 
   if (error) throw error

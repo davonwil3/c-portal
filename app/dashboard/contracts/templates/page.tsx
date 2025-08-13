@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -30,113 +31,128 @@ import {
   Users,
   Crown,
   Lock,
+  Loader2,
+  Trash2,
+  X,
 } from "lucide-react"
-
-// Mock data for templates
-const templates = [
-  {
-    id: 1,
-    name: "Website Design Contract",
-    description: "Comprehensive agreement for website design and development projects",
-    category: "Design",
-    status: "active",
-    lastUsed: "2 days ago",
-    usageCount: 15,
-    isEditable: true,
-    isPremium: false,
-    createdBy: "You",
-  },
-  {
-    id: 2,
-    name: "Social Media Management Agreement",
-    description: "Monthly retainer for social media content and management",
-    category: "Marketing",
-    status: "active",
-    lastUsed: "1 week ago",
-    usageCount: 8,
-    isEditable: true,
-    isPremium: false,
-    createdBy: "You",
-  },
-  {
-    id: 3,
-    name: "Consulting Services Agreement",
-    description: "Professional services and strategic consulting contract",
-    category: "Services",
-    status: "active",
-    lastUsed: "3 days ago",
-    usageCount: 12,
-    isEditable: false,
-    isPremium: false,
-    createdBy: "ClientPortalHQ",
-  },
-  {
-    id: 4,
-    name: "Independent Contractor Agreement",
-    description: "Standard independent contractor agreement with IP clauses",
-    category: "Legal",
-    status: "active",
-    lastUsed: "1 day ago",
-    usageCount: 22,
-    isEditable: false,
-    isPremium: false,
-    createdBy: "ClientPortalHQ",
-  },
-  {
-    id: 5,
-    name: "Monthly Retainer Agreement",
-    description: "Ongoing monthly services retainer agreement",
-    category: "Services",
-    status: "active",
-    lastUsed: "5 days ago",
-    usageCount: 6,
-    isEditable: true,
-    isPremium: true,
-    createdBy: "You",
-  },
-  {
-    id: 6,
-    name: "Statement of Work Template",
-    description: "Detailed project scope and deliverables document",
-    category: "Project",
-    status: "archived",
-    lastUsed: "2 months ago",
-    usageCount: 3,
-    isEditable: true,
-    isPremium: false,
-    createdBy: "You",
-  },
-  {
-    id: 7,
-    name: "Non-Disclosure Agreement",
-    description: "Confidentiality agreement for sensitive projects",
-    category: "Legal",
-    status: "active",
-    lastUsed: "1 week ago",
-    usageCount: 18,
-    isEditable: false,
-    isPremium: false,
-    createdBy: "ClientPortalHQ",
-  },
-]
-
-const categories = ["All", "Design", "Marketing", "Services", "Legal", "Project"]
+import { getContractTemplates, createContractTemplate, deleteContractTemplate, type ContractTemplate } from "@/lib/contracts"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 export default function TemplatesPage() {
+  const router = useRouter()
+  const [templates, setTemplates] = useState<ContractTemplate[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("All")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const userPlan = "starter" // This would come from user context
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<ContractTemplate | null>(null)
+  const [duplicating, setDuplicating] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadTemplates()
+  }, [])
+
+  const loadTemplates = async () => {
+    try {
+      setLoading(true)
+      const data = await getContractTemplates()
+      setTemplates(data)
+    } catch (error) {
+      console.error('Error loading templates:', error)
+      toast.error('Failed to load templates')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePreviewTemplate = (template: ContractTemplate) => {
+    setSelectedTemplate(template)
+    setPreviewModalOpen(true)
+  }
+
+  const handleDuplicateTemplate = async (template: ContractTemplate) => {
+    try {
+      setDuplicating(template.id)
+      
+      // Create new template with same data
+      const newTemplateData = {
+        name: `${template.name} (Copy)`,
+        description: template.description,
+        template_content: template.template_content,
+        template_html: template.template_html,
+        template_type: template.template_type,
+        is_default: false, // Always start as non-default
+        tags: template.tags,
+        metadata: template.metadata
+      }
+      
+      await createContractTemplate(newTemplateData)
+      await loadTemplates() // Refresh the list
+      toast.success('Template duplicated successfully')
+    } catch (error) {
+      console.error('Error duplicating template:', error)
+      toast.error('Failed to duplicate template')
+    } finally {
+      setDuplicating(null)
+    }
+  }
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+      try {
+        setDeleting(templateId)
+        await deleteContractTemplate(templateId)
+        await loadTemplates() // Refresh the list
+        toast.success('Template deleted successfully')
+      } catch (error) {
+        console.error('Error deleting template:', error)
+        toast.error('Failed to delete template')
+      } finally {
+        setDeleting(null)
+      }
+    }
+  }
+
+  const handleNewTemplate = () => {
+    // Navigate to contracts/new with create from scratch selected
+    router.push('/dashboard/contracts/new?step=1&mode=create')
+  }
+
+  const handleEditTemplate = (template: ContractTemplate) => {
+    // Navigate to contracts/new with template data prefilled
+    router.push(`/dashboard/contracts/new?edit=${template.template_number}&mode=template`)
+  }
+
+  const handleTemplateCardClick = (template: ContractTemplate, event: React.MouseEvent) => {
+    // Only open preview if clicking on the card itself, not on action buttons
+    if (!(event.target as HTMLElement).closest('[data-action-button]')) {
+      handlePreviewTemplate(template)
+    }
+  }
+
+  const handleDropdownItemClick = (event: React.MouseEvent, action: () => void) => {
+    event.stopPropagation()
+    action()
+  }
 
   const filteredTemplates = templates.filter((template) => {
     const matchesSearch =
       template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = categoryFilter === "All" || template.category === categoryFilter
-    const matchesStatus = statusFilter === "all" || template.status === statusFilter
+      (template.description && template.description.toLowerCase().includes(searchQuery.toLowerCase()))
 
-    return matchesSearch && matchesCategory && matchesStatus
+    return matchesSearch
   })
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Contract Templates" subtitle="Manage your contract templates and reusable clauses">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout title="Contract Templates" subtitle="Manage your contract templates and reusable clauses">
@@ -158,7 +174,7 @@ export default function TemplatesPage() {
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
             {/* Search */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 max-w-2xl">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 placeholder="Search templates..."
@@ -167,63 +183,17 @@ export default function TemplatesPage() {
                 className="pl-10"
               />
             </div>
-
-            {/* Filters */}
-            <div className="flex gap-2">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           {/* Primary CTA */}
-          <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white" disabled={userPlan === "free"}>
+          <Button 
+            className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
+            onClick={handleNewTemplate}
+          >
             <Plus className="mr-2 h-4 w-4" />
             New Template
-            {userPlan === "free" && <Lock className="ml-2 h-4 w-4" />}
           </Button>
         </div>
-
-        {/* Plan Notice */}
-        {userPlan === "free" && (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <Crown className="h-5 w-5 text-amber-600" />
-                <div>
-                  <p className="font-medium text-amber-800">Free Plan - Read-Only Templates</p>
-                  <p className="text-sm text-amber-700">
-                    Upgrade to Starter plan to create custom templates, or Premium for advanced clause library.
-                  </p>
-                </div>
-                <Button size="sm" className="ml-auto">
-                  Upgrade Plan
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Templates Grid */}
         {filteredTemplates.length === 0 ? (
@@ -231,15 +201,18 @@ export default function TemplatesPage() {
             <CardContent>
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {searchQuery || categoryFilter !== "All" ? "No templates found" : "No templates yet"}
+                {searchQuery ? "No templates found" : "No templates yet"}
               </h3>
               <p className="text-gray-600 mb-6">
-                {searchQuery || categoryFilter !== "All"
-                  ? "Try adjusting your search or filters"
+                {searchQuery
+                  ? "Try adjusting your search"
                   : "Create your first template to streamline contract creation"}
               </p>
-              {!searchQuery && categoryFilter === "All" && userPlan !== "free" && (
-                <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
+              {!searchQuery && (
+                <Button 
+                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
+                  onClick={handleNewTemplate}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Create Your First Template
                 </Button>
@@ -249,78 +222,77 @@ export default function TemplatesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTemplates.map((template) => (
-              <Card key={template.id} className="hover:shadow-md transition-shadow">
+              <Card 
+                key={template.id} 
+                className="hover:shadow-md transition-shadow cursor-pointer"
+                onClick={(e) => handleTemplateCardClick(template, e)}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-12 h-12 bg-[#3C3CFF] rounded-lg flex items-center justify-center">
                       <FileText className="h-6 w-6 text-white" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      {template.isPremium && (
-                        <Badge className="bg-yellow-100 text-yellow-800">
-                          <Crown className="h-3 w-3 mr-1" />
-                          Premium
-                        </Badge>
-                      )}
-                      <Badge
-                        className={
-                          template.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-                        }
-                      >
-                        {template.status}
-                      </Badge>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Preview
-                          </DropdownMenuItem>
-                          {template.isEditable && (
-                            <DropdownMenuItem disabled={userPlan === "free"}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                              {userPlan === "free" && <Lock className="h-4 w-4 ml-auto" />}
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          data-action-button
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => handleDropdownItemClick(e, () => handlePreviewTemplate(template))}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          Preview
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => handleDropdownItemClick(e, () => handleEditTemplate(template))}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => handleDropdownItemClick(e, () => handleDuplicateTemplate(template))}
+                          disabled={duplicating === template.id}
+                        >
+                          {duplicating === template.id ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
                             <Copy className="h-4 w-4 mr-2" />
-                            Duplicate
-                          </DropdownMenuItem>
-                          {template.isEditable && (
-                            <DropdownMenuItem>
-                              <Archive className="h-4 w-4 mr-2" />
-                              {template.status === "active" ? "Archive" : "Restore"}
-                            </DropdownMenuItem>
                           )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-red-600"
+                          onClick={(e) => handleDropdownItemClick(e, () => handleDeleteTemplate(template.id))}
+                          disabled={deleting === template.id}
+                        >
+                          {deleting === template.id ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 mr-2" />
+                          )}
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   <div className="space-y-3">
                     <div>
                       <h3 className="font-semibold text-gray-900 mb-1">{template.name}</h3>
-                      <p className="text-sm text-gray-600 line-clamp-2">{template.description}</p>
+                      <p className="text-sm text-gray-600 line-clamp-2">{template.description || 'No description available'}</p>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span className="bg-gray-100 px-2 py-1 rounded">{template.category}</span>
-                      <span>by {template.createdBy}</span>
+                      <span>by {template.created_by_name || 'Unknown'}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-sm text-gray-600 pt-2 border-t">
                       <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4" />
-                        <span>{template.usageCount} uses</span>
-                      </div>
-                      <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        <span>{template.lastUsed}</span>
+                        <span>Created {new Date(template.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
@@ -330,59 +302,41 @@ export default function TemplatesPage() {
           </div>
         )}
 
-        {/* Clauses Library Section */}
-        {userPlan === "premium" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Reusable Clauses Library</h2>
-                <p className="text-gray-600">Manage standard clauses for quick insertion into contracts</p>
-              </div>
-              <Button variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Clause
-              </Button>
+        {/* Preview Modal */}
+        <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between">
+                <span>Template Preview: {selectedTemplate?.name}</span>
+                <Button variant="ghost" size="sm" onClick={() => setPreviewModalOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-auto p-0">
+              {selectedTemplate?.template_html ? (
+                <div 
+                  className="bg-white border rounded-lg shadow-sm overflow-auto"
+                  style={{ minHeight: '100%', maxHeight: '70vh' }}
+                  dangerouslySetInnerHTML={{ __html: selectedTemplate.template_html }}
+                />
+              ) : selectedTemplate?.template_content ? (
+                <div className="bg-white border rounded-lg shadow-sm p-6 overflow-auto" style={{ maxHeight: '70vh' }}>
+                  <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                    {JSON.stringify(selectedTemplate.template_content, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <div className="bg-white border rounded-lg p-8 text-center text-gray-500">
+                  <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No template content available</p>
+                  <p className="text-sm">This template has no preview content.</p>
+                </div>
+              )}
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[
-                { name: "Payment Terms - Net 30", category: "Payment", uses: 45 },
-                { name: "IP Rights - Work for Hire", category: "Legal", uses: 32 },
-                { name: "Termination - 30 Day Notice", category: "Legal", uses: 28 },
-                { name: "Revision Policy - 3 Rounds", category: "Scope", uses: 38 },
-              ].map((clause, index) => (
-                <Card key={index} className="hover:shadow-sm transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-medium text-gray-900 text-sm">{clause.name}</h4>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span className="bg-gray-100 px-2 py-1 rounded">{clause.category}</span>
-                      <span>{clause.uses} uses</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

@@ -151,7 +151,7 @@ export async function getAccountTags(): Promise<string[]> {
 export async function getClient(clientId: string): Promise<Client | null> {
   const supabase = createSupabaseClient()
   
-  const { data, error } = await supabase
+  const { data: client, error } = await supabase
     .from('clients')
     .select('*')
     .eq('id', clientId)
@@ -162,7 +162,9 @@ export async function getClient(clientId: string): Promise<Client | null> {
     return null
   }
 
-  return data
+  if (!client) return null
+
+  return client
 }
 
 // Create a new client
@@ -411,4 +413,132 @@ export async function createCustomTag(tagName: string, color: string): Promise<v
   // Add the custom tag to a special table or update the standard tags
   // For now, we'll just return the color for the tag
   return color
+}
+
+// Get client activities
+export async function getClientActivities(clientId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  
+  const { data, error } = await supabase
+    .from('client_activities')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (error) {
+    console.error('Error fetching client activities:', error)
+    return []
+  }
+
+  return data || []
+}
+
+// Get client invoices (using the invoices library)
+export async function getClientInvoices(clientId: string): Promise<any[]> {
+  try {
+    const { getInvoicesByClient } = await import('@/lib/invoices')
+    return await getInvoicesByClient(clientId)
+  } catch (error) {
+    console.error('Error importing getInvoicesByClient:', error)
+    return []
+  }
+}
+
+// Get client projects (using the projects library)
+export async function getClientProjects(clientId: string): Promise<any[]> {
+  try {
+    const { getProjectsByClient } = await import('@/lib/projects')
+    return await getProjectsByClient(clientId)
+  } catch (error) {
+    console.error('Error importing getProjectsByClient:', error)
+    return []
+  }
+}
+
+// Get client files (using the files library)
+export async function getClientFiles(clientId: string): Promise<any[]> {
+  try {
+    const { getFiles } = await import('@/lib/files')
+    const allFiles = await getFiles()
+    return allFiles.filter(file => file.client_id === clientId)
+  } catch (error) {
+    console.error('Error importing getFiles:', error)
+    return []
+  }
+}
+
+// Refresh client counts (useful after creating/deleting related records)
+export async function refreshClientCounts(clientId: string): Promise<void> {
+  try {
+    const supabase = createSupabaseClient()
+    
+    // Calculate new counts
+    const [projectCount, totalInvoices, paidInvoices, unpaidInvoices, filesCount, formsCount] = await Promise.all([
+      // Get project count
+      supabase
+        .from('projects')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .then(result => result.count || 0),
+
+      // Get total invoices count
+      supabase
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .then(result => result.count || 0),
+
+      // Get paid invoices count
+      supabase
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('status', 'paid')
+        .then(result => result.count || 0),
+
+      // Get unpaid invoices for amount calculation
+      supabase
+        .from('invoices')
+        .select('total_amount')
+        .eq('client_id', clientId)
+        .not('status', 'eq', 'paid')
+        .then(result => result.data || []),
+
+      // Get files count
+      supabase
+        .from('files')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .then(result => result.count || 0),
+
+      // Get forms count
+      supabase
+        .from('forms')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .then(result => result.count || 0),
+    ])
+
+    // Calculate unpaid amount
+    const unpaidAmount = unpaidInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
+
+    // Update the client record with new counts
+    await supabase
+      .from('clients')
+      .update({
+        project_count: projectCount,
+        total_invoices: totalInvoices,
+        paid_invoices: paidInvoices,
+        unpaid_amount: unpaidAmount,
+        files_uploaded: filesCount,
+        forms_submitted: formsCount,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', clientId)
+
+  } catch (error) {
+    console.error(`Error refreshing counts for client ${clientId}:`, error)
+    throw error
+  }
 } 

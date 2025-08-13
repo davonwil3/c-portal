@@ -38,7 +38,7 @@ import {
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import SignatureCanvas from 'react-signature-canvas'
-import { getContractTemplates, type ContractTemplate, createContract, updateContract, getContract, type Contract, createContractTemplate } from "@/lib/contracts"
+import { getContractTemplates, type ContractTemplate, createContract, updateContract, getContract, type Contract, createContractTemplate, getContractTemplateByNumber, updateContractTemplate } from "@/lib/contracts"
 import { getClients as getClientsData } from "@/lib/clients"
 import { getProjectsByClient as getProjectsByClientData } from "@/lib/projects"
 import { toast } from "sonner"
@@ -48,7 +48,9 @@ export default function NewContractPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const editContractId = searchParams.get('edit')
+  const editMode = searchParams.get('mode')
   const isEditMode = !!editContractId
+  const isEditingTemplate = editMode === 'template'
 
   const [currentStep, setCurrentStep] = useState(1)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
@@ -114,14 +116,20 @@ export default function NewContractPage() {
   })
 
   const totalSteps = 5
-  const stepTitles = ["Choose Template", "Link Context", "Fill Fields", "Review & Edit", "Send Contract"]
+  const stepTitles = isEditingTemplate 
+    ? ["Edit Template", "Link Context", "Fill Fields", "Review & Edit", "Save Template"]
+    : ["Choose Template", "Link Context", "Fill Fields", "Review & Edit", "Send Contract"]
 
-  // Load existing contract data if in edit mode
+  // Load existing contract or template data if in edit mode
   useEffect(() => {
     if (isEditMode && editContractId) {
-      loadExistingContract(editContractId)
+      if (isEditingTemplate) {
+        loadExistingTemplate(editContractId)
+      } else {
+        loadExistingContract(editContractId)
+      }
     }
-  }, [isEditMode, editContractId])
+  }, [isEditMode, editContractId, isEditingTemplate])
 
   // Load template data when a template is selected
   useEffect(() => {
@@ -240,6 +248,65 @@ export default function NewContractPage() {
     } catch (error) {
       console.error('Error loading template data:', error)
       toast.error('Failed to load template data')
+    }
+  }
+
+  const loadExistingTemplate = async (templateNumber: string) => {
+    try {
+      setLoadingContract(true)
+      
+      // Get template directly from database by template_number
+      const template = await getContractTemplateByNumber(templateNumber)
+      
+      if (!template) {
+        toast.error('Template not found')
+        router.push('/dashboard/contracts/templates')
+        return
+      }
+
+      // Set the template as selected
+      setSelectedTemplate(template.id)
+
+      // Pre-fill contract data from template
+      if (template.template_content) {
+        const content = template.template_content
+        setContractData({
+          companyName: content.companyName || "Your Company",
+          companyAddress: content.companyAddress || "",
+          companyLogo: null,
+          clientName: content.clientName || "",
+          clientEmail: content.clientEmail || "",
+          clientAddress: content.clientAddress || "",
+          projectScope: content.projectScope || "",
+          milestones: content.milestones || "",
+          paymentType: content.paymentType || "fixed",
+          paymentTerms: content.paymentTerms || "",
+          depositAmount: content.depositAmount || "",
+          totalAmount: content.totalAmount || "",
+          hourlyRate: content.hourlyRate || "",
+          estimatedHours: content.estimatedHours || "",
+          ipRights: content.ipRights || "client",
+          revisions: content.revisions || "3",
+          terminationClause: content.terminationClause || "30-day notice",
+          signatureOrder: content.signatureOrder || "sequential",
+          companySignature: content.companySignature || null,
+          clientSignature: content.clientSignature || null,
+        })
+      }
+
+      // Set document name from template
+      setDocumentName(template.name || "")
+
+      // Skip to step 2 for editing (since template is already chosen)
+      setCurrentStep(2)
+
+      toast.success('Template loaded for editing')
+    } catch (error) {
+      console.error('Error loading template:', error)
+      toast.error('Failed to load template')
+      router.push('/dashboard/contracts/templates')
+    } finally {
+      setLoadingContract(false)
     }
   }
 
@@ -447,10 +514,42 @@ export default function NewContractPage() {
       let contract: Contract
 
       if (isEditMode && editContractId) {
-        // Update existing contract
-        console.log('Updating contract in database...')
-        contract = await updateContract(editContractId, contractDataForDB)
-        console.log('Contract updated:', contract.id)
+        if (isEditingTemplate) {
+          // Update existing template
+          console.log('Updating template in database...')
+          const templateData = {
+            name: documentName,
+            description: `Template: ${documentName}`,
+            template_content: contractContent,
+            template_html: generateContractDocument(contractContent),
+            template_type: 'custom' as const,
+            is_public: false,
+            is_default: false,
+            tags: ['template', 'custom'],
+            metadata: {
+              source: 'contract_creator',
+              updated_from: 'edit_template'
+            }
+          }
+          
+          // Get the template by template_number to get its ID
+          const template = await getContractTemplateByNumber(editContractId)
+          if (template) {
+            await updateContractTemplate(template.id, templateData)
+            console.log('Template updated:', template.id)
+            toast.success('Template updated successfully!')
+            router.push('/dashboard/contracts/templates')
+            return
+          } else {
+            toast.error('Template not found')
+            return
+          }
+        } else {
+          // Update existing contract
+          console.log('Updating contract in database...')
+          contract = await updateContract(editContractId, contractDataForDB)
+          console.log('Contract updated:', contract.id)
+        }
       } else {
         // Create new contract
         console.log('Creating contract in database...')
@@ -1549,8 +1648,15 @@ export default function NewContractPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Save & Send Contract</h2>
-              <p className="text-gray-600">Configure document settings and send your contract for signature.</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                {isEditingTemplate ? "Save Template" : "Save & Send Contract"}
+              </h2>
+              <p className="text-gray-600">
+                {isEditingTemplate 
+                  ? "Review and save your template changes."
+                  : "Configure document settings and send your contract for signature."
+                }
+              </p>
             </div>
 
             {/* Document Settings */}
@@ -1571,18 +1677,20 @@ export default function NewContractPage() {
                     placeholder="Enter document name"
                   />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="save-only"
-                    checked={saveOnly}
-                    onCheckedChange={setSaveOnly}
-                  />
-                  <Label htmlFor="save-only">Save to client portal and database (don't send email)</Label>
-                </div>
+                {!isEditingTemplate && (
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="save-only"
+                      checked={saveOnly}
+                      onCheckedChange={setSaveOnly}
+                    />
+                    <Label htmlFor="save-only">Save to client portal and database (don't send email)</Label>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {!saveOnly && (
+            {!isEditingTemplate && !saveOnly && (
               <>
                 {/* Email Provider Connection */}
                 <Card>
@@ -2161,7 +2269,9 @@ export default function NewContractPage() {
               Back to Contracts
             </Link>
             <div className="text-sm text-gray-500">
-              {isEditMode ? "Editing Contract" : "Step {currentStep} of {totalSteps}"}
+              {isEditMode 
+                ? (isEditingTemplate ? "Editing Template" : "Editing Contract") 
+                : `Step ${currentStep} of ${totalSteps}`}
             </div>
           </div>
 
@@ -2227,17 +2337,18 @@ export default function NewContractPage() {
                   Save as Template
                 </Button>
                 <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2 bg-transparent"
                   onClick={handleSaveAndSend}
-                  disabled={sending}
+                  disabled={sending || !documentName.trim()}
+                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
                 >
                   {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
-                    <Save className="h-4 w-4" />
+                    <Send className="h-4 w-4 mr-2" />
                   )}
-                  {isEditMode ? "Update Contract" : (saveOnly ? "Save Contract" : "Save & Send")}
+                  {isEditMode 
+                    ? (isEditingTemplate ? "Save Template" : "Update Contract") 
+                    : (saveOnly ? "Save Contract" : "Save & Send")}
                 </Button>
                 {!saveOnly && !isEditMode && (
                   <Button 

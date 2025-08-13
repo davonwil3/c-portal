@@ -1,17 +1,4 @@
--- =====================================================
--- INVOICING DATABASE SCHEMA
--- =====================================================
 
--- Enable Row Level Security
-ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.invoice_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.invoice_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.invoice_activities ENABLE ROW LEVEL SECURITY;
-
--- =====================================================
--- INVOICES TABLE
--- =====================================================
 CREATE TABLE public.invoices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid REFERENCES public.accounts (id) ON DELETE CASCADE,
@@ -31,8 +18,11 @@ CREATE TABLE public.invoices (
   notes text, -- Additional notes for the client
   po_number text, -- Purchase order number
   
+  -- Line Items (JSON array of invoice items)
+  line_items jsonb DEFAULT '[]'::jsonb, -- Array of line items with name, description, quantity, rate, amount, etc.
+  
   -- Invoice Status and Workflow
-  status text DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'viewed', 'paid', 'overdue', 'cancelled', 'refunded')),
+  status text DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'viewed', 'paid', 'partially_paid', 'overdue', 'cancelled', 'refunded')),
   is_recurring boolean DEFAULT false,
   recurring_schedule text, -- e.g., "monthly", "weekly", "yearly"
   
@@ -79,32 +69,6 @@ CREATE TABLE public.invoices (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   last_activity_at timestamptz
-);
-
--- =====================================================
--- INVOICE ITEMS TABLE (Line items)
--- =====================================================
-CREATE TABLE public.invoice_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  invoice_id uuid REFERENCES public.invoices (id) ON DELETE CASCADE,
-  
-  -- Item Information
-  name text NOT NULL,
-  description text,
-  item_type text DEFAULT 'service' CHECK (item_type IN ('service', 'product', 'expense', 'time')),
-  
-  -- Pricing
-  quantity decimal(10,2) DEFAULT 1,
-  unit_rate decimal(15,2) DEFAULT 0,
-  total_amount decimal(15,2) DEFAULT 0,
-  
-  -- Item Settings
-  sort_order integer DEFAULT 0,
-  is_taxable boolean DEFAULT true,
-  
-  -- Timestamps
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
 );
 
 -- =====================================================
@@ -212,11 +176,7 @@ CREATE INDEX idx_invoices_due_date ON public.invoices(due_date);
 CREATE INDEX idx_invoices_paid_date ON public.invoices(paid_date);
 CREATE INDEX idx_invoices_invoice_number ON public.invoices(invoice_number);
 CREATE INDEX idx_invoices_tags ON public.invoices USING gin(tags);
-
--- Invoice items indexes
-CREATE INDEX idx_invoice_items_invoice_id ON public.invoice_items(invoice_id);
-CREATE INDEX idx_invoice_items_type ON public.invoice_items(item_type);
-CREATE INDEX idx_invoice_items_sort_order ON public.invoice_items(sort_order);
+CREATE INDEX idx_invoices_line_items ON public.invoices USING gin(line_items);
 
 -- Invoice payments indexes
 CREATE INDEX idx_invoice_payments_invoice_id ON public.invoice_payments(invoice_id);
@@ -244,6 +204,12 @@ CREATE INDEX idx_invoice_activities_created_at ON public.invoice_activities(crea
 -- ROW LEVEL SECURITY POLICIES
 -- =====================================================
 
+-- Enable Row Level Security
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_activities ENABLE ROW LEVEL SECURITY;
+
 -- Invoices policies
 CREATE POLICY "Users can view invoices in their account" ON public.invoices
   FOR SELECT USING (
@@ -266,22 +232,10 @@ CREATE POLICY "Users can update invoices in their account" ON public.invoices
     )
   );
 
--- Invoice items policies
-CREATE POLICY "Users can view invoice items in their account" ON public.invoice_items
-  FOR SELECT USING (
-    invoice_id IN (
-      SELECT id FROM public.invoices WHERE account_id IN (
-        SELECT account_id FROM public.profiles WHERE user_id = auth.uid()
-      )
-    )
-  );
-
-CREATE POLICY "Users can manage invoice items in their account" ON public.invoice_items
-  FOR ALL USING (
-    invoice_id IN (
-      SELECT id FROM public.invoices WHERE account_id IN (
-        SELECT account_id FROM public.profiles WHERE user_id = auth.uid()
-      )
+CREATE POLICY "Users can delete invoices in their account" ON public.invoices
+  FOR DELETE USING (
+    account_id IN (
+      SELECT account_id FROM public.profiles WHERE user_id = auth.uid()
     )
   );
 
@@ -346,7 +300,7 @@ BEGIN
     LPAD(COALESCE(
       (SELECT MAX(CAST(SUBSTRING(invoice_number FROM 5) AS INTEGER))
        FROM public.invoices 
-       WHERE account_id = NEW.account_id), 0) + 1::TEXT, 4, '0');
+       WHERE account_id = NEW.account_id), 0) + 1, 4, '0');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -364,7 +318,7 @@ BEGIN
     LPAD(COALESCE(
       (SELECT MAX(CAST(SUBSTRING(payment_number FROM 5) AS INTEGER))
        FROM public.invoice_payments 
-       WHERE invoice_id = NEW.invoice_id), 0) + 1::TEXT, 4, '0');
+       WHERE invoice_id = NEW.invoice_id), 0) + 1, 4, '0');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -374,50 +328,48 @@ CREATE OR REPLACE TRIGGER on_payment_created
   BEFORE INSERT ON public.invoice_payments
   FOR EACH ROW EXECUTE FUNCTION public.generate_payment_number();
 
--- Function to calculate invoice totals
+-- Function to calculate invoice totals from line_items JSON
 CREATE OR REPLACE FUNCTION public.calculate_invoice_totals()
 RETURNS TRIGGER AS $$
 DECLARE
   invoice_subtotal DECIMAL(15,2);
   invoice_tax_amount DECIMAL(15,2);
   invoice_discount_value DECIMAL(15,2);
+  line_item JSONB;
 BEGIN
-  -- Calculate subtotal from line items
-  SELECT COALESCE(SUM(total_amount), 0)
-  INTO invoice_subtotal
-  FROM public.invoice_items
-  WHERE invoice_id = COALESCE(NEW.invoice_id, OLD.invoice_id);
+  -- Calculate subtotal from line_items JSON array
+  invoice_subtotal := 0;
+  
+  IF NEW.line_items IS NOT NULL THEN
+    FOR line_item IN SELECT * FROM jsonb_array_elements(NEW.line_items)
+    LOOP
+      invoice_subtotal := invoice_subtotal + COALESCE((line_item->'total_amount')::DECIMAL(15,2), 0);
+    END LOOP;
+  END IF;
   
   -- Calculate tax amount
-  invoice_tax_amount = invoice_subtotal * (COALESCE(NEW.tax_rate, OLD.tax_rate) / 100);
+  invoice_tax_amount := invoice_subtotal * (COALESCE(NEW.tax_rate, 0) / 100);
   
   -- Calculate discount value
-  IF COALESCE(NEW.discount_type, OLD.discount_type) = 'percentage' THEN
-    invoice_discount_value = invoice_subtotal * (COALESCE(NEW.discount_amount, OLD.discount_amount) / 100);
+  IF COALESCE(NEW.discount_type, 'percentage') = 'percentage' THEN
+    invoice_discount_value := invoice_subtotal * (COALESCE(NEW.discount_amount, 0) / 100);
   ELSE
-    invoice_discount_value = COALESCE(NEW.discount_amount, OLD.discount_amount);
+    invoice_discount_value := COALESCE(NEW.discount_amount, 0);
   END IF;
   
   -- Update invoice totals
-  UPDATE public.invoices 
-  SET subtotal = invoice_subtotal,
-      tax_amount = invoice_tax_amount,
-      discount_value = invoice_discount_value,
-      total_amount = invoice_subtotal + invoice_tax_amount - invoice_discount_value
-  WHERE id = COALESCE(NEW.invoice_id, OLD.invoice_id);
+  NEW.subtotal := invoice_subtotal;
+  NEW.tax_amount := invoice_tax_amount;
+  NEW.discount_value := invoice_discount_value;
+  NEW.total_amount := invoice_subtotal + invoice_tax_amount - invoice_discount_value;
   
-  RETURN COALESCE(NEW, OLD);
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to calculate invoice totals when items change
-CREATE OR REPLACE TRIGGER on_invoice_item_change
-  AFTER INSERT OR UPDATE OR DELETE ON public.invoice_items
-  FOR EACH ROW EXECUTE FUNCTION public.calculate_invoice_totals();
-
--- Trigger to calculate invoice totals when invoice settings change
-CREATE OR REPLACE TRIGGER on_invoice_totals_change
-  AFTER UPDATE ON public.invoices
+-- Trigger to calculate invoice totals when invoice is created or updated
+CREATE OR REPLACE TRIGGER on_invoice_totals_calculation
+  BEFORE INSERT OR UPDATE ON public.invoices
   FOR EACH ROW EXECUTE FUNCTION public.calculate_invoice_totals();
 
 -- Function to update invoice status based on payments
@@ -517,13 +469,88 @@ CREATE OR REPLACE TRIGGER on_invoice_activity_created
   FOR EACH ROW EXECUTE FUNCTION public.update_invoice_last_activity();
 
 -- =====================================================
+-- SAMPLE DATA STRUCTURE FOR LINE ITEMS
+-- =====================================================
+/*
+-- Example line_items JSON structure:
+[
+  {
+    "id": "item-1",
+    "name": "Website Design",
+    "description": "Complete website design including wireframes and mockups",
+    "item_type": "service",
+    "quantity": 1,
+    "unit_rate": 2500.00,
+    "total_amount": 2500.00,
+    "is_taxable": true,
+    "sort_order": 1
+  },
+  {
+    "id": "item-2", 
+    "name": "Development Hours",
+    "description": "Frontend and backend development",
+    "item_type": "time",
+    "quantity": 40,
+    "unit_rate": 75.00,
+    "total_amount": 3000.00,
+    "is_taxable": true,
+    "sort_order": 2
+  },
+  {
+    "id": "item-3",
+    "name": "Domain Registration",
+    "description": "1 year domain registration",
+    "item_type": "product",
+    "quantity": 1,
+    "unit_rate": 15.00,
+    "total_amount": 15.00,
+    "is_taxable": false,
+    "sort_order": 3
+  }
+]
+
+-- Example invoice with line items:
+INSERT INTO public.invoices (
+  account_id, 
+  client_id, 
+  title, 
+  description, 
+  line_items,
+  tax_rate,
+  payment_terms,
+  created_by_name
+) VALUES (
+  'your-account-id',
+  'client-id-1',
+  'Website Development Project',
+  'Complete website development including design and implementation',
+  '[
+    {"id": "item-1", "name": "Website Design", "description": "Complete website design", "item_type": "service", "quantity": 1, "unit_rate": 2500.00, "total_amount": 2500.00, "is_taxable": true, "sort_order": 1},
+    {"id": "item-2", "name": "Development Hours", "description": "Frontend and backend development", "item_type": "time", "quantity": 40, "unit_rate": 75.00, "total_amount": 3000.00, "is_taxable": true, "sort_order": 2}
+  ]'::jsonb,
+  8.5,
+  'net-30',
+  'John Smith'
+);
+*/
+
+-- =====================================================
 -- SAMPLE DATA (Optional - for testing)
 -- =====================================================
 
 -- Insert sample invoices (uncomment if needed for testing)
 /*
-INSERT INTO public.invoices (account_id, client_id, project_id, invoice_number, title, description, status, subtotal, tax_rate, total_amount, issue_date, due_date, created_by_name) VALUES
-  ('your-account-id', 'client-id-1', 'project-id-1', 'INV-0015', 'Website Redesign - Phase 1', 'Initial design and wireframes', 'paid', 5500.00, 8.5, 5967.50, '2024-01-15', '2024-02-15', 'John Smith'),
-  ('your-account-id', 'client-id-2', 'project-id-2', 'INV-0014', 'Mobile App Development', 'Complete mobile application development', 'unpaid', 12000.00, 8.5, 13020.00, '2024-01-10', '2024-02-10', 'Sarah Johnson'),
-  ('your-account-id', 'client-id-3', NULL, 'INV-0013', 'Brand Identity Package', 'Complete brand identity design', 'overdue', 3200.00, 8.5, 3472.00, '2023-12-20', '2024-01-20', 'Mike Davis');
+INSERT INTO public.invoices (account_id, client_id, project_id, invoice_number, title, description, line_items, status, subtotal, tax_rate, total_amount, issue_date, due_date, created_by_name) VALUES
+  ('your-account-id', 'client-id-1', 'project-id-1', 'INV-0015', 'Website Redesign - Phase 1', 'Initial design and wireframes', 
+   '[{"id": "item-1", "name": "Design Phase", "description": "Wireframes and mockups", "quantity": 1, "unit_rate": 5500.00, "total_amount": 5500.00, "is_taxable": true, "sort_order": 1}]'::jsonb,
+   'paid', 5500.00, 8.5, 5967.50, '2024-01-15', '2024-02-15', 'John Smith'),
+   
+  ('your-account-id', 'client-id-2', 'project-id-2', 'INV-0014', 'Mobile App Development', 'Complete mobile application development',
+   '[{"id": "item-1", "name": "App Development", "description": "Full-stack mobile app", "quantity": 1, "unit_rate": 12000.00, "total_amount": 12000.00, "is_taxable": true, "sort_order": 1}]'::jsonb,
+   'unpaid', 12000.00, 8.5, 13020.00, '2024-01-10', '2024-02-10', 'Sarah Johnson'),
+   
+  ('your-account-id', 'client-id-3', NULL, 'INV-0013', 'Brand Identity Package', 'Complete brand identity design',
+   '[{"id": "item-1", "name": "Logo Design", "description": "Primary and secondary logos", "quantity": 1, "unit_rate": 2000.00, "total_amount": 2000.00, "is_taxable": true, "sort_order": 1},
+    {"id": "item-2", "name": "Brand Guidelines", "description": "Complete brand style guide", "quantity": 1, "unit_rate": 1200.00, "total_amount": 1200.00, "is_taxable": true, "sort_order": 2}]'::jsonb,
+   'overdue', 3200.00, 8.5, 3472.00, '2023-12-20', '2024-01-20', 'Mike Davis');
 */ 

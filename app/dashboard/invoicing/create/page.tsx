@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -19,51 +19,33 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { DashboardLayout } from "@/components/dashboard/layout"
-import { Plus, Trash2, Eye, Calendar, DollarSign, Save, Send, ArrowLeft } from "lucide-react"
-
-// Mock data
-const mockClients = [
-  { id: "1", name: "Acme Corp", email: "billing@acme.com" },
-  { id: "2", name: "TechStart Inc", email: "finance@techstart.com" },
-  { id: "3", name: "Design Co", email: "accounts@designco.com" },
-  { id: "4", name: "Marketing Plus", email: "billing@marketingplus.com" },
-  { id: "5", name: "StartupXYZ", email: "admin@startupxyz.com" },
-]
-
-const mockProjects = {
-  "1": [
-    { id: "p1", name: "Website Redesign" },
-    { id: "p2", name: "Brand Identity" },
-  ],
-  "2": [
-    { id: "p3", name: "Mobile App Development" },
-    { id: "p4", name: "API Integration" },
-  ],
-  "3": [
-    { id: "p5", name: "Logo Design" },
-    { id: "p6", name: "Marketing Materials" },
-  ],
-  "4": [
-    { id: "p7", name: "SEO Campaign" },
-    { id: "p8", name: "Social Media Strategy" },
-  ],
-  "5": [
-    { id: "p9", name: "E-commerce Platform" },
-    { id: "p10", name: "Payment Integration" },
-  ],
-}
+import { Plus, Trash2, Eye, Calendar, DollarSign, Save, Send, ArrowLeft, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { createInvoice, getInvoice, updateInvoice, type Invoice } from "@/lib/invoices"
+import { getClients, type Client } from "@/lib/clients"
+import { getProjects, type Project } from "@/lib/projects"
 
 interface LineItem {
   id: string
   name: string
   description: string
+  item_type: 'service' | 'product' | 'expense' | 'time'
   quantity: number
-  rate: number
-  total: number
+  unit_rate: number
+  total_amount: number
+  is_taxable: boolean
+  sort_order: number
 }
 
 export default function CreateInvoicePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [clients, setClients] = useState<Client[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
+  const [title, setTitle] = useState("")
   const [selectedClient, setSelectedClient] = useState("")
   const [selectedProject, setSelectedProject] = useState("")
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0])
@@ -73,9 +55,12 @@ export default function CreateInvoicePage() {
       id: "1",
       name: "",
       description: "",
+      item_type: 'service',
       quantity: 1,
-      rate: 0,
-      total: 0,
+      unit_rate: 0,
+      total_amount: 0,
+      is_taxable: true,
+      sort_order: 1,
     },
   ])
   const [taxRate, setTaxRate] = useState(0)
@@ -88,8 +73,84 @@ export default function CreateInvoicePage() {
   const [showPreview, setShowPreview] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Auto-generate invoice ID
-  const invoiceId = "INV-1024"
+  // Check if we're editing an existing invoice
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (editId) {
+      setIsEditing(true)
+      setEditingInvoiceId(editId)
+      loadExistingInvoice(editId)
+    }
+  }, [searchParams])
+
+  // Load clients and projects
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [clientsData, projectsData] = await Promise.all([
+        getClients(),
+        getProjects()
+      ])
+      setClients(clientsData)
+      setProjects(projectsData)
+    } catch (error) {
+      console.error('Error loading data:', error)
+      toast.error('Failed to load clients and projects')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadExistingInvoice = async (invoiceId: string) => {
+    try {
+      setLoading(true)
+      const invoice = await getInvoice(invoiceId)
+      if (invoice) {
+        setTitle(invoice.title || "")
+        setSelectedClient(invoice.client_id || "")
+        setSelectedProject(invoice.project_id || "")
+        setInvoiceDate(new Date(invoice.issue_date).toISOString().split("T")[0])
+        setDueDate(invoice.due_date ? new Date(invoice.due_date).toISOString().split("T")[0] : "")
+        setLineItems(invoice.line_items ? invoice.line_items.map(item => ({
+          id: item.id,
+          name: item.name,
+          description: item.description || "",
+          item_type: item.item_type,
+          quantity: item.quantity,
+          unit_rate: item.unit_rate,
+          total_amount: item.total_amount,
+          is_taxable: item.is_taxable,
+          sort_order: item.sort_order
+        })) : [{
+          id: "1",
+          name: "",
+          description: "",
+          item_type: 'service',
+          quantity: 1,
+          unit_rate: 0,
+          total_amount: 0,
+          is_taxable: true,
+          sort_order: 1,
+        }])
+        setTaxRate(invoice.tax_rate || 0)
+        setDiscountAmount(invoice.discount_amount || 0)
+        setDiscountType(invoice.discount_type || "percentage")
+        setNotes(invoice.notes || "")
+        setPoNumber(invoice.po_number || "")
+        setPaymentTerms(invoice.payment_terms || "net-30")
+        setAllowOnlinePayment(invoice.allow_online_payment !== false)
+      }
+    } catch (error) {
+      console.error('Error loading existing invoice:', error)
+      toast.error('Failed to load existing invoice')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Set default due date (30 days from invoice date)
   useEffect(() => {
@@ -100,7 +161,7 @@ export default function CreateInvoicePage() {
   }, [invoiceDate])
 
   // Calculate totals
-  const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0)
+  const subtotal = lineItems.reduce((sum, item) => sum + item.total_amount, 0)
   const taxAmount = (subtotal * taxRate) / 100
   const discountValue = discountType === "percentage" ? (subtotal * discountAmount) / 100 : discountAmount
   const totalDue = subtotal + taxAmount - discountValue
@@ -117,9 +178,12 @@ export default function CreateInvoicePage() {
       id: Date.now().toString(),
       name: "",
       description: "",
+      item_type: 'service',
       quantity: 1,
-      rate: 0,
-      total: 0,
+      unit_rate: 0,
+      total_amount: 0,
+      is_taxable: true,
+      sort_order: lineItems.length + 1,
     }
     setLineItems([...lineItems, newItem])
   }
@@ -130,13 +194,13 @@ export default function CreateInvoicePage() {
     }
   }
 
-  const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
+  const updateLineItem = (id: string, field: keyof LineItem, value: string | number | boolean) => {
     setLineItems(
       lineItems.map((item) => {
         if (item.id === id) {
           const updatedItem = { ...item, [field]: value }
-          if (field === "quantity" || field === "rate") {
-            updatedItem.total = updatedItem.quantity * updatedItem.rate
+          if (field === "quantity" || field === "unit_rate") {
+            updatedItem.total_amount = updatedItem.quantity * updatedItem.unit_rate
           }
           return updatedItem
         }
@@ -146,22 +210,153 @@ export default function CreateInvoicePage() {
   }
 
   const handleSaveDraft = async () => {
+    if (!selectedClient) {
+      toast.error('Please select a client')
+      return
+    }
+
+    if (!title.trim()) {
+      toast.error('Please enter an invoice title')
+      return
+    }
+
+    try {
     setIsSaving(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+      
+      const mappedLineItems = lineItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        item_type: item.item_type,
+        quantity: Number(item.quantity) || 0,
+        unit_rate: Number(item.unit_rate) || 0,
+        total_amount: Number(item.total_amount) || 0,
+        is_taxable: Boolean(item.is_taxable),
+        sort_order: Number(item.sort_order) || 0
+      }))
+      
+      const invoiceData = {
+        client_id: selectedClient,
+        project_id: selectedProject ? selectedProject : undefined,
+        title: title,
+        description: notes,
+        notes: notes,
+        po_number: poNumber,
+        line_items: mappedLineItems,
+        status: 'draft' as const,
+        issue_date: new Date(invoiceDate).toISOString(),
+        due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+        tax_rate: Number(taxRate) || 0,
+        discount_type: discountType,
+        discount_amount: Number(discountAmount) || 0,
+        currency: 'USD',
+        payment_terms: paymentTerms,
+        allow_online_payment: Boolean(allowOnlinePayment),
+        reminder_schedule: '3-days',
+        auto_reminder: true,
+        tags: ['invoice', 'draft'],
+        metadata: {
+          source: 'invoice_creator',
+          created_from: 'create_page'
+        }
+      }
+
+      if (isEditing && editingInvoiceId) {
+        await updateInvoice(editingInvoiceId, invoiceData)
+        toast.success('Invoice updated successfully')
+      } else {
+        await createInvoice(invoiceData)
+        toast.success('Invoice saved as draft successfully')
+      }
+      router.push("/dashboard/invoicing")
+    } catch (error: any) {
+      console.error('Error saving invoice:', error)
+      toast.error('Failed to save invoice')
+    } finally {
     setIsSaving(false)
-    router.push("/dashboard/invoicing")
+    }
   }
 
   const handleSendInvoice = async () => {
-    setIsSaving(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsSaving(false)
-    router.push("/dashboard/invoicing")
+    if (!selectedClient) {
+      toast.error('Please select a client')
+      return
+    }
+
+    if (!title.trim()) {
+      toast.error('Please enter an invoice title')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      
+      const mappedLineItems = lineItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        item_type: item.item_type,
+        quantity: Number(item.quantity) || 0,
+        unit_rate: Number(item.unit_rate) || 0,
+        total_amount: Number(item.total_amount) || 0,
+        is_taxable: Boolean(item.is_taxable),
+        sort_order: Number(item.sort_order) || 0
+      }))
+      
+      const invoiceData = {
+        client_id: selectedClient,
+        project_id: selectedProject ? selectedProject : undefined,
+        title: title,
+        description: notes,
+        notes: notes,
+        po_number: poNumber,
+        line_items: mappedLineItems,
+        status: 'sent' as const,
+        issue_date: new Date(invoiceDate).toISOString(),
+        due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+        sent_date: new Date().toISOString(),
+        tax_rate: Number(taxRate) || 0,
+        discount_type: discountType,
+        discount_amount: Number(discountAmount) || 0,
+        currency: 'USD',
+        payment_terms: paymentTerms,
+        allow_online_payment: Boolean(allowOnlinePayment),
+        reminder_schedule: '3-days',
+        auto_reminder: true,
+        tags: ['invoice', 'sent'],
+        metadata: {
+          source: 'invoice_creator',
+          created_from: 'create_page'
+        }
+      }
+
+      if (isEditing && editingInvoiceId) {
+        await updateInvoice(editingInvoiceId, invoiceData)
+        toast.success('Invoice updated and sent successfully')
+      } else {
+        await createInvoice(invoiceData)
+        toast.success('Invoice sent successfully')
+      }
+      router.push("/dashboard/invoicing")
+    } catch (error: any) {
+      console.error('Error sending invoice:', error)
+      toast.error('Failed to send invoice')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const availableProjects = selectedClient ? mockProjects[selectedClient as keyof typeof mockProjects] || [] : []
+  const availableProjects = selectedClient ? projects.filter(p => p.client_id === selectedClient) : []
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
@@ -174,7 +369,7 @@ export default function CreateInvoicePage() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbPage>New Invoice</BreadcrumbPage>
+              <BreadcrumbPage>{isEditing ? 'Edit Invoice' : 'New Invoice'}</BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
@@ -192,13 +387,13 @@ export default function CreateInvoicePage() {
               Back
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">New Invoice</h1>
-              <p className="text-gray-600">Create and send an invoice to your client</p>
+              <h1 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Invoice' : 'New Invoice'}</h1>
+              <p className="text-gray-600">{isEditing ? 'Update your invoice details' : 'Create and send an invoice to your client'}</p>
             </div>
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-600">Invoice ID</p>
-            <p className="text-lg font-semibold text-gray-900">{invoiceId}</p>
+            <p className="text-lg font-semibold text-gray-900">{/* Invoice ID will be generated on save */}</p>
           </div>
         </div>
 
@@ -208,64 +403,76 @@ export default function CreateInvoicePage() {
             <CardTitle className="text-lg font-semibold">Invoice Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="client">Client *</Label>
-                <Select value={selectedClient} onValueChange={setSelectedClient}>
-                  <SelectTrigger className="rounded-xl border-gray-200">
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockClients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="title">Invoice Title *</Label>
+                <Input
+                  id="title"
+                  placeholder="e.g., Website Development - Phase 1"
+                  className="rounded-xl border-gray-200"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="project">Project</Label>
-                <Select value={selectedProject} onValueChange={setSelectedProject} disabled={!selectedClient}>
-                  <SelectTrigger className="rounded-xl border-gray-200">
-                    <SelectValue placeholder="Select project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableProjects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="invoice-date">Invoice Date</Label>
-                <div className="relative">
-                  <Input
-                    id="invoice-date"
-                    type="date"
-                    value={invoiceDate}
-                    onChange={(e) => setInvoiceDate(e.target.value)}
-                    className="rounded-xl border-gray-200"
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="client">Client *</Label>
+                  <Select value={selectedClient} onValueChange={setSelectedClient}>
+                    <SelectTrigger className="rounded-xl border-gray-200">
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map((client) => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.company}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="due-date">Due Date</Label>
-                <div className="relative">
-                  <Input
-                    id="due-date"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="rounded-xl border-gray-200"
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <div className="space-y-2">
+                  <Label htmlFor="project">Project</Label>
+                  <Select value={selectedProject} onValueChange={setSelectedProject} disabled={!selectedClient}>
+                    <SelectTrigger className="rounded-xl border-gray-200">
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableProjects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-date">Invoice Date</Label>
+                  <div className="relative">
+                    <Input
+                      id="invoice-date"
+                      type="date"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="rounded-xl border-gray-200"
+                    />
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="due-date">Due Date</Label>
+                  <div className="relative">
+                    <Input
+                      id="due-date"
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="rounded-xl border-gray-200"
+                    />
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -329,14 +536,14 @@ export default function CreateInvoicePage() {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={item.rate}
-                              onChange={(e) => updateLineItem(item.id, "rate", Number.parseFloat(e.target.value) || 0)}
+                              value={item.unit_rate}
+                              onChange={(e) => updateLineItem(item.id, "unit_rate", Number.parseFloat(e.target.value) || 0)}
                               className="pl-10 rounded-lg border-gray-200"
                             />
                           </div>
                         </div>
                         <div className="col-span-1">
-                          <div className="text-sm font-medium text-gray-900 py-2">{formatCurrency(item.total)}</div>
+                          <div className="text-sm font-medium text-gray-900 py-2">{formatCurrency(item.total_amount)}</div>
                         </div>
                         <div className="col-span-1">
                           <Button
@@ -405,9 +612,9 @@ export default function CreateInvoicePage() {
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  value={item.rate}
+                                  value={item.unit_rate}
                                   onChange={(e) =>
-                                    updateLineItem(item.id, "rate", Number.parseFloat(e.target.value) || 0)
+                                    updateLineItem(item.id, "unit_rate", Number.parseFloat(e.target.value) || 0)
                                   }
                                   className="pl-10 rounded-lg border-gray-200"
                                 />
@@ -416,7 +623,7 @@ export default function CreateInvoicePage() {
                           </div>
                           <div className="text-right">
                             <span className="text-sm text-gray-600">Total: </span>
-                            <span className="font-medium text-gray-900">{formatCurrency(item.total)}</span>
+                            <span className="font-medium text-gray-900">{formatCurrency(item.total_amount)}</span>
                           </div>
                         </div>
                       </div>
@@ -586,16 +793,16 @@ export default function CreateInvoicePage() {
                 className="w-full rounded-lg border-gray-200 bg-transparent"
               >
                 <Save className="mr-2 h-4 w-4" />
-                {isSaving ? "Saving..." : "Save as Draft"}
+                {isSaving ? "Saving..." : (isEditing ? "Update Draft" : "Save as Draft")}
               </Button>
 
               <Button
                 onClick={handleSendInvoice}
-                disabled={isSaving || !selectedClient}
+                disabled={isSaving || !selectedClient || !title.trim()}
                 className="w-full bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white rounded-lg"
               >
                 <Send className="mr-2 h-4 w-4" />
-                {isSaving ? "Sending..." : "Send Invoice"}
+                {isSaving ? "Sending..." : (isEditing ? "Update & Send" : "Send Invoice")}
               </Button>
             </div>
           </div>
@@ -611,15 +818,15 @@ export default function CreateInvoicePage() {
               className="flex-1 rounded-lg bg-transparent"
             >
               <Save className="mr-2 h-4 w-4" />
-              Save Draft
+              {isEditing ? "Update Draft" : "Save Draft"}
             </Button>
             <Button
               onClick={handleSendInvoice}
-              disabled={isSaving || !selectedClient}
+              disabled={isSaving || !selectedClient || !title.trim()}
               className="flex-1 bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white rounded-lg"
             >
               <Send className="mr-2 h-4 w-4" />
-              Send Invoice
+              {isEditing ? "Update & Send" : "Send Invoice"}
             </Button>
           </div>
         </div>
@@ -636,8 +843,8 @@ export default function CreateInvoicePage() {
               {/* Invoice Header */}
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">INVOICE</h2>
-                  <p className="text-gray-600">{invoiceId}</p>
+                  <h2 className="text-2xl font-bold text-gray-900">{title || 'Untitled Invoice'}</h2>
+                  <p className="text-gray-600">Invoice will be generated on save</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Invoice Date</p>
@@ -651,11 +858,11 @@ export default function CreateInvoicePage() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Bill To:</h3>
                 <p className="text-gray-900">
-                  {selectedClient ? mockClients.find((c) => c.id === selectedClient)?.name : "Select a client"}
+                  {selectedClient ? clients.find(c => c.id === selectedClient)?.company : "Select a client"}
                 </p>
                 {selectedProject && (
                   <p className="text-gray-600">
-                    Project: {availableProjects.find((p) => p.id === selectedProject)?.name}
+                    Project: {availableProjects.find(p => p.id === selectedProject)?.name}
                   </p>
                 )}
               </div>
@@ -681,8 +888,8 @@ export default function CreateInvoicePage() {
                           </div>
                         </td>
                         <td className="text-right py-3">{item.quantity}</td>
-                        <td className="text-right py-3">{formatCurrency(item.rate)}</td>
-                        <td className="text-right py-3">{formatCurrency(item.total)}</td>
+                        <td className="text-right py-3">{formatCurrency(item.unit_rate)}</td>
+                        <td className="text-right py-3">{formatCurrency(item.total_amount)}</td>
                       </tr>
                     ))}
                   </tbody>

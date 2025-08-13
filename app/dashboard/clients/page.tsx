@@ -39,6 +39,7 @@ import {
   XCircle,
   Trash2,
   Loader2,
+  CalendarDays,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Settings } from "lucide-react"
@@ -53,8 +54,15 @@ import {
   getAccountTags,
   standardTags,
   getTagColor,
+  getClientActivities,
+  getClientInvoices,
+  getClientProjects,
+  getClientFiles,
   type Client 
 } from "@/lib/clients"
+import { getInvoicesByClient } from "@/lib/invoices"
+import { getProjectsByClient } from "@/lib/projects"
+import { getFiles } from "@/lib/files"
 
 const tagOptions = ["VIP", "Enterprise", "Startup", "Design", "Marketing", "Retainer", "Completed"]
 
@@ -75,6 +83,13 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  
+  // Additional client data state
+  const [clientActivities, setClientActivities] = useState<Record<string, any[]>>({})
+  const [clientInvoices, setClientInvoices] = useState<Record<string, any[]>>({})
+  const [clientProjects, setClientProjects] = useState<Record<string, any[]>>({})
+  const [clientFiles, setClientFiles] = useState<Record<string, any[]>>({})
+  const [loadingClientData, setLoadingClientData] = useState<Record<string, boolean>>({})
   
   const [newClient, setNewClient] = useState({
     firstName: "",
@@ -128,7 +143,6 @@ export default function ClientsPage() {
             acc[tag.tag_name] = tag.color
             return acc
           }, {} as Record<string, string>)
-          console.log(`Tags for client ${client.first_name}:`, tags.map(tag => tag.tag_name))
         } catch (error) {
           console.error(`Error loading tags for client ${client.id}:`, error)
           tagsData[client.id] = []
@@ -137,18 +151,54 @@ export default function ClientsPage() {
       }
       setClientTags(tagsData)
       setClientTagColors(tagColorsData)
-      console.log('All client tags:', tagsData)
-      console.log('All client tag colors:', tagColorsData)
       
       // Load available tags for filtering
       const accountTags = await getAccountTags()
       setAvailableTags(accountTags)
-      console.log('Available tags:', accountTags)
     } catch (error) {
       console.error('Error loading clients:', error)
       toast.error('Failed to load clients')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadClientData = async (clientId: string) => {
+    if (loadingClientData[clientId]) return // Prevent duplicate loading
+    
+    try {
+      setLoadingClientData(prev => ({ ...prev, [clientId]: true }))
+      
+      const [activities, invoices, projects, files] = await Promise.all([
+        getClientActivities(clientId),
+        getInvoicesByClient(clientId),
+        getProjectsByClient(clientId),
+        getFiles().then(allFiles => allFiles.filter(file => file.client_id === clientId))
+      ])
+      
+      console.log(`Loaded data for client ${clientId}:`, {
+        activities: activities?.length || 0,
+        invoices: invoices?.length || 0,
+        projects: projects?.length || 0,
+        files: files?.length || 0
+      })
+      
+      setClientActivities(prev => ({ ...prev, [clientId]: activities || [] }))
+      setClientInvoices(prev => ({ ...prev, [clientId]: invoices || [] }))
+      setClientProjects(prev => ({ ...prev, [clientId]: projects || [] }))
+      setClientFiles(prev => ({ ...prev, [clientId]: files || [] }))
+      
+    } catch (error) {
+      console.error(`Error loading data for client ${clientId}:`, error)
+      toast.error('Failed to load client data')
+      
+      // Set empty arrays on error to prevent undefined states
+      setClientActivities(prev => ({ ...prev, [clientId]: [] }))
+      setClientInvoices(prev => ({ ...prev, [clientId]: [] }))
+      setClientProjects(prev => ({ ...prev, [clientId]: [] }))
+      setClientFiles(prev => ({ ...prev, [clientId]: [] }))
+    } finally {
+      setLoadingClientData(prev => ({ ...prev, [clientId]: false }))
     }
   }
 
@@ -372,6 +422,8 @@ export default function ClientsPage() {
       case "view":
         setSelectedClient(client)
         setIsClientDetailOpen(true)
+        // Load additional client data
+        loadClientData(client.id)
         break
       case "edit":
         setSelectedClient(client)
@@ -420,6 +472,10 @@ export default function ClientsPage() {
         return <MessageCircle className="h-4 w-4 text-purple-500" />
       case "form":
         return <FileText className="h-4 w-4 text-orange-500" />
+      case "login":
+        return <Eye className="h-4 w-4 text-indigo-500" />
+      case "portal_access":
+        return <ExternalLink className="h-4 w-4 text-teal-500" />
       default:
         return <Clock className="h-4 w-4 text-gray-500" />
     }
@@ -616,6 +672,15 @@ export default function ClientsPage() {
     return '#6B7280'
   }
 
+  const formatFileSize = (bytes: number, decimalPoint = 2) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const dm = decimalPoint < 0 ? 0 : decimalPoint;
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+  };
+
   if (loading) {
   return (
       <DashboardLayout>
@@ -710,7 +775,11 @@ export default function ClientsPage() {
 
         {/* Client Count */}
         <div className="text-sm text-gray-600">
-          {filteredClients.length} client{filteredClients.length !== 1 ? "s" : ""} found
+          {loading ? (
+            <span>Loading clients...</span>
+          ) : (
+            `${filteredClients.length} client${filteredClients.length !== 1 ? "s" : ""} found`
+          )}
         </div>
 
         {/* Clients Table */}
@@ -718,6 +787,12 @@ export default function ClientsPage() {
           <Card>
             <CardContent className="p-0">
             <div className="overflow-x-auto">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+                  <span className="ml-2 text-gray-600">Loading clients...</span>
+                </div>
+              ) : (
               <table className="w-full">
                   <thead>
                     <tr className="border-b bg-gray-50">
@@ -877,6 +952,7 @@ export default function ClientsPage() {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
             </CardContent>
           </Card>
@@ -884,188 +960,197 @@ export default function ClientsPage() {
 
         {/* Clients Grid */}
         {viewMode === "grid" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredClients.map((client) => (
-              <Card
-                key={client.id}
-                className="bg-white border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200 rounded-2xl cursor-pointer group hover:border-[#3C3CFF]/20"
-                onClick={() => handleClientAction("view", client)}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] font-medium text-lg">
-                          {client.avatar_initials || `${client.first_name.charAt(0)}${client.last_name.charAt(0)}`}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-semibold text-gray-900 group-hover:text-[#3C3CFF] transition-colors">
-                          {client.first_name} {client.last_name}
-                        </p>
-                        <p className="text-sm text-gray-600">{client.company || "No company"}</p>
+          <>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+                <span className="ml-2 text-gray-600">Loading clients...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredClients.map((client) => (
+                  <Card
+                    key={client.id}
+                    className="bg-white border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200 rounded-2xl cursor-pointer group hover:border-[#3C3CFF]/20"
+                    onClick={() => handleClientAction("view", client)}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="h-12 w-12">
+                            <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] font-medium text-lg">
+                              {client.avatar_initials || `${client.first_name.charAt(0)}${client.last_name.charAt(0)}`}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-semibold text-gray-900 group-hover:text-[#3C3CFF] transition-colors">
+                              {client.first_name} {client.last_name}
+                            </p>
+                            <p className="text-sm text-gray-600">{client.company || "No company"}</p>
+                          </div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleClientAction("view", client)
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleClientAction("edit", client)
+                              }}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Client
+                            </DropdownMenuItem>
+                            {client.portal_url && (
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleClientAction("portal", client)
+                                }}
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                View Portal
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleClientAction("archive", client)
+                              }}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              Archive
+                            </DropdownMenuItem>
+                            {client.status === "archived" && (
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleClientAction("restore", client)
+                                }}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Make Active
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleClientAction("delete", client)
+                              }}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Status</span>
+                          <Badge
+                            variant={client.status === "active" ? "default" : "secondary"}
+                            className={
+                              client.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
+                            }
+                          >
+                            {client.status}
+                          </Badge>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1">
+                          {(clientTags[client.id] || []).map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="outline"
+                              className="text-xs"
+                              style={{ 
+                                backgroundColor: `${getTagDisplayColor(tag, client.id)}20`,
+                                borderColor: getTagDisplayColor(tag, client.id),
+                                color: getTagDisplayColor(tag, client.id)
+                              }}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Projects</span>
+                          <span className="text-sm text-gray-900 font-medium">{client.project_count}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Invoices</span>
+                          <span className="text-sm text-gray-900 font-medium">{client.total_invoices} total</span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Files</span>
+                          <span className="text-sm text-gray-900 font-medium">{client.files_uploaded}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Last Activity</span>
+                          <span className="text-sm text-gray-500">
+                            {client.last_activity_at ? formatDate(client.last_activity_at) : "Never"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-4 border-t border-gray-200 mt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
                             handleClientAction("view", client)
-                          }}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleClientAction("edit", client)
-                          }}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Client
-                        </DropdownMenuItem>
+                            }}
+                            className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                          View
+                          </Button>
                         {client.portal_url && (
-                          <DropdownMenuItem 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={(e) => {
                               e.stopPropagation()
                               handleClientAction("portal", client)
                             }}
+                            className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
                           >
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            View Portal
-                          </DropdownMenuItem>
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Portal
+                          </Button>
                         )}
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleClientAction("archive", client)
-                          }}
-                        >
-                          <Archive className="h-4 w-4 mr-2" />
-                          Archive
-                        </DropdownMenuItem>
-                        {client.status === "archived" && (
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleClientAction("restore", client)
-                            }}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Make Active
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleClientAction("delete", client)
-                          }}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Status</span>
-                      <Badge
-                        variant={client.status === "active" ? "default" : "secondary"}
-                        className={
-                          client.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-                        }
-                      >
-                        {client.status}
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {(clientTags[client.id] || []).map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="outline"
-                          className="text-xs"
-                          style={{ 
-                            backgroundColor: `${getTagDisplayColor(tag, client.id)}20`,
-                            borderColor: getTagDisplayColor(tag, client.id),
-                            color: getTagDisplayColor(tag, client.id)
-                          }}
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Projects</span>
-                      <span className="text-sm text-gray-900 font-medium">{client.project_count}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Invoices</span>
-                      <span className="text-sm text-gray-900 font-medium">{client.total_invoices} total</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Files</span>
-                      <span className="text-sm text-gray-900 font-medium">{client.files_uploaded}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Last Activity</span>
-                      <span className="text-sm text-gray-500">
-                        {client.last_activity_at ? formatDate(client.last_activity_at) : "Never"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-4 border-t border-gray-200 mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                        handleClientAction("view", client)
-                        }}
-                        className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                      View
-                      </Button>
-                    {client.portal_url && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleClientAction("portal", client)
-                        }}
-                        className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        Portal
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Add Client Dialog */}
@@ -1465,10 +1550,11 @@ export default function ClientsPage() {
                 </SheetHeader>
 
                 <Tabs defaultValue="overview" className="space-y-6">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
                     <TabsTrigger value="activity">Activity</TabsTrigger>
                     <TabsTrigger value="invoices">Invoices</TabsTrigger>
+                    <TabsTrigger value="projects">Projects</TabsTrigger>
                     <TabsTrigger value="files">Files</TabsTrigger>
                   </TabsList>
 
@@ -1510,6 +1596,22 @@ export default function ClientsPage() {
                           </div>
                         </div>
                         )}
+                        <div className="flex items-center space-x-3">
+                          <CalendarDays className="h-5 w-5 text-gray-400" />
+                          <div>
+                            <p className="font-medium">{formatDate(selectedClient.joined_date)}</p>
+                            <p className="text-sm text-gray-600">Joined Date</p>
+                          </div>
+                        </div>
+                        {selectedClient.last_activity_at && (
+                          <div className="flex items-center space-x-3">
+                            <Clock className="h-5 w-5 text-gray-400" />
+                            <div>
+                              <p className="font-medium">{formatDate(selectedClient.last_activity_at)}</p>
+                              <p className="text-sm text-gray-600">Last Activity</p>
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -1518,7 +1620,7 @@ export default function ClientsPage() {
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-2xl font-bold text-gray-900">{selectedClient.total_invoices}</p>
+                              <p className="text-2xl font-bold text-gray-900">{selectedClient.total_invoices || 0}</p>
                               <p className="text-sm text-gray-600">Total Invoices</p>
                             </div>
                             <CreditCard className="h-8 w-8 text-[#3C3CFF]" />
@@ -1531,7 +1633,7 @@ export default function ClientsPage() {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-2xl font-bold text-gray-900">
-                                ${selectedClient.unpaid_amount.toLocaleString()}
+                                ${(selectedClient.unpaid_amount || 0).toLocaleString()}
                               </p>
                               <p className="text-sm text-gray-600">Unpaid Amount</p>
                             </div>
@@ -1544,7 +1646,7 @@ export default function ClientsPage() {
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-2xl font-bold text-gray-900">{selectedClient.files_uploaded}</p>
+                              <p className="text-2xl font-bold text-gray-900">{selectedClient.files_uploaded || 0}</p>
                               <p className="text-sm text-gray-600">Files Uploaded</p>
                             </div>
                             <Upload className="h-8 w-8 text-blue-500" />
@@ -1556,7 +1658,7 @@ export default function ClientsPage() {
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-2xl font-bold text-gray-900">{selectedClient.forms_submitted}</p>
+                              <p className="text-2xl font-bold text-gray-900">{selectedClient.forms_submitted || 0}</p>
                               <p className="text-sm text-gray-600">Forms Submitted</p>
                             </div>
                             <FileText className="h-8 w-8 text-green-500" />
@@ -1572,7 +1674,28 @@ export default function ClientsPage() {
                         <CardTitle className="text-lg">Recent Activity</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <p className="text-gray-600">Recent activity will appear here.</p>
+                        {loadingClientData[selectedClient.id] ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="ml-2 text-gray-600">Loading activities...</span>
+                          </div>
+                        ) : clientActivities[selectedClient.id]?.length > 0 ? (
+                          <div className="space-y-3">
+                            {clientActivities[selectedClient.id].map((activity) => (
+                              <div key={activity.id} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg">
+                                <div className="flex-shrink-0">
+                                  {getActivityIcon(activity.activity_type || 'default')}
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-900">{activity.action || 'Unknown action'}</p>
+                                  <p className="text-xs text-gray-600">{formatDate(activity.created_at)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 text-center py-8">No recent activity found for this client.</p>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -1611,7 +1734,82 @@ export default function ClientsPage() {
                         <CardTitle className="text-lg">Invoice History</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-gray-600">Invoice history would be displayed here...</p>
+                        {loadingClientData[selectedClient.id] ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="ml-2 text-gray-600">Loading invoices...</span>
+                          </div>
+                        ) : clientInvoices[selectedClient.id]?.length > 0 ? (
+                          <div className="space-y-3">
+                            {clientInvoices[selectedClient.id].map((invoice) => (
+                              <div key={invoice.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                                <div>
+                                  <p className="font-medium">{invoice.title || `Invoice #${invoice.invoice_number}`}</p>
+                                  <p className="text-sm text-gray-600">{formatDate(invoice.issue_date)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-medium">${(invoice.total_amount || 0).toLocaleString()}</p>
+                                  <Badge 
+                                    className={
+                                      invoice.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                      invoice.status === 'overdue' ? 'bg-red-100 text-red-700' :
+                                      invoice.status === 'sent' ? 'bg-blue-100 text-blue-700' :
+                                      invoice.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                                      'bg-blue-100 text-blue-700'
+                                    }
+                                  >
+                                    {invoice.status || 'unknown'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 text-center py-8">No invoices found for this client.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="projects" className="space-y-4">
+                    <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                      <CardHeader>
+                        <CardTitle className="text-lg">Client Projects</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {loadingClientData[selectedClient.id] ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="ml-2 text-gray-600">Loading projects...</span>
+                          </div>
+                        ) : clientProjects[selectedClient.id]?.length > 0 ? (
+                          <div className="space-y-3">
+                            {clientProjects[selectedClient.id].map((project) => (
+                              <div key={project.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                                <div>
+                                  <p className="font-medium">{project.name || 'Unnamed Project'}</p>
+                                  <p className="text-sm text-gray-600">{project.description || 'No description'}</p>
+                                </div>
+                                <div className="text-right">
+                                  <Badge 
+                                    className={
+                                      project.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                      project.status === 'active' ? 'bg-blue-100 text-blue-700' :
+                                      project.status === 'on-hold' ? 'bg-yellow-100 text-yellow-700' :
+                                      project.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                                      'bg-gray-100 text-gray-700'
+                                    }
+                                  >
+                                    {project.status || 'unknown'}
+                                  </Badge>
+                                  <p className="text-sm text-gray-600 mt-1">{formatDate(project.created_at)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 text-center py-8">No projects found for this client.</p>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -1622,7 +1820,41 @@ export default function ClientsPage() {
                         <CardTitle className="text-lg">Files & Documents</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-gray-600">File management interface would be displayed here...</p>
+                        {loadingClientData[selectedClient.id] ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="ml-2 text-gray-600">Loading files...</span>
+                          </div>
+                        ) : clientFiles[selectedClient.id]?.length > 0 ? (
+                          <div className="space-y-3">
+                            {clientFiles[selectedClient.id].map((file) => (
+                              <div key={file.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                  <FileText className="h-5 w-5 text-gray-400" />
+                                  <div>
+                                    <p className="font-medium">{file.name || 'Unnamed File'}</p>
+                                    <p className="text-sm text-gray-600">{file.file_type || 'Unknown'} • {formatFileSize(file.file_size || 0)}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-600">{formatDate(file.created_at)}</p>
+                                  <Badge 
+                                    className={
+                                      file.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
+                                      file.approval_status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                      file.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-gray-100 text-gray-700'
+                                    }
+                                  >
+                                    {file.approval_status || 'unknown'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 text-center py-8">No files found for this client.</p>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>

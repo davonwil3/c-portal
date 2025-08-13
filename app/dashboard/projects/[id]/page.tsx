@@ -45,6 +45,7 @@ import {
   X,
   CheckSquare,
   Star,
+  AlertTriangle,
 
 } from "lucide-react"
 import Link from "next/link"
@@ -74,6 +75,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getFiles, uploadFile, downloadFile, getFileUrl, approveFile, rejectFile, deleteFile, getFileComments, addFileComment, updateFile, type File } from "@/lib/files"
 import { getProjectForms, deleteForm, type Form } from "@/lib/forms"
 import { FormPreviewModal } from "@/components/forms/form-preview-modal"
+import { getContracts, type Contract } from "@/lib/contracts"
+import { getInvoicesByProject, updateInvoice, markInvoiceAsPaid, deleteInvoice, type Invoice } from "@/lib/invoices"
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
+import { generateContractDocument } from "@/lib/utils"
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -147,11 +153,13 @@ export default function ProjectDetailPage() {
   // Forms state
   const [projectForms, setProjectForms] = useState<Form[]>([])
   const [loadingForms, setLoadingForms] = useState(false)
+  const [deletingForm, setDeletingForm] = useState<string | null>(null)
+  const [selectedFormForPreview, setSelectedFormForPreview] = useState<Form | null>(null)
+  const [isFormPreviewOpen, setIsFormPreviewOpen] = useState(false)
 
   // Form preview modal state
   const [showFormPreview, setShowFormPreview] = useState(false)
   const [previewForm, setPreviewForm] = useState<Form | null>(null)
-  const [deletingForm, setDeletingForm] = useState<string | null>(null)
 
   // File viewer modal state
   const [selectedFileForView, setSelectedFileForView] = useState<File | null>(null)
@@ -166,6 +174,23 @@ export default function ProjectDetailPage() {
   const [newComment, setNewComment] = useState("")
   const [addingComment, setAddingComment] = useState(false)
   const [isInternalComment, setIsInternalComment] = useState(false)
+
+  // State for contracts
+  const [projectContracts, setProjectContracts] = useState<Contract[]>([])
+  const [loadingContracts, setLoadingContracts] = useState(false)
+  const [deletingContract, setDeletingContract] = useState<string | null>(null)
+
+  // State for invoices
+  const [projectInvoices, setProjectInvoices] = useState<Invoice[]>([])
+  const [loadingInvoices, setLoadingInvoices] = useState(false)
+  const [deletingInvoice, setDeletingInvoice] = useState<string | null>(null)
+  const [markingAsPaid, setMarkingAsPaid] = useState<string | null>(null)
+  const [changingStatus, setChangingStatus] = useState<string | null>(null)
+  const [downloadingPDF, setDownloadingPDF] = useState<string | null>(null)
+  const [statusChangeModalOpen, setStatusChangeModalOpen] = useState(false)
+  const [changingStatusInvoice, setChangingStatusInvoice] = useState<Invoice | null>(null)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null)
 
   // Helper functions
   const getStatusColor = (status: string) => {
@@ -232,6 +257,394 @@ export default function ProjectDetailPage() {
     return `${Math.floor(diffInDays / 365)} years ago`
   }
 
+  // Invoice helper functions
+  const getInvoiceStatusColor = (status: string) => {
+    switch (status) {
+      case "draft":
+        return "bg-gray-100 text-gray-700 hover:bg-gray-100"
+      case "sent":
+        return "bg-blue-100 text-blue-700 hover:bg-blue-100"
+      case "viewed":
+        return "bg-purple-100 text-purple-700 hover:bg-purple-100"
+      case "paid":
+        return "bg-green-100 text-green-700 hover:bg-green-100"
+      case "partially_paid":
+        return "bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
+      case "overdue":
+        return "bg-red-100 text-red-700 hover:bg-red-100"
+      case "cancelled":
+        return "bg-gray-100 text-gray-700 hover:bg-gray-100"
+      case "refunded":
+        return "bg-gray-100 text-gray-700 hover:bg-gray-100"
+      default:
+        return "bg-gray-100 text-gray-700 hover:bg-gray-100"
+    }
+  }
+
+  const getInvoiceStatusLabel = (status: string) => {
+    switch (status) {
+      case "draft":
+        return "Draft"
+      case "sent":
+        return "Sent"
+      case "viewed":
+        return "Viewed"
+      case "paid":
+        return "Paid"
+      case "partially_paid":
+        return "Partially Paid"
+      case "overdue":
+        return "Overdue"
+      case "cancelled":
+        return "Cancelled"
+      case "refunded":
+        return "Refunded"
+      default:
+        return "Unknown"
+    }
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount)
+  }
+
+  // Contract status configuration
+  const contractStatusConfig = {
+    draft: { label: "Draft", color: "bg-gray-100 text-gray-800", icon: FileText },
+    sent: { label: "Sent", color: "bg-blue-100 text-blue-800", icon: Send },
+    awaiting_signature: { label: "Awaiting Signature", color: "bg-purple-100 text-purple-800", icon: Clock },
+    partially_signed: { label: "Partially Signed", color: "bg-yellow-100 text-yellow-800", icon: AlertCircle },
+    signed: { label: "Signed", color: "bg-green-100 text-green-800", icon: CheckCircle },
+    declined: { label: "Declined", color: "bg-red-100 text-red-800", icon: AlertCircle },
+    expired: { label: "Expired", color: "bg-amber-100 text-amber-800", icon: AlertCircle },
+    archived: { label: "Archived", color: "bg-gray-100 text-gray-800", icon: Archive },
+  }
+
+  // Generate contract document from contract content
+  const generateContractDocument = (content: any) => {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${content.clientName || 'Contract'}</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            line-height: 1.6; 
+            margin: 0; 
+            padding: 0;
+            background-color: #f8fafc;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            min-height: 100vh;
+        }
+        .header { 
+            text-align: center; 
+            margin-bottom: 40px; 
+            padding: 40px 20px 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.125rem;
+            color: #6b7280;
+        }
+        .content {
+            padding: 0 40px 40px;
+        }
+        .section { 
+            margin-bottom: 32px; 
+        }
+        .section h2 { 
+            color: #111827; 
+            border-bottom: 2px solid #3C3CFF; 
+            padding-bottom: 8px; 
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .parties { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 24px; 
+            margin-bottom: 32px; 
+        }
+        .party { 
+            border-left: 4px solid #3C3CFF; 
+            padding-left: 16px; 
+        }
+        .party h3 {
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 8px;
+        }
+        .party p {
+            color: #374151;
+            margin-bottom: 4px;
+        }
+        .party .name {
+            font-weight: 500;
+            color: #111827;
+        }
+        .content-box {
+            background-color: #f9fafb;
+            padding: 24px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .content-box p {
+            color: #374151;
+            margin: 0;
+        }
+        .payment-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .payment-field {
+            margin-bottom: 16px;
+        }
+        .payment-field label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+        .payment-field input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            font-size: 0.875rem;
+        }
+        .payment-field textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            font-size: 0.875rem;
+            resize: vertical;
+            min-height: 80px;
+        }
+        .estimated-total {
+            background-color: #dbeafe;
+            border: 1px solid #93c5fd;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+        }
+        .estimated-total .label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #1e40af;
+        }
+        .estimated-total .amount {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #1e3a8a;
+        }
+        .estimated-total .details {
+            font-size: 0.75rem;
+            color: #3b82f6;
+        }
+        .signature-section {
+            margin-top: 32px;
+        }
+        .signature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        .signature-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            background: white;
+        }
+        .signature-area h3 {
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 8px;
+        }
+        .signature-area p {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        @media (max-width: 768px) {
+            .parties, .payment-grid, .signature-grid {
+                grid-template-columns: 1fr;
+            }
+            .content {
+                padding: 0 20px 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CONTRACT FOR SERVICES</h1>
+            <p>This agreement is made and entered into as of ${new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            })}</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>PARTIES</h2>
+                <div class="parties">
+                    <div class="party">
+                        <h3>COMPANY</h3>
+                        <p class="name">${content.companyName || 'Your Company'}</p>
+                        ${content.companyAddress ? `<p>${content.companyAddress}</p>` : ''}
+                    </div>
+                    <div class="party">
+                        <h3>CLIENT</h3>
+                        <p class="name">${content.clientName || 'Client Name'}</p>
+                        ${content.clientEmail ? `<p>${content.clientEmail}</p>` : ''}
+                        ${content.clientAddress ? `<p>${content.clientAddress}</p>` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>1. PROJECT SCOPE</h2>
+                <div class="content-box">
+                    <p>${content.projectScope || 'Project scope to be defined...'}</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>2. PAYMENT TERMS</h2>
+                <div class="content-box">
+                    ${content.paymentType === "fixed" ? `
+                        <div class="payment-grid">
+                            <div class="payment-field">
+                                <label>Total Amount</label>
+                                <input type="text" value="${content.totalAmount || '$0.00'}" readonly />
+                            </div>
+                            <div class="payment-field">
+                                <label>Deposit Amount</label>
+                                <input type="text" value="${content.depositAmount || '$0.00'}" readonly />
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="payment-grid">
+                            <div class="payment-field">
+                                <label>Hourly Rate</label>
+                                <input type="text" value="${content.hourlyRate || '$0.00'}/hour" readonly />
+                            </div>
+                            <div class="payment-field">
+                                <label>Estimated Hours</label>
+                                <input type="text" value="${content.estimatedHours || '0'} hours" readonly />
+                            </div>
+                        </div>
+                        ${content.hourlyRate && content.estimatedHours ? `
+                            <div class="estimated-total">
+                                <div class="label">Estimated Total</div>
+                                <div class="amount">$${(parseFloat(content.hourlyRate) * parseFloat(content.estimatedHours)).toFixed(2)}</div>
+                                <div class="details">Based on ${content.estimatedHours} hours at $${content.hourlyRate}/hour</div>
+                            </div>
+                        ` : ''}
+                    `}
+                    <div class="payment-field" style="margin-top: 16px;">
+                        <label>Payment Terms</label>
+                        <textarea readonly>${content.paymentTerms || ''}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>3. DELIVERABLES & MILESTONES</h2>
+                <div class="content-box">
+                    <p>${content.milestones || 'Project milestones to be defined...'}</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>4. INTELLECTUAL PROPERTY</h2>
+                <div class="content-box">
+                    <p>${content.ipRights === "client" ? "All work product will be owned by the Client upon full payment." : 
+                        content.ipRights === "shared" ? "Intellectual property will be shared between parties." : 
+                        "Contractor retains all intellectual property rights."}</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>5. ADDITIONAL TERMS</h2>
+                <div class="content-box">
+                    <p><strong>Included Revisions:</strong> ${content.revisions || '3'} revision${(content.revisions || '3') !== "1" ? "s" : ""}</p>
+                    <p><strong>Termination:</strong> Either party may terminate this agreement with ${content.terminationClause || '30-day notice'}</p>
+                </div>
+            </div>
+
+            <div class="section signature-section">
+                <h2>6. SIGNATURES</h2>
+                <p style="margin-bottom: 16px; color: #374151;">
+                    This contract requires signatures from both parties. 
+                    ${content.signatureOrder === "sequential" 
+                        ? " Signatures will be collected sequentially (Company first, then Client)." 
+                        : " Both parties may sign simultaneously."}
+                </p>
+                
+                <div class="signature-grid">
+                    <div class="signature-area">
+                        <h3>Company Signature</h3>
+                        ${content.companySignature ? `<img src="${content.companySignature}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                    </div>
+                    
+                    <div class="signature-area">
+                        <h3>Client Signature</h3>
+                        ${content.clientSignature ? `<img src="${content.clientSignature}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>This contract is valid and binding upon both parties upon signature.</p>
+            <p style="margin-top: 4px;">Generated on ${new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })}</p>
+        </div>
+    </div>
+</body>
+</html>
+    `
+  }
+
   // Load project data
   const loadProjectData = async () => {
     try {
@@ -272,6 +685,12 @@ export default function ProjectDetailPage() {
         setProjectForms(formsData)
       }
 
+      // Load project contracts
+      await loadProjectContracts()
+
+      // Load project invoices
+      await loadProjectInvoices()
+
       // Load clients and tags for edit modal
       const [clientsData, tagsData] = await Promise.all([
         getClientsForProjects(),
@@ -294,6 +713,391 @@ export default function ProjectDetailPage() {
       toast.error('Failed to load project data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadProjectContracts = async () => {
+    try {
+      setLoadingContracts(true)
+      const allContracts = await getContracts()
+      // Filter contracts for this specific project
+      const projectContracts = allContracts.filter(contract => contract.project_id === projectId)
+      setProjectContracts(projectContracts)
+    } catch (error) {
+      console.error('Error loading project contracts:', error)
+      toast.error('Failed to load project contracts')
+    } finally {
+      setLoadingContracts(false)
+    }
+  }
+
+  const loadProjectInvoices = async () => {
+    try {
+      setLoadingInvoices(true)
+      const projectInvoices = await getInvoicesByProject(projectId)
+      setProjectInvoices(projectInvoices)
+    } catch (error) {
+      console.error('Error loading project invoices:', error)
+      toast.error('Failed to load project invoices')
+    } finally {
+      setLoadingInvoices(false)
+    }
+  }
+
+  // Contract action functions
+  const handleViewContract = (contract: Contract) => {
+    router.push(`/dashboard/contracts/${contract.contract_number}`)
+  }
+
+  const handleSendContract = (contract: Contract) => {
+    // Navigate to send contract page or open send modal
+    router.push(`/dashboard/contracts/${contract.contract_number}`)
+  }
+
+  const handleStatusChange = async (contract: Contract, newStatus: string) => {
+    try {
+      // Import updateContract function
+      const { updateContract } = await import('@/lib/contracts')
+      await updateContract(contract.id, { status: newStatus as any })
+      
+      // Update local state
+      setProjectContracts((prev: Contract[]) => 
+        prev.map((c: Contract) => c.id === contract.id ? { ...c, status: newStatus as any } : c)
+      )
+      
+      toast.success(`Contract status updated to ${newStatus}`)
+    } catch (error) {
+      console.error('Error updating contract status:', error)
+      toast.error('Failed to update contract status')
+    }
+  }
+
+  // Invoice action functions
+  const handleDownloadPDF = async (invoice: Invoice) => {
+    try {
+      setDownloadingPDF(invoice.id)
+      
+      // Create a temporary div with the invoice content
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'absolute'
+      tempDiv.style.left = '-9999px'
+      tempDiv.style.top = '-9999px'
+      tempDiv.style.width = '800px'
+      tempDiv.style.padding = '40px'
+      tempDiv.style.backgroundColor = 'white'
+      tempDiv.style.fontFamily = 'Arial, sans-serif'
+      tempDiv.style.fontSize = '14px'
+      tempDiv.style.lineHeight = '1.4'
+      
+      // Generate the HTML content that matches the preview modal
+      tempDiv.innerHTML = `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+          <!-- Invoice Header -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+            <div>
+              <h1 style="font-size: 28px; font-weight: bold; color: #111827; margin: 0 0 8px 0;">
+                ${invoice.title || 'Untitled Invoice'}
+              </h1>
+              <p style="color: #6B7280; margin: 0; font-size: 16px;">
+                Invoice #${invoice.invoice_number}
+              </p>
+            </div>
+            <div style="text-align: right;">
+              <p style="font-size: 14px; color: #6B7280; margin: 0 0 4px 0;">Invoice Date</p>
+              <p style="font-weight: 600; color: #111827; margin: 0 0 16px 0;">
+                ${formatDate(invoice.issue_date)}
+              </p>
+              <p style="font-size: 14px; color: #6B7280; margin: 0 0 4px 0;">Due Date</p>
+              <p style="font-weight: 600; color: #111827; margin: 0;">
+                ${invoice.due_date ? formatDate(invoice.due_date) : 'No due date'}
+              </p>
+            </div>
+          </div>
+
+          <!-- Client Info -->
+          <div style="margin-bottom: 30px;">
+            <h3 style="font-weight: 600; color: #111827; margin: 0 0 8px 0; font-size: 16px;">Bill To:</h3>
+            <p style="color: #111827; margin: 0 0 4px 0; font-size: 16px;">
+              ${invoice.client_name || "Unknown Client"}
+            </p>
+            ${invoice.project_name ? `<p style="color: #6B7280; margin: 0; font-size: 14px;">Project: ${invoice.project_name}</p>` : ''}
+          </div>
+
+          <!-- Line Items Table -->
+          <div style="margin-bottom: 30px;">
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #E5E7EB;">
+              <thead>
+                <tr style="background-color: #F9FAFB;">
+                  <th style="text-align: left; padding: 12px; border-bottom: 1px solid #E5E7EB; font-weight: 600; color: #374151;">Item</th>
+                  <th style="text-align: right; padding: 12px; border-bottom: 1px solid #E5E7EB; font-weight: 600; color: #374151;">Qty</th>
+                  <th style="text-align: right; padding: 12px; border-bottom: 1px solid #E5E7EB; font-weight: 600; color: #374151;">Rate</th>
+                  <th style="text-align: right; padding: 12px; border-bottom: 1px solid #E5E7EB; font-weight: 600; color: #374151;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${invoice.line_items && invoice.line_items.length > 0 ? 
+                  invoice.line_items.map(item => `
+                    <tr>
+                      <td style="padding: 12px; border-bottom: 1px solid #F3F4F6;">
+                        <div>
+                          <p style="font-weight: 600; color: #111827; margin: 0 0 4px 0;">${item.name || "Untitled Item"}</p>
+                          ${item.description ? `<p style="color: #6B7280; margin: 0; font-size: 13px;">${item.description}</p>` : ''}
+                        </div>
+                      </td>
+                      <td style="text-align: right; padding: 12px; border-bottom: 1px solid #F3F4F6; color: #111827;">${item.quantity}</td>
+                      <td style="text-align: right; padding: 12px; border-bottom: 1px solid #F3F4F6; color: #111827;">${formatCurrency(item.unit_rate)}</td>
+                      <td style="text-align: right; padding: 12px; border-bottom: 12px; border-bottom: 1px solid #F3F4F6; color: #111827; font-weight: 600;">${formatCurrency(item.total_amount)}</td>
+                    </tr>
+                  `).join('') : 
+                  `<tr><td colspan="4" style="text-align: center; padding: 20px; color: #6B7280;">No line items found</td></tr>`
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Totals -->
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
+            <div style="width: 250px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="color: #6B7280;">Subtotal:</span>
+                <span style="color: #111827; font-weight: 600;">${formatCurrency(invoice.subtotal)}</span>
+              </div>
+              ${invoice.tax_rate > 0 ? `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <span style="color: #6B7280;">Tax (${invoice.tax_rate}%):</span>
+                  <span style="color: #111827; font-weight: 600;">${formatCurrency(invoice.tax_amount)}</span>
+                </div>
+              ` : ''}
+              ${invoice.discount_amount > 0 ? `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <span style="color: #6B7280;">Discount:</span>
+                  <span style="color: #111827; font-weight: 600;">-${formatCurrency(invoice.discount_value)}</span>
+              </div>
+              ` : ''}
+              <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; border-top: 2px solid #E5E7EB; padding-top: 12px; margin-top: 12px;">
+                <span style="color: #111827;">Total:</span>
+                <span style="color: #3C3CFF;">${formatCurrency(invoice.total_amount)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          ${invoice.notes ? `
+            <div style="margin-bottom: 30px;">
+              <h3 style="font-weight: 600; color: #111827; margin: 0 0 8px 0; font-size: 16px;">Notes:</h3>
+              <p style="color: #374151; margin: 0; white-space: pre-wrap; line-height: 1.6;">${invoice.notes}</p>
+            </div>
+          ` : ''}
+
+          <!-- Additional Info -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; color: #6B7280; border-top: 1px solid #E5E7EB; padding-top: 20px;">
+            <div>
+              <span style="font-weight: 600; color: #374151;">Status:</span>
+              <span style="margin-left: 8px; padding: 4px 8px; background-color: ${getInvoiceStatusColor(invoice.status).includes('bg-green') ? '#D1FAE5' : getInvoiceStatusColor(invoice.status).includes('bg-red') ? '#FEE2E2' : getInvoiceStatusColor(invoice.status).includes('bg-yellow') ? '#FEF3C7' : getInvoiceStatusColor(invoice.status).includes('bg-blue') ? '#DBEAFE' : '#F3F4F6'}; color: ${getInvoiceStatusColor(invoice.status).includes('text-green') ? '#065F46' : getInvoiceStatusColor(invoice.status).includes('text-red') ? '#991B1B' : getInvoiceStatusColor(invoice.status).includes('text-yellow') ? '#92400E' : getInvoiceStatusColor(invoice.status).includes('text-blue') ? '#1E40AF' : '#374151'}; border-radius: 4px; font-size: 12px;">
+                ${getInvoiceStatusLabel(invoice.status)}
+              </span>
+            </div>
+            <div>
+              <span style="font-weight: 600; color: #374151;">Payment Terms:</span>
+              <span style="margin-left: 8px;">${invoice.payment_terms || 'Not specified'}</span>
+            </div>
+            ${invoice.po_number ? `
+              <div>
+                <span style="font-weight: 600; color: #374151;">PO Number:</span>
+                <span style="margin-left: 8px;">${invoice.po_number}</span>
+              </div>
+            ` : ''}
+            <div>
+              <span style="font-weight: 600; color: #374151;">Currency:</span>
+              <span style="margin-left: 8px;">${invoice.currency || 'USD'}</span>
+            </div>
+          </div>
+        </div>
+      `
+      
+      // Add the temp div to the document
+      document.body.appendChild(tempDiv)
+      
+      // Convert to canvas
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      })
+      
+      // Remove the temp div
+      document.body.removeChild(tempDiv)
+      
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 295
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      
+      let position = 0
+      
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      // Download the PDF
+      pdf.save(`invoice-${invoice.invoice_number}.pdf`)
+      
+      toast.success('PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast.error('Failed to generate PDF')
+    } finally {
+      setDownloadingPDF(null)
+    }
+  }
+
+  const handleMarkAsPaid = async (invoiceId: string) => {
+    try {
+      setMarkingAsPaid(invoiceId)
+      await markInvoiceAsPaid(invoiceId)
+      
+      // Update local state instead of reloading
+      setProjectInvoices(prevInvoices => 
+        prevInvoices.map(invoice => 
+          invoice.id === invoiceId 
+            ? { ...invoice, status: 'paid' as any, paid_date: new Date().toISOString() }
+            : invoice
+        )
+      )
+      
+      toast.success('Invoice marked as paid successfully')
+    } catch (error) {
+      console.error('Error marking invoice as paid:', error)
+      toast.error('Failed to mark invoice as paid')
+    } finally {
+      setMarkingAsPaid(null)
+    }
+  }
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+      try {
+        setDeletingInvoice(invoiceId)
+        await deleteInvoice(invoiceId)
+        
+        // Update local state instead of reloading
+        setProjectInvoices(prevInvoices => prevInvoices.filter(invoice => invoice.id !== invoiceId))
+        
+        toast.success('Invoice deleted successfully')
+      } catch (error) {
+        console.error('Error deleting invoice:', error)
+        toast.error('Failed to delete invoice')
+      } finally {
+        setDeletingInvoice(null)
+      }
+    }
+  }
+
+  const openStatusChangeModal = (invoice: Invoice) => {
+    setChangingStatusInvoice(invoice)
+    setChangingStatus(invoice.status)
+    setStatusChangeModalOpen(true)
+  }
+
+  const handleChangeStatus = async () => {
+    if (!changingStatusInvoice || !changingStatus) return
+
+    try {
+      setChangingStatus(null)
+      // Update the invoice status in the local state
+      setProjectInvoices(prevInvoices => 
+        prevInvoices.map(invoice => 
+          invoice.id === changingStatusInvoice.id 
+            ? { ...invoice, status: changingStatus as any }
+            : invoice
+        )
+      )
+      
+      // Update in database
+      await updateInvoice(changingStatusInvoice.id, { status: changingStatus as any })
+      
+      toast.success('Invoice status updated successfully')
+      setStatusChangeModalOpen(false)
+      setChangingStatusInvoice(null)
+    } catch (error) {
+      console.error('Error updating invoice status:', error)
+      toast.error('Failed to update invoice status')
+      // Revert the local state change on error
+      setProjectInvoices(prevInvoices => 
+        prevInvoices.map(invoice => 
+          invoice.id === changingStatusInvoice.id 
+            ? { ...invoice, status: changingStatusInvoice.status }
+            : invoice
+        )
+      )
+    }
+  }
+
+  const handleViewInvoice = (invoice: Invoice) => {
+    setPreviewInvoice(invoice)
+    setPreviewModalOpen(true)
+  }
+
+  const handleDuplicateContract = async (contract: Contract) => {
+    try {
+      // Create new contract with same data
+      const newContractData = {
+        name: `${contract.name} - Copy`,
+        contract_content: contract.contract_content,
+        contract_html: contract.contract_html,
+        contract_type: contract.contract_type,
+        client_id: contract.client_id,
+        project_id: contract.project_id,
+        total_value: contract.total_value,
+        currency: contract.currency,
+        payment_terms: contract.payment_terms,
+        deposit_amount: contract.deposit_amount,
+        start_date: contract.start_date,
+        end_date: contract.end_date,
+        due_date: contract.due_date,
+        expiration_date: contract.expiration_date,
+        status: 'draft' as const
+      }
+      
+      const { createContract } = await import('@/lib/contracts')
+      const newContract = await createContract(newContractData)
+      toast.success('Contract duplicated successfully')
+     
+    } catch (error) {
+      console.error('Error duplicating contract:', error)
+      toast.error('Failed to duplicate contract')
+    }
+  }
+
+  const handleDeleteContract = async (contractId: string) => {
+    if (confirm('Are you sure you want to delete this contract? This action cannot be undone.')) {
+      try {
+        setDeletingContract(contractId)
+        // Import deleteContract function
+        const { deleteContract } = await import('@/lib/contracts')
+        await deleteContract(contractId)
+        
+        // Remove from local state
+        setProjectContracts((prev: Contract[]) => prev.filter((c: Contract) => c.id !== contractId))
+        toast.success('Contract deleted successfully')
+      } catch (error) {
+        console.error('Error deleting contract:', error)
+        toast.error('Failed to delete contract')
+      } finally {
+        setDeletingContract(null)
+      }
     }
   }
 
@@ -2820,35 +3624,370 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="contracts" className="space-y-6">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="text-gray-500">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Contracts coming soon</h3>
-                  <p className="mb-4">Contract management functionality will be available soon</p>
-                  <Button disabled>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Manage Contracts
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Project Contracts</h2>
+                <p className="text-gray-600 mt-1">Manage contracts associated with this project</p>
+              </div>
+              <Button 
+                className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                onClick={() => router.push(`/dashboard/contracts/new?project=${projectId}`)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Contract
+              </Button>
+            </div>
+
+            {/* Contract Summary Cards */}
+            {!loadingContracts && projectContracts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Total Contracts</p>
+                        <p className="text-xl font-semibold text-gray-900">{projectContracts.length}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Signed</p>
+                        <p className="text-xl font-semibold text-gray-900">
+                          {projectContracts.filter(c => c.status === 'signed').length}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Pending</p>
+                        <p className="text-xl font-semibold text-gray-900">
+                          {projectContracts.filter(c => ['awaiting_signature', 'sent'].includes(c.status)).length}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-gray-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Draft</p>
+                        <p className="text-xl font-semibold text-gray-900">
+                          {projectContracts.filter(c => c.status === 'draft').length}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {loadingContracts ? (
+              <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                <CardContent className="p-12 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">Loading contracts...</p>
+                </CardContent>
+              </Card>
+            ) : projectContracts.length === 0 ? (
+              <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                <CardContent className="p-12 text-center">
+                  <div className="text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">No contracts for this project yet</h3>
+                    <p className="mb-4">Create contracts to manage agreements and legal documents for this project</p>
+                    <Button 
+                      className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                      onClick={() => router.push(`/dashboard/contracts/new?project=${projectId}`)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Your First Contract
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {projectContracts.map((contract) => {
+                  const StatusIcon = contractStatusConfig[contract.status as keyof typeof contractStatusConfig]?.icon || FileText
+                  const statusLabel = contractStatusConfig[contract.status as keyof typeof contractStatusConfig]?.label || contract.status
+                  const statusColor = contractStatusConfig[contract.status as keyof typeof contractStatusConfig]?.color || "bg-gray-100 text-gray-800"
+
+                  return (
+                    <Card key={contract.id} className="bg-white border-0 shadow-sm rounded-2xl hover:shadow-md transition-all duration-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-4 flex-1">
+                            <div className="flex-shrink-0 mt-1">
+                              <div className="text-2xl">📄</div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3 mb-2">
+                                <h4 className="font-semibold text-gray-900">{contract.name}</h4>
+                                <Badge className={statusColor}>
+                                  <StatusIcon className="h-3 w-3 mr-1" />
+                                  {statusLabel}
+                                </Badge>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Contract #:</span>
+                                  <span className="text-sm text-gray-900 font-mono">{contract.contract_number}</span>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Value:</span>
+                                  <span className="text-sm text-gray-900">
+                                    {contract.total_value ? `$${contract.total_value.toLocaleString()}` : 'Not specified'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-500">Created:</span>
+                                  <span className="text-sm text-gray-900">{formatTimeAgo(contract.created_at)}</span>
+                                </div>
+                              </div>
+
+                              {contract.description && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                                  <p className="text-sm text-gray-700">{contract.description}</p>
+                                </div>
+                              )}
+
+                              {contract.client_name && (
+                                <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                  <Users className="h-4 w-4" />
+                                  <span>Client: {contract.client_name}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleViewContract(contract)}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/dashboard/contracts/new?edit=${contract.id}`}>
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSendContract(contract)}>
+                                  <Send className="h-4 w-4 mr-2" />
+                                  Send/Resend
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(contract, 'draft')}>
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  Make Draft
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(contract, 'awaiting_signature')}>
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  Make Pending
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(contract, 'signed')}>
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Mark as Signed
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(contract, 'archived')}>
+                                  <Archive className="h-4 w-4 mr-2" />
+                                  Archive
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownloadPDF(contract)}>
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Download PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDuplicateContract(contract)}>
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Duplicate
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteContract(contract.id)}
+                                  disabled={deletingContract === contract.id}
+                                >
+                                  {deletingContract === contract.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="invoices" className="space-y-6">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="text-gray-500">
-                  <CreditCard className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Invoices coming soon</h3>
-                  <p className="mb-4">Invoice management functionality will be available soon</p>
-                  <Button disabled>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Manage Invoices
-                  </Button>
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Project Invoices</h3>
+                  <p className=" text-gray-600">Manage and track all invoices for this project</p>
                 </div>
-              </CardContent>
-            </Card>
+                <Link href="/dashboard/invoicing/create">
+                  <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Invoice
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Loading State */}
+              {loadingInvoices && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!loadingInvoices && projectInvoices.length === 0 && (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <div className="text-gray-500">
+                      <CreditCard className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <h3 className="text-lg font-medium mb-2">No invoices yet</h3>
+                      <p className="mb-4">Create your first invoice for this project to get started</p>
+                      <Link href="/dashboard/invoicing/create">
+                        <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
+                          <Plus className="mr-2 h-4 w-4" />
+                          Create Invoice
+                        </Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Invoices List */}
+              {!loadingInvoices && projectInvoices.length > 0 && (
+                <div className="space-y-4">
+                  {projectInvoices.map((invoice) => (
+                    <Card key={invoice.id} className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-4 mb-3">
+                              <div>
+                                <h4 className="font-semibold text-gray-900 text-lg">
+                                  {invoice.title || 'Untitled Invoice'}
+                                </h4>
+                                <p className="text-sm text-gray-600">#{invoice.invoice_number}</p>
+                              </div>
+                              <Badge className={getInvoiceStatusColor(invoice.status)}>
+                                {getInvoiceStatusLabel(invoice.status)}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-gray-500">Client:</span>
+                                <p className="font-medium text-gray-900">{invoice.client_name || 'Unknown'}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Amount:</span>
+                                <p className="font-medium text-gray-900">{formatCurrency(invoice.total_amount)}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Issue Date:</span>
+                                <p className="font-medium text-gray-900">{formatDate(invoice.issue_date)}</p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Due Date:</span>
+                                <p className="font-medium text-gray-900">
+                                  {invoice.due_date ? formatDate(invoice.due_date) : 'No due date'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Menu */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem onClick={() => handleViewInvoice(invoice)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Invoice
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard/invoicing/create?edit=${invoice.id}`)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit Invoice
+                              </DropdownMenuItem>
+                              {invoice.status !== "paid" && (
+                                <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice.id)}>
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  Mark as Paid
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => openStatusChangeModal(invoice)}>
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Change Status
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDownloadPDF(invoice)}>
+                                {downloadingPDF === invoice.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Download className="mr-2 h-4 w-4" />
+                                )}
+                                {downloadingPDF === invoice.id ? "Generating PDF..." : "Download PDF"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDeleteInvoice(invoice.id)}>
+                                <Trash2 className="mr-2 h-4 w-4 text-red-500" />
+                                Delete Invoice
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="activity" className="space-y-6">
@@ -3152,6 +4291,199 @@ export default function ProjectDetailPage() {
         onOpenChange={setShowFormPreview}
         form={previewForm}
       />
+
+      {/* Status Change Modal */}
+      <Dialog open={statusChangeModalOpen} onOpenChange={setStatusChangeModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Invoice Status</DialogTitle>
+          </DialogHeader>
+          {changingStatusInvoice && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Current Status: <Badge className={getInvoiceStatusColor(changingStatusInvoice.status)}>
+                    {getInvoiceStatusLabel(changingStatusInvoice.status)}
+                  </Badge>
+                </p>
+                <p className="text-sm text-gray-600">
+                  Invoice: {changingStatusInvoice.invoice_number}
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="new-status">New Status</Label>
+                <Select value={changingStatus || ""} onValueChange={setChangingStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select new status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="viewed">Viewed</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="refunded">Refunded</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setStatusChangeModalOpen(false)
+                    setChangingStatusInvoice(null)
+                    setChangingStatus(null)
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleChangeStatus}
+                  disabled={!changingStatus || changingStatus === changingStatusInvoice.status}
+                  className="flex-1 bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white"
+                >
+                  {changingStatus ? "Update Status" : "Select Status"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Modal */}
+      <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Invoice Preview</DialogTitle>
+          </DialogHeader>
+          {previewInvoice && (
+            <div className="bg-white p-8 border border-gray-200 rounded-lg">
+              <div className="space-y-6">
+                {/* Invoice Header */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{previewInvoice.title || 'Untitled Invoice'}</h2>
+                    <p className="text-gray-600">Invoice #{previewInvoice.invoice_number}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600">Invoice Date</p>
+                    <p className="font-medium">{formatDate(previewInvoice.issue_date)}</p>
+                    <p className="text-sm text-gray-600 mt-2">Due Date</p>
+                    <p className="font-medium">{previewInvoice.due_date ? formatDate(previewInvoice.due_date) : 'No due date'}</p>
+                  </div>
+                </div>
+
+                {/* Client Info */}
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-2">Bill To:</h3>
+                  <p className="text-gray-900">{previewInvoice.client_name || "Unknown Client"}</p>
+                  {previewInvoice.project_name && (
+                    <p className="text-gray-600">Project: {previewInvoice.project_name}</p>
+                  )}
+                </div>
+
+                {/* Line Items */}
+                <div>
+                  <table className="w-full">
+                    <thead className="border-b border-gray-200">
+                      <tr>
+                        <th className="text-left py-2">Item</th>
+                        <th className="text-right py-2">Qty</th>
+                        <th className="text-right py-2">Rate</th>
+                        <th className="text-right py-2">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewInvoice.line_items && previewInvoice.line_items.length > 0 ? (
+                        previewInvoice.line_items.map((item) => (
+                          <tr key={item.id} className="border-b border-gray-100">
+                            <td className="py-3">
+                              <div>
+                                <p className="font-medium">{item.name || "Untitled Item"}</p>
+                                {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
+                              </div>
+                            </td>
+                            <td className="text-right py-3">{item.quantity}</td>
+                            <td className="text-right py-3">{formatCurrency(item.unit_rate)}</td>
+                            <td className="text-right py-3">{formatCurrency(item.total_amount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="text-center py-4 text-gray-500">No line items found</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Totals */}
+                <div className="flex justify-end">
+                  <div className="w-64 space-y-2">
+                    <div className="flex justify-between">
+                      <span>Subtotal:</span>
+                      <span>{formatCurrency(previewInvoice.subtotal)}</span>
+                    </div>
+                    {previewInvoice.tax_rate > 0 && (
+                      <div className="flex justify-between">
+                        <span>Tax ({previewInvoice.tax_rate}%):</span>
+                        <span>{formatCurrency(previewInvoice.tax_amount)}</span>
+                      </div>
+                    )}
+                    {previewInvoice.discount_amount > 0 && (
+                      <div className="flex justify-between">
+                        <span>Discount:</span>
+                        <span>-{formatCurrency(previewInvoice.discount_value)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-lg border-t pt-2">
+                      <span>Total:</span>
+                      <span>{formatCurrency(previewInvoice.total_amount)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {previewInvoice.notes && (
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-2">Notes:</h3>
+                    <p className="text-gray-700 whitespace-pre-wrap">{previewInvoice.notes}</p>
+                  </div>
+                )}
+
+                {/* Additional Info */}
+                <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div>
+                    <span className="font-medium">Status:</span>
+                    <Badge className={`ml-2 ${getInvoiceStatusColor(previewInvoice.status)}`}>
+                      {getInvoiceStatusLabel(previewInvoice.status)}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="font-medium">Payment Terms:</span>
+                    <span className="ml-2">{previewInvoice.payment_terms || 'Not specified'}</span>
+                  </div>
+                  {previewInvoice.po_number && (
+                    <div>
+                      <span className="font-medium">PO Number:</span>
+                      <span className="ml-2">{previewInvoice.po_number}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-medium">Currency:</span>
+                    <span className="ml-2">{previewInvoice.currency || 'USD'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
