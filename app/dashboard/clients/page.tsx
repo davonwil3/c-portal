@@ -63,6 +63,7 @@ import {
 import { getInvoicesByClient } from "@/lib/invoices"
 import { getProjectsByClient } from "@/lib/projects"
 import { getFiles } from "@/lib/files"
+import AddMembersModal from "@/components/AddMembersModal"
 
 const tagOptions = ["VIP", "Enterprise", "Startup", "Design", "Marketing", "Retainer", "Completed"]
 
@@ -83,6 +84,10 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  
+  // Add Members modal state
+  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false)
+  const [selectedClientForMembers, setSelectedClientForMembers] = useState<Client | null>(null)
   
   // Additional client data state
   const [clientActivities, setClientActivities] = useState<Record<string, any[]>>({})
@@ -418,32 +423,29 @@ export default function ClientsPage() {
   }
 
   const handleClientAction = (action: string, client: Client) => {
+    setSelectedClient(client)
+    
     switch (action) {
       case "view":
-        setSelectedClient(client)
         setIsClientDetailOpen(true)
-        // Load additional client data
         loadClientData(client.id)
         break
       case "edit":
-        setSelectedClient(client)
-        const clientTagsWithColors = (clientTags[client.id] || []).map(tagName => ({
-          name: tagName,
-          color: clientTagColors[client.id]?.[tagName] || getTagDisplayColor(tagName)
-        }))
-        setEditClient({
-          firstName: client.first_name,
-          lastName: client.last_name,
-          email: client.email,
+        setNewClient({
+          firstName: client.first_name || "",
+          lastName: client.last_name || "",
+          email: client.email || "",
           company: client.company || "",
           phone: client.phone || "",
           portalUrl: client.portal_url || "",
-          tags: clientTagsWithColors,
+          tags: (clientTags[client.id] || []).map(tagName => ({
+            name: tagName,
+            color: clientTagColors[client.id]?.[tagName] || getTagDisplayColor(tagName, client.id)
+          })),
         })
         setIsEditClientOpen(true)
         break
       case "delete":
-        setSelectedClient(client)
         setIsDeleteDialogOpen(true)
         break
       case "archive":
@@ -452,14 +454,12 @@ export default function ClientsPage() {
       case "restore":
         handleRestoreClient(client)
         break
-      case "portal":
-        if (client.portal_url) {
-          window.open(`https://${client.portal_url}`, "_blank")
-        } else {
-          toast.error('No portal URL configured for this client')
-        }
-        break
     }
+  }
+
+  const handleAddMembers = (client: Client) => {
+    setSelectedClientForMembers(client)
+    setIsAddMembersOpen(true)
   }
 
   const getActivityIcon = (type: string) => {
@@ -904,6 +904,15 @@ export default function ClientsPage() {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Client
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleAddMembers(client)
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Members
+                              </DropdownMenuItem>
                               {client.portal_url && (
                                 <DropdownMenuItem 
                                   onClick={(e) => {
@@ -1019,6 +1028,15 @@ export default function ClientsPage() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit Client
                             </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleAddMembers(client)
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add Members
+                            </DropdownMenuItem>
                             {client.portal_url && (
                               <DropdownMenuItem 
                                 onClick={(e) => {
@@ -1125,10 +1143,22 @@ export default function ClientsPage() {
                               e.stopPropagation()
                             handleClientAction("view", client)
                             }}
-                            className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
+                            className="flex-1 text-[#3C3FF] border-[#3C3FF] hover:bg-[#F0F2FF]"
                           >
                             <Eye className="h-4 w-4 mr-1" />
                           View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleAddMembers(client)
+                            }}
+                            className="flex-1 text-green-600 border-green-600 hover:bg-green-50"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Members
                           </Button>
                         {client.portal_url && (
                           <Button
@@ -1863,6 +1893,21 @@ export default function ClientsPage() {
             )}
           </SheetContent>
         </Sheet>
+
+        {/* Add Members Modal */}
+        {selectedClientForMembers && (
+          <AddMembersModal
+            isOpen={isAddMembersOpen}
+            onClose={() => {
+              setIsAddMembersOpen(false)
+              setSelectedClientForMembers(null)
+            }}
+            clientId={selectedClientForMembers.id}
+            clientName={`${selectedClientForMembers.first_name} ${selectedClientForMembers.last_name}`}
+            companySlug="acme-co" // You'll need to get this from your client data
+            clientSlug={selectedClientForMembers.portal_url || selectedClientForMembers.id}
+          />
+        )}
       </div>
     </DashboardLayout>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, use } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -25,13 +25,14 @@ import {
   MoreHorizontal,
   Sparkles,
   Paperclip,
+  LogOut,
 } from "lucide-react"
 import { useParams } from "next/navigation"
 
 // Mock data based on client slug
 const getClientData = (slug: string) => {
   const clientData = {
-    "acme-co": {
+    "sarah-johnson": {
       clientName: "Sarah Johnson",
       companyName: "Acme Corp",
       avatar: "SJ",
@@ -275,13 +276,235 @@ const getClientData = (slug: string) => {
     },
   }
 
-  return clientData[slug as keyof typeof clientData] || null
+  // If we have specific data for this slug, return it
+  if (clientData[slug as keyof typeof clientData]) {
+    return clientData[slug as keyof typeof clientData]
+  }
+  
+  // Otherwise, return default data for any client slug
+  return {
+    clientName: slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+    companyName: "Wilson Tech",
+    avatar: slug.split('-').map(word => word.charAt(0).toUpperCase()).join(''),
+    // Branding settings
+    branding: {
+      logo: "/placeholder.svg?height=60&width=200&text=Wilson+Tech+Logo",
+      primaryColor: "#3C3CFF",
+      headerBackgroundImage: "/placeholder.svg?height=300&width=1200&text=Header+Background",
+      useBackgroundImage: true,
+    },
+    projects: [
+      {
+        id: 1,
+        name: "Website Redesign",
+        status: "In Progress",
+        progress: 65,
+        lastUpdated: "2 days ago",
+      },
+      {
+        id: 2,
+        name: "Brand Guidelines",
+        status: "Review",
+        progress: 90,
+        lastUpdated: "1 week ago",
+      },
+    ],
+    actionItems: [
+      {
+        id: 1,
+        type: "contract",
+        title: "Sign Contract",
+        description: "Sign the service agreement for Website Redesign project",
+        icon: PenTool,
+        buttonText: "Sign Now",
+        urgent: true,
+      },
+      {
+        id: 2,
+        type: "invoice",
+        title: "Pay Invoice",
+        description: "Invoice #102 is due ($2,500)",
+        icon: DollarSign,
+        buttonText: "Pay Now",
+        urgent: true,
+      },
+      {
+        id: 3,
+        type: "upload",
+        title: "Upload Files",
+        description: "Upload logo files for branding project",
+        icon: Upload,
+        buttonText: "Upload",
+        urgent: false,
+      },
+    ],
+    files: [
+      {
+        id: 1,
+        name: "Brand Guidelines v2.pdf",
+        type: "pdf",
+        size: "2.4 MB",
+        uploadedAt: "2 days ago",
+        url: "#",
+        status: "approved",
+        comments: [
+          {
+            id: 1,
+            author: "Design Team",
+            avatar: "DT",
+            message: "Updated brand guidelines with your feedback. Please review the color palette section.",
+            timestamp: "2 days ago",
+            isClient: false,
+          },
+        ],
+      },
+      {
+        id: 2,
+        name: "Website Mockups.zip",
+        type: "zip",
+        size: "15.8 MB",
+        uploadedAt: "1 week ago",
+        url: "#",
+        status: "pending",
+        comments: [],
+      },
+    ],
+    invoices: [
+      {
+        id: 1,
+        number: "INV-102",
+        amount: 2500,
+        status: "due",
+        dueDate: "2024-02-15",
+        description: "Website Redesign - Phase 1",
+      },
+      {
+        id: 2,
+        number: "INV-101",
+        amount: 1500,
+        status: "paid",
+        paidDate: "2024-01-20",
+        description: "Brand Guidelines Development",
+      },
+    ],
+    timeline: [
+      {
+        id: 1,
+        title: "Project Kickoff",
+        date: "2024-01-10",
+        status: "complete",
+        description: "Initial meeting and project scope discussion",
+        note: "We had a great kickoff meeting where we discussed your vision for the new website.",
+        uploads: [],
+      },
+      {
+        id: 2,
+        title: "Design Concepts",
+        date: "2024-01-25",
+        status: "complete",
+        description: "First round of design concepts delivered",
+        note: "We've created three distinct design concepts for your review.",
+        uploads: [],
+      },
+    ],
+    messages: [
+      {
+        id: 1,
+        sender: "team",
+        senderName: "Design Team",
+        message: "Hi! We've uploaded the latest design concepts for your review. Please let us know your thoughts.",
+        timestamp: "2 hours ago",
+        avatar: "DT",
+      },
+      {
+        id: 2,
+        sender: "client",
+        senderName: slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        message: "Thanks! I'll review them today and get back to you with feedback.",
+        timestamp: "1 hour ago",
+        avatar: slug.split('-').map(word => word.charAt(0).toUpperCase()).join(''),
+      },
+    ],
+  }
 }
 
 export default function ClientPortalPage() {
   const params = useParams()
-  const clientSlug = params["client-slug"] as string
+  const clientSlug = params.client as string
+  const companySlug = params.company as string
   const clientData = getClientData(clientSlug)
+  
+  // Authentication state
+  const [user, setUser] = useState<{
+    email: string
+    name: string
+    role: string
+    companySlug: string
+    clientSlug: string
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Check for existing session on component mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const sessionData = localStorage.getItem('client_session')
+        if (sessionData) {
+          const session = JSON.parse(sessionData)
+          
+          // Check if session is for this client
+          if (session.clientSlug === clientSlug && session.companySlug === companySlug) {
+            // Validate session with server
+            const response = await fetch('/api/client-portal/validate-session', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sessionToken: session.sessionToken,
+                companySlug,
+                clientSlug
+              }),
+            })
+
+            const result = await response.json()
+            
+            if (result.success) {
+              setUser(result.data)
+              setLoading(false)
+            } else {
+              // Session invalid, clear it
+              localStorage.removeItem('client_session')
+              setUser(null)
+              setLoading(false)
+            }
+          } else {
+            // Session is for different client, clear it
+            localStorage.removeItem('client_session')
+            setUser(null)
+            setLoading(false)
+          }
+        } else {
+          setUser(null)
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Error checking session:', error)
+        setUser(null)
+        setLoading(false)
+      }
+    }
+
+    checkSession()
+  }, [clientSlug, companySlug])
+
+  const logout = () => {
+    localStorage.removeItem('client_session')
+    setUser(null)
+    // Redirect to login
+    window.location.href = `/${companySlug}?client=${clientSlug}`
+  }
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [newMessage, setNewMessage] = useState("")
@@ -308,12 +531,40 @@ export default function ClientPortalPage() {
   const [aiInput, setAiInput] = useState("")
   const [isAiTyping, setIsAiTyping] = useState(false)
 
+  // Show loading while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading portal...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!clientData) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Portal Not Found</h1>
           <p className="text-gray-600">The requested client portal could not be found.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    // Redirect to login
+    useEffect(() => {
+      window.location.href = `/${companySlug}?client=${clientSlug}`
+    }, [companySlug, clientSlug])
+    
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting to login...</p>
         </div>
       </div>
     )
@@ -465,7 +716,20 @@ export default function ClientPortalPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">{clientData.clientName}</p>
                   <p className="text-xs text-gray-600">{clientData.companyName}</p>
+                  <p className="text-xs text-gray-500">{user.email}</p>
+                  {user.role && (
+                    <p className="text-xs text-gray-500">{user.role}</p>
+                  )}
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={logout}
+                  className="text-gray-500 hover:text-red-600"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 

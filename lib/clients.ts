@@ -240,6 +240,66 @@ export async function createClient(clientData: {
     }
   }
 
+  // Automatically add client to their own portal's allowlist
+  try {
+    // Get the current user's company name from their account
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('account_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (userProfile?.account_id) {
+      // Get the company name from the accounts table
+      const { data: account } = await supabase
+        .from('accounts')
+        .select('company_name')
+        .eq('id', userProfile.account_id)
+        .single()
+
+      if (account?.company_name) {
+        // Generate a company slug from the company name
+        const companySlug = account.company_name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+        
+        // Generate a client slug from the client's name
+        const clientSlug = `${clientData.first_name.toLowerCase()}-${clientData.last_name.toLowerCase()}`
+        
+        // Add client to allowlist for their own portal access
+        const { error: allowlistError } = await supabase
+          .from('client_allowlist')
+          .insert({
+            account_id: userProfile.account_id,
+            company_slug: companySlug,
+            client_slug: clientSlug,
+            email: clientData.email.toLowerCase(),
+            name: `${clientData.first_name} ${clientData.last_name}`,
+            role: 'Client',
+            is_active: true
+          })
+
+        if (allowlistError) {
+          console.error('Error adding client to allowlist:', allowlistError)
+          // Don't throw here, client was created successfully
+        } else {
+          console.log('✅ Client automatically added to portal allowlist')
+          console.log('📋 Allowlist entry:', {
+            account_id: userProfile.account_id,
+            company_slug: companySlug,
+            client_slug: clientSlug,
+            email: clientData.email.toLowerCase()
+          })
+        }
+      } else {
+        console.error('❌ No company name found for account:', userProfile.account_id)
+      }
+    } else {
+      console.error('❌ No account_id found for user:', user.id)
+    }
+  } catch (allowlistError) {
+    console.error('Error setting up portal access for client:', allowlistError)
+    // Don't throw here, client was created successfully
+  }
+
   return client
 }
 
@@ -317,6 +377,71 @@ export async function updateClient(clientId: string, updates: Partial<{
     }
   }
 
+  // Update allowlist if email or name changed
+  if (updates.email || updates.first_name || updates.last_name) {
+    try {
+      // Get the current user's company name from their account
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('account_id')
+          .eq('user_id', user.id)
+          .single()
+
+        if (userProfile?.account_id) {
+          // Get the company name from the accounts table
+          const { data: account } = await supabase
+            .from('accounts')
+            .select('company_name')
+            .eq('id', userProfile.account_id)
+            .single()
+
+          if (account?.company_name) {
+            // Generate a company slug from the company name
+            const companySlug = account.company_name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+            
+            // Get current client data to determine what to update
+            const currentClient = await getClient(clientId)
+            if (currentClient) {
+              const firstName = updates.first_name || currentClient.first_name
+              const lastName = updates.last_name || currentClient.last_name
+              const email = updates.email || currentClient.email
+              
+              // Generate a client slug from the client's name
+              const clientSlug = `${firstName.toLowerCase()}-${lastName.toLowerCase()}`
+              
+              // Update or insert allowlist entry
+              const { error: allowlistError } = await supabase
+                .from('client_allowlist')
+                .upsert({
+                  account_id: userProfile.account_id,
+                  company_slug: companySlug,
+                  client_slug: clientSlug,
+                  email: email.toLowerCase(),
+                  name: `${firstName} ${lastName}`,
+                  role: 'Client',
+                  is_active: true
+                }, {
+                  onConflict: 'account_id,company_slug,client_slug,email'
+                })
+
+              if (allowlistError) {
+                console.error('Error updating client in allowlist:', allowlistError)
+                // Don't throw here, client was updated successfully
+              } else {
+                console.log('✅ Client allowlist updated successfully')
+              }
+            }
+          }
+        }
+      }
+    } catch (allowlistError) {
+      console.error('Error updating client allowlist:', allowlistError)
+      // Don't throw here, client was updated successfully
+    }
+  }
+
   return data
 }
 
@@ -364,7 +489,58 @@ export async function deleteClient(clientId: string): Promise<void> {
   }
   console.log('Portals updated successfully')
 
-  // 4. Finally delete the client
+  // 4. Remove client from allowlist
+  try {
+    // Get the current user's company name from their account
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (userProfile?.account_id) {
+        // Get the company name from the accounts table
+        const { data: account } = await supabase
+          .from('accounts')
+          .select('company_name')
+          .eq('id', userProfile.account_id)
+          .single()
+
+        if (account?.company_name) {
+          // Generate a company slug from the company name
+          const companySlug = account.company_name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+          
+          // Get current client data to determine the client slug
+          const currentClient = await getClient(clientId)
+          if (currentClient) {
+            const clientSlug = `${currentClient.first_name.toLowerCase()}-${currentClient.last_name.toLowerCase()}`
+            
+            // Remove client from allowlist
+            const { error: allowlistError } = await supabase
+              .from('client_allowlist')
+              .delete()
+              .eq('company_slug', companySlug)
+              .eq('client_slug', clientSlug)
+              .eq('email', currentClient.email.toLowerCase())
+
+            if (allowlistError) {
+              console.error('Error removing client from allowlist:', allowlistError)
+              // Don't throw here, continue with deletion
+            } else {
+              console.log('Client removed from allowlist successfully')
+            }
+          }
+        }
+      }
+    }
+  } catch (allowlistError) {
+    console.error('Error removing client from allowlist:', allowlistError)
+    // Don't throw here, continue with deletion
+  }
+
+  // 5. Finally delete the client
   const { error } = await supabase
     .from('clients')
     .delete()
