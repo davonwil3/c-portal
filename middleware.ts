@@ -8,13 +8,13 @@ export function middleware(request: NextRequest) {
   // Parse domain to extract company and client slugs
   const domainConfig = parseDomainFromHost(host)
   
-  // Handle custom domain routing
-  if (domainConfig.isProduction) {
+  // Handle custom domain routing (only in production)
+  if (domainConfig.isProduction && domainConfig.companySlug) {
     if (domainConfig.clientSlug) {
-      // Route: company.client.flowtrack.works -> /[company]/[client]
+      // Route: company.client.yourdomain.com -> /[company]/[client]
       url.pathname = `/${domainConfig.companySlug}/${domainConfig.clientSlug}`
     } else {
-      // Route: company.flowtrack.works -> /[company]
+      // Route: company.yourdomain.com -> /[company]
       url.pathname = `/${domainConfig.companySlug}`
     }
     
@@ -22,7 +22,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
   
-  // For development, continue with normal routing
+  // For development or non-custom domains, continue with normal routing
   return NextResponse.next()
 }
 

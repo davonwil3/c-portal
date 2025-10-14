@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Bot,
   FileSignature,
+  Globe,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -27,6 +28,7 @@ const navigationItems = [
   { title: "Home", icon: Home, href: "/dashboard" },
   { title: "Clients", icon: Users, href: "/dashboard/clients" },
   { title: "Projects", icon: Package, href: "/dashboard/projects" },
+  { title: "Portals", icon: Globe, href: "/dashboard/portals" },
   { title: "Files", icon: FolderOpen, href: "/dashboard/files" },
   { title: "Forms", icon: FileText, href: "/dashboard/forms" },
   { title: "Contracts", icon: FileSignature, href: "/dashboard/contracts" },

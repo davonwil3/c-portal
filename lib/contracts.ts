@@ -13,7 +13,6 @@ export interface Contract {
   client_id?: string
   project_id?: string
   portal_id?: string
-  source_contract_id?: string // If created from another contract
   status: 'draft' | 'sent' | 'awaiting_signature' | 'partially_signed' | 'signed' | 'declined' | 'expired' | 'archived'
   total_value?: number
   currency?: string
@@ -282,6 +281,7 @@ export async function createContract(contractData: Partial<Contract>): Promise<C
     .single()
 
   if (error) throw error
+  
   return data
 }
 
@@ -554,5 +554,30 @@ export async function createContractFromTemplate(templateId: string, contractDat
     .single()
 
   if (error) throw error
+  
   return data
-} 
+}
+
+function createContractTextForVector(contract: any): string {
+  const lines: string[] = []
+  lines.push(`Contract: ${contract.name || ''}`)
+  lines.push(`Contract Number: ${contract.contract_number || ''}`)
+  lines.push(`Description: ${contract.description || ''}`)
+  lines.push(`Type: ${contract.contract_type || ''}`)
+  lines.push(`Status: ${contract.status || ''}`)
+  if (contract.total_value) lines.push(`Total Value: ${contract.total_value} ${contract.currency || 'USD'}`)
+  if (contract.payment_terms) lines.push(`Payment Terms: ${contract.payment_terms}`)
+  if (contract.start_date) lines.push(`Start Date: ${contract.start_date}`)
+  if (contract.end_date) lines.push(`End Date: ${contract.end_date}`)
+  if (contract.due_date) lines.push(`Due Date: ${contract.due_date}`)
+  if (contract.signer_name) lines.push(`Signer: ${contract.signer_name}`)
+  if (contract.signer_email) lines.push(`Signer Email: ${contract.signer_email}`)
+  
+  // Add contract content if available
+  if (contract.contract_content) {
+    lines.push('\nContract Content:')
+    lines.push(JSON.stringify(contract.contract_content, null, 2))
+  }
+  
+  return lines.join('\n')
+}

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS client_allowlist (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   
+  
   -- Ensure unique email per client per account
   UNIQUE(account_id, company_slug, client_slug, email)
 );
@@ -116,9 +117,9 @@ BEGIN
   v_token := encode(gen_random_bytes(32), 'hex');
   v_token_hash := encode(sha256(v_token::bytea), 'hex');
   
-  -- Store token hash with account_id
+  -- Store token hash with account_id (24 hour expiration)
   INSERT INTO magic_link_tokens (account_id, email, company_slug, client_slug, token_hash, expires_at)
-  VALUES (v_account_id, p_email, p_company_slug, p_client_slug, v_token_hash, NOW() + INTERVAL '15 minutes');
+  VALUES (v_account_id, p_email, p_company_slug, p_client_slug, v_token_hash, NOW() + INTERVAL '24 hours');
   
   RETURN v_token;
 END;
@@ -158,14 +159,8 @@ BEGIN
     RETURN;
   END IF;
   
-  -- Check if token already used
-  IF v_record.used_at IS NOT NULL THEN
-    RETURN QUERY SELECT NULL::TEXT, false::BOOLEAN, 'Token already used'::TEXT;
-    RETURN;
-  END IF;
-  
-  -- Don't mark token as used yet - let the session creation do that
-  -- This prevents the token from being marked as used if session creation fails
+  -- Allow token reuse within expiration period - don't check used_at
+  -- This allows users to access the portal multiple times with the same email link
   
   RETURN QUERY SELECT v_record.email, true::BOOLEAN, 'Token valid'::TEXT;
 END;
@@ -200,7 +195,13 @@ BEGIN
   v_session_hash := encode(sha256(v_session_token::bytea), 'hex');
   v_refresh_hash := encode(sha256(v_refresh_token::bytea), 'hex');
   
-  -- Store session with account_id
+  -- Check if session already exists for this user and portal
+  DELETE FROM client_sessions 
+  WHERE email = p_email 
+  AND company_slug = p_company_slug 
+  AND client_slug = p_client_slug;
+  
+  -- Store new session with account_id (24 hour expiration)
   INSERT INTO client_sessions (
     account_id,
     session_token_hash, 

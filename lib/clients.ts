@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+// Vector store imports removed - use lib/ai/vector-store.server.ts in API routes only
 
 export interface Client {
   id: string
@@ -21,6 +22,7 @@ export interface Client {
   last_activity_at: string | null
   created_at: string
   updated_at: string
+  vector_store_id?: string | null
 }
 
 export interface ClientTag {
@@ -216,6 +218,9 @@ export async function createClient(clientData: {
     throw clientError
   }
 
+  // NOTE: Vector store creation should be handled by the API route that calls createClient
+  // Import lib/ai/vector-store.server.ts in the API route to create vector store and update client record
+
   // Add tags if provided
   if (clientData.tags && clientData.tags.length > 0) {
     const tagInserts = clientData.tags.map(tag => {
@@ -269,6 +274,7 @@ export async function createClient(clientData: {
           .from('client_allowlist')
           .insert({
             account_id: userProfile.account_id,
+            client_id: client.id, // Add the client_id here!
             company_slug: companySlug,
             client_slug: clientSlug,
             email: clientData.email.toLowerCase(),

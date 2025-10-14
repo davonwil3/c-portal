@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Building2, Mail, CheckCircle, AlertCircle } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
+import { getPortalThemeClasses, getContrastTextColor, isLightColor } from "@/lib/color-utils"
+import { getPortalLogoUrl } from "@/lib/storage"
 
 interface CompanyPortalProps {
   params: Promise<{
@@ -22,6 +24,9 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
   const [error, setError] = useState("")
   const [magicLinkSent, setMagicLinkSent] = useState(false)
   const [allowlistError, setAllowlistError] = useState("")
+  const [portalSettings, setPortalSettings] = useState<any>(null)
+  const [brandColor, setBrandColor] = useState('#3C3CFF')
+  const [logoUrl, setLogoUrl] = useState('')
   
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -34,6 +39,11 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
   
   // Get host for domain detection
   const [host, setHost] = useState('')
+  
+  // Dynamic brand color styles and theme classes
+  const themeClasses = getPortalThemeClasses(brandColor)
+  const isLight = isLightColor(brandColor)
+  const textColor = getContrastTextColor(brandColor)
   
   useEffect(() => {
     // Only set host once on mount
@@ -54,6 +64,27 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
   const isCustomDomain = host.includes('.flowtrack.works')
   const displayCompanyName = isCustomDomain ? host.split('.')[0] : formatCompanyName(companySlug)
   
+  // Fetch portal settings for theming
+  useEffect(() => {
+    const fetchPortalSettings = async () => {
+      try {
+        const response = await fetch(`/api/test-portal-data?clientSlug=${clientSlug}&companySlug=${companySlug}&preview=false`)
+        const result = await response.json()
+        
+        if (result.success && result.data.portalSettings) {
+          const settings = result.data.portalSettings
+          setBrandColor(settings.brandColor || '#3C3CFF')
+          setLogoUrl(settings.logoUrl || '')
+          setPortalSettings(settings)
+        }
+      } catch (error) {
+        console.error('Error fetching portal settings:', error)
+      }
+    }
+
+    fetchPortalSettings()
+  }, [companySlug, clientSlug])
+
   // Debug logging
   useEffect(() => {
     console.log('🔍 Portal Debug Info:', {
@@ -125,25 +156,41 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
     setAllowlistError("")
 
     try {
-      // First, get the actual client slug for this email from the allowlist
-      const allowlistResponse = await fetch('/api/client-portal/get-client-slug', {
+      // First, check if a portal exists for this company and client AND if email is authorized
+      const portalCheckResponse = await fetch('/api/client-portal/check-portal-exists', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email,
-          companySlug
+          companySlug,
+          clientSlug,
+          email
         }),
       })
 
-      let actualClientSlug = clientSlug
-      if (allowlistResponse.ok) {
-        const allowlistData = await allowlistResponse.json()
-        if (allowlistData.success && allowlistData.data?.client_slug) {
-          actualClientSlug = allowlistData.data.client_slug
-        }
+      if (!portalCheckResponse.ok) {
+        setError("Portal not found. Please contact your administrator.")
+        toast.error("Portal not found")
+        return
       }
+
+      const portalCheckData = await portalCheckResponse.json()
+      if (!portalCheckData.exists) {
+        setError("Portal not found. Please contact your administrator.")
+        toast.error("Portal not found")
+        return
+      }
+
+      // Check if email is authorized for this portal
+      if (portalCheckData.authorized === false) {
+        setAllowlistError("This email is not authorized to access this portal. Please contact your administrator.")
+        toast.error("Email not authorized for this portal")
+        return
+      }
+
+      // Get the actual client slug from the portal check response
+      const actualClientSlug = portalCheckData.data?.clientSlug || clientSlug
 
       const response = await fetch('/api/client-portal/magic-link', {
         method: 'POST',
@@ -198,7 +245,7 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <Loader2 className="h-8 w-8 animate-spin text-[${brandColor}] mx-auto mb-4" />
           <p className="text-gray-600">Validating magic link...</p>
         </div>
       </div>
@@ -212,7 +259,15 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
           {/* Company Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-4">
-              <Building2 className="h-8 w-8 text-blue-600" />
+              {logoUrl ? (
+                <img 
+                  src={getPortalLogoUrl(logoUrl)} 
+                  alt="Company Logo" 
+                  className="h-8 w-8 object-contain"
+                />
+              ) : (
+                <Building2 className="h-8 w-8 text-[${brandColor}]" />
+              )}
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
               {displayCompanyName}
@@ -241,7 +296,7 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
               <div className="space-y-4">
                 <div className="text-center">
                   <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                    <Mail className="h-8 w-8 text-blue-600" />
+                    <Mail className="h-8 w-8 text-[${brandColor}]" />
                   </div>
                   <p className="text-sm text-gray-600">
                     Can't find the email? Check your spam folder or contact support.
@@ -284,7 +339,15 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
         {/* Company Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-4">
-            <Building2 className="h-8 w-8 text-blue-600" />
+            {logoUrl ? (
+              <img 
+                src={getPortalLogoUrl(logoUrl)} 
+                alt="Company Logo" 
+                className="h-8 w-8 object-contain"
+              />
+            ) : (
+              <Building2 className="h-8 w-8 text-[${brandColor}]" />
+            )}
           </div>
                       <h1 className="text-2xl font-bold text-gray-900 mb-2">
               {displayCompanyName}
@@ -337,7 +400,7 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
               
               <Button
                 type="submit"
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white"
+                className="w-full h-11 bg-[${brandColor}] hover:bg-[${brandColor}CC] text-white"
                 disabled={loading}
               >
                 {loading ? (
@@ -357,7 +420,7 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Need help?{" "}
-                <a href="#" className="text-blue-600 hover:text-blue-700 font-medium">
+                <a href="#" className="text-[${brandColor}] hover:text-blue-700 font-medium">
                   Contact Support
                 </a>
               </p>

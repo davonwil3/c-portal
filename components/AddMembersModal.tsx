@@ -87,6 +87,7 @@ export default function AddMembersModal({
         body: JSON.stringify({
           companySlug,
           clientSlug,
+          clientId, // Pass the clientId to the API
           members: validMembers
         }),
       })

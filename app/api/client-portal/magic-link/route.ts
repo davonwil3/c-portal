@@ -129,19 +129,21 @@ export async function POST(request: NextRequest) {
         )
     }
 
-    // Send magic link email
-    // Import domain configuration
+    // Generate magic link URL
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const isProduction = process.env.NODE_ENV === 'production'
+    
     let magicLink: string
-    try {
-      const { getMagicLinkUrl } = await import('@/lib/domain-config')
-      
-      // Generate magic link with proper domain structure
-      magicLink = getMagicLinkUrl(companySlug, clientSlug, tokenData, process.env.NODE_ENV === 'production')
-    } catch (importError) {
-      console.error('Error importing domain config:', importError)
-      // Fallback to basic URL
-      magicLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/${companySlug}?client=${clientSlug}&token=${tokenData}`
+    if (isProduction) {
+      // Production: Use your custom domain (set PORTAL_DOMAIN env var)
+      const portalDomain = process.env.PORTAL_DOMAIN || 'clientportalhq.com'
+      magicLink = `https://${companySlug}.${clientSlug}.${portalDomain}?token=${tokenData}`
+    } else {
+      // Development: Use localhost with slug structure
+      magicLink = `${baseUrl}/${companySlug}?client=${clientSlug}&token=${tokenData}`
     }
+    
+    console.log('🔗 Generated magic link:', magicLink)
     
     try {
       // Import the email service

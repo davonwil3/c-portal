@@ -159,6 +159,10 @@ export default function FormsPage() {
           setSelectedFormForPreview(form)
           setShowPreviewModal(true)
           break
+        case "submissions":
+          // Navigate to form submissions page
+          router.push(`/dashboard/forms/${form.id}/submissions`)
+          break
         case "edit":
           // Navigate to form builder with form data
           const formData = encodeURIComponent(JSON.stringify({
@@ -196,6 +200,33 @@ export default function FormsPage() {
             f.id === form.id ? { ...f, status: 'draft' as const } : f
           ))
           await loadStats()
+          break
+        case "toggle-status":
+          const newStatus = form.status === 'published' ? 'draft' : 'published'
+          try {
+            const response = await fetch('/api/forms/toggle-status', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ formId: form.id, status: newStatus }),
+            })
+
+            const result = await response.json()
+
+            if (result.success) {
+              toast.success(`Form ${newStatus === 'published' ? 'published' : 'moved to draft'} successfully`)
+              setForms(prev => prev.map(f => 
+                f.id === form.id ? { ...f, status: newStatus as 'draft' | 'published' } : f
+              ))
+              await loadStats()
+            } else {
+              toast.error(`Failed to ${newStatus === 'published' ? 'publish' : 'draft'} form`)
+            }
+          } catch (error) {
+            console.error('Error toggling form status:', error)
+            toast.error('Failed to update form status')
+          }
           break
         case "delete":
           if (confirm(`Are you sure you want to delete "${form.title}"?`)) {
@@ -503,6 +534,13 @@ export default function FormsPage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
+                                handleFormAction("submissions", form)
+                              }}>
+                                <UserCheck className="h-4 w-4 mr-2" />
+                                View Submissions
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
                                 handleFormAction("edit", form)
                               }}>
                                 <Edit className="h-4 w-4 mr-2" />
@@ -515,6 +553,32 @@ export default function FormsPage() {
                                 <Copy className="h-4 w-4 mr-2" />
                                 Duplicate
                               </DropdownMenuItem>
+                              
+                              {/* Toggle Status - only show for draft and published forms */}
+                              {form.status === "draft" && (
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleFormAction("toggle-status", form)
+                                  }}
+                                  className="text-green-600"
+                                >
+                                  <UserCheck className="h-4 w-4 mr-2" />
+                                  Publish
+                                </DropdownMenuItem>
+                              )}
+                              {form.status === "published" && (
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleFormAction("toggle-status", form)
+                                  }}
+                                  className="text-yellow-600"
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Move to Draft
+                                </DropdownMenuItem>
+                              )}
                               
                               {form.status === "archived" ? (
                                 <DropdownMenuItem 

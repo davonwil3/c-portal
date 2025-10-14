@@ -77,6 +77,8 @@ import { getProjectForms, deleteForm, type Form } from "@/lib/forms"
 import { FormPreviewModal } from "@/components/forms/form-preview-modal"
 import { getContracts, type Contract } from "@/lib/contracts"
 import { getInvoicesByProject, updateInvoice, markInvoiceAsPaid, deleteInvoice, type Invoice } from "@/lib/invoices"
+import { getCurrentUser, getUserProfile } from "@/lib/auth"
+import { DashboardMessageChat } from "@/components/messages/dashboard-message-chat"
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { generateContractDocument } from "@/lib/utils"
@@ -94,6 +96,11 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // State for user and account
+  const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
+  const [accountId, setAccountId] = useState<string>('')
 
   // State for modals and forms
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false)
@@ -1106,6 +1113,27 @@ export default function ProjectDetailPage() {
       loadProjectData()
     }
   }, [projectId])
+
+  // Load user and account data
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        if (currentUser) {
+          setUser(currentUser)
+          const profile = await getUserProfile(currentUser.id)
+          if (profile) {
+            setUserProfile(profile)
+            setAccountId(profile.account_id)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error)
+      }
+    }
+
+    loadUserData()
+  }, [])
 
   const handleAddMilestone = async () => {
     if (!newMilestone.title.trim()) {
@@ -2867,196 +2895,24 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="messages" className="mt-0 flex flex-col h-full">
-            <div className="flex-1 bg-white border-0 shadow-sm rounded-2xl flex flex-col overflow-hidden min-h-0">
-              {/* Messages Header */}
-              <div className="border-b border-gray-200 p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <MessageCircle className="h-5 w-5 text-[#3C3CFF]" />
-                    <span className="text-xl font-semibold text-gray-900">Project Messages</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <div className="flex items-center space-x-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span>Online</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Messages Container */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50">
-                {/* Day Divider */}
-                <div className="flex items-center justify-center">
-                  <div className="bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
-                    <span className="text-sm text-gray-600 font-medium">Today</span>
-                  </div>
-                </div>
-
-                {/* System Message */}
-                <div className="flex justify-center">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 max-w-md">
-                    <p className="text-sm text-blue-700 text-center">
-                      <span className="font-medium">Timeline updated:</span> Visual Design milestone marked as in
-                      progress
-                    </p>
-                    <p className="text-xs text-blue-600 text-center mt-1">2 hours ago</p>
-                  </div>
-                </div>
-
-                {/* Client Message */}
-                <div className="flex items-start space-x-3">
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-gray-200 text-gray-700 text-sm font-medium">
-                      {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{client ? `${client.first_name} ${client.last_name}` : 'Client'}</span>
-                      <span className="text-xs text-gray-500">10:30 AM</span>
-                    </div>
-                    <div className="bg-[#F1F2F7] rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                      <p className="text-sm text-gray-800">
-                        Hi team! I just reviewed the wireframes and they look fantastic. I have a few minor suggestions
-                        for the homepage layout. Could we schedule a quick call to discuss?
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* User Message */}
-                <div className="flex items-start space-x-3 justify-end">
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center space-x-2 mb-1 justify-end">
-                      <span className="text-xs text-gray-500">10:45 AM</span>
-                      <span className="text-sm font-medium text-gray-900">You</span>
-                    </div>
-                    <div className="bg-[#3C3CFF] rounded-2xl rounded-tr-md px-4 py-3 shadow-sm">
-                      <p className="text-sm text-white">
-                        Absolutely! I'm glad you like the direction we're heading. Let's schedule a call for tomorrow
-                        afternoon. I'll send you a calendar invite shortly.
-                      </p>
-                    </div>
-                  </div>
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-sm font-medium">YU</AvatarFallback>
-                  </Avatar>
-                </div>
-
-                {/* File Attachment Message */}
-                <div className="flex items-start space-x-3">
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-gray-200 text-gray-700 text-sm font-medium">
-                      {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{client ? `${client.first_name} ${client.last_name}` : 'Client'}</span>
-                      <span className="text-xs text-gray-500">11:15 AM</span>
-                    </div>
-                    <div className="bg-[#F1F2F7] rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                      <p className="text-sm text-gray-800 mb-3">
-                        Here are the brand guidelines and logo files you requested:
-                      </p>
-                      <div className="bg-white rounded-lg border border-gray-200 p-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="text-2xl">📄</div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">Brand_Guidelines_2024.pdf</p>
-                            <p className="text-xs text-gray-500">2.4 MB</p>
-                          </div>
-                          <Button variant="ghost" size="sm" className="text-[#3C3CFF] hover:bg-[#F0F2FF]">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* User Message with Multiple Lines */}
-                <div className="flex items-start space-x-3 justify-end">
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center space-x-2 mb-1 justify-end">
-                      <span className="text-xs text-gray-500">11:20 AM</span>
-                      <span className="text-sm font-medium text-gray-900">You</span>
-                    </div>
-                    <div className="bg-[#3C3CFF] rounded-2xl rounded-tr-md px-4 py-3 shadow-sm">
-                      <p className="text-sm text-white">Perfect! Thank you for sharing the brand guidelines.</p>
-                      <p className="text-sm text-white mt-2">
-                        Our design team will incorporate these into the visual design phase. We'll have the first round
-                        of mockups ready by Friday for your review.
-                      </p>
-                    </div>
-                  </div>
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-sm font-medium">YU</AvatarFallback>
-                  </Avatar>
-                </div>
-
-                {/* New Messages Divider */}
-                <div className="flex items-center justify-center py-2">
-                  <div className="bg-[#3C3CFF] text-white px-4 py-1 rounded-full shadow-sm">
-                    <span className="text-xs font-medium">New messages</span>
-                  </div>
-                </div>
-
-                {/* Recent Client Message */}
-                <div className="flex items-start space-x-3 animate-in fade-in duration-300">
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-gray-200 text-gray-700 text-sm font-medium">
-                      {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{client ? `${client.first_name} ${client.last_name}` : 'Client'}</span>
-                      <span className="text-xs text-gray-500">Just now</span>
-                    </div>
-                    <div className="bg-[#F1F2F7] rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                      <p className="text-sm text-gray-800">
-                        Sounds great! Looking forward to seeing the mockups. The timeline is looking good so far.
-                      </p>
-                    </div>
+            {accountId && project ? (
+              <DashboardMessageChat
+                projectId={project.id}
+                accountId={accountId}
+                projectName={project.name}
+                clientName={client ? `${client.first_name} ${client.last_name}` : undefined}
+                brandColor="#3C3CFF"
+              />
+            ) : (
+              <div className="flex-1 bg-white border-0 shadow-sm rounded-2xl flex flex-col overflow-hidden min-h-0">
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3C3CFF] mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading messages...</p>
                   </div>
                 </div>
               </div>
-
-              {/* Message Input Area */}
-              <div className="border-t border-gray-200 p-4 bg-white">
-                <div className="flex items-end space-x-3">
-                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-                    <Upload className="h-5 w-5" />
-                  </Button>
-                  <div className="flex-1 relative">
-                    <Textarea
-                      placeholder="Type your message..."
-                      className="min-h-[44px] max-h-32 resize-none border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF] rounded-2xl pr-12"
-                      rows={1}
-                    />
-                    <Button
-                      size="sm"
-                      className="absolute right-2 bottom-2 bg-[#3C3CFF] hover:bg-[#2D2DCC] rounded-xl h-8 w-8 p-0"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                        />
-                      </svg>
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                  <span>Press Enter to send, Shift+Enter for new line</span>
-                  <span>Online</span>
-                </div>
-              </div>
-            </div>
+            )}
           </TabsContent>
 
           <TabsContent value="files" className="">

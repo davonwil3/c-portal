@@ -451,7 +451,7 @@ export default function NewContractPage() {
   }
 
   // Save contract to database and optionally send email
-  const handleSaveAndSend = async () => {
+  const handleSaveAndSend = async (saveAsDraft: boolean = false) => {
     if (!documentName.trim()) {
       toast.error("Please enter a document name")
       return
@@ -495,8 +495,7 @@ export default function NewContractPage() {
         contract_type: 'custom' as const,
         client_id: selectedClient || undefined,
         project_id: selectedProject || undefined,
-        source_contract_id: selectedTemplate && selectedTemplate !== "blank" ? selectedTemplate : undefined,
-        status: saveOnly ? ('draft' as const) : ('sent' as const),
+        status: saveAsDraft ? ('draft' as const) : ('awaiting_signature' as const),
         total_value: contractData.paymentType === "fixed" ? parseFloat(contractData.totalAmount) || 0 : 
                     (parseFloat(contractData.hourlyRate) || 0) * (parseFloat(contractData.estimatedHours) || 0),
         currency: 'USD',
@@ -559,25 +558,42 @@ export default function NewContractPage() {
 
       const supabase = createClient()
 
-      // Upload logo to storage if exists
+      // Upload logo to unified storage if exists
       if (contractData.companyLogo) {
         console.log('Uploading company logo...')
         const fileExt = contractData.companyLogo.name.split('.').pop()
         const fileName = `contract-logos/${contract.id}.${fileExt}`
         
-        const { data: logoData, error: uploadError } = await supabase.storage
-          .from('files')
-          .upload(fileName, contractData.companyLogo, {
-            cacheControl: '3600',
-            upsert: false
-          })
+        // Get account and client info for unified storage path
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_id')
+          .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+          .single()
         
-        if (uploadError) {
-          console.error('Error uploading logo:', uploadError)
-          toast.error('Failed to upload company logo')
-        } else {
-          console.log('Logo uploaded successfully:', logoData)
-          toast.success('Company logo uploaded')
+        const { data: contractInfo } = await supabase
+          .from('contracts')
+          .select('client_id')
+          .eq('id', contract.id)
+          .single()
+        
+        if (profile && contractInfo) {
+          const logoPath = `${profile.account_id}/clients/${contractInfo.client_id}/contracts/${contract.id}/logo.${fileExt}`
+          
+          const { data: logoData, error: uploadError } = await supabase.storage
+            .from('client-portal-content')
+            .upload(logoPath, contractData.companyLogo, {
+              cacheControl: '3600',
+              upsert: false
+            })
+          
+          if (uploadError) {
+            console.error('Error uploading logo:', uploadError)
+            toast.error('Failed to upload company logo')
+          } else {
+            console.log('Logo uploaded successfully:', logoData)
+            toast.success('Company logo uploaded')
+          }
         }
       }
 
@@ -589,27 +605,31 @@ export default function NewContractPage() {
       const contractBlob = new Blob([contractDocument], { type: 'text/html' })
       console.log('Contract blob created, size:', contractBlob.size)
       
-      const contractFileName = `contracts/${contract.id}/contract.html`
+      // Get account and client info for unified storage path
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .single()
+      
+      const { data: contractInfo } = await supabase
+        .from('contracts')
+        .select('client_id')
+        .eq('id', contract.id)
+        .single()
+      
+      let contractFileName = ''
+      if (profile && contractInfo) {
+        contractFileName = `${profile.account_id}/clients/${contractInfo.client_id}/contracts/${contract.id}/contract.html`
+      } else {
+        contractFileName = `contracts/${contract.id}/contract.html`
+      }
       console.log('Contract file path:', contractFileName)
       
-      console.log('Uploading contract document to storage...')
-      console.log('Supabase client:', supabase)
-      console.log('Storage bucket check...')
-      
-      // First, let's check if we can list files in the bucket
-      const { data: bucketList, error: listError } = await supabase.storage
-        .from('files')
-        .list('', { limit: 5 })
-      
-      if (listError) {
-        console.error('Error listing bucket contents:', listError)
-        toast.error('Cannot access storage bucket')
-      } else {
-        console.log('Bucket contents:', bucketList)
-      }
+      console.log('Uploading contract document to unified storage...')
       
       const { data: uploadData, error: contractUploadError } = await supabase.storage
-        .from('files')
+        .from('client-portal-content')
         .upload(contractFileName, contractBlob, {
           contentType: 'text/html',
           cacheControl: '3600',
@@ -625,7 +645,7 @@ export default function NewContractPage() {
         toast.error(`Failed to upload contract document: ${contractUploadError.message}`)
       } else {
         console.log('Contract document uploaded successfully:', uploadData)
-        toast.success('Contract document saved to storage')
+        toast.success('Contract document saved to unified storage')
       }
 
       // Update contract with file paths
@@ -2337,7 +2357,20 @@ export default function NewContractPage() {
                   Save as Template
                 </Button>
                 <Button 
-                  onClick={handleSaveAndSend}
+                  variant="outline"
+                  onClick={() => handleSaveAndSend(true)} // true = save as draft
+                  disabled={sending || !documentName.trim()}
+                  className="flex items-center gap-2 bg-transparent"
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save as Draft
+                </Button>
+                <Button 
+                  onClick={() => handleSaveAndSend(false)} // false = save as pending
                   disabled={sending || !documentName.trim()}
                   className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
                 >

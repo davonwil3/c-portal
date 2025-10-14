@@ -250,7 +250,6 @@ export async function createInvoice(invoiceData: Partial<Invoice>): Promise<Invo
   if (error) {
     throw error
   }
-  
   return data
 }
 

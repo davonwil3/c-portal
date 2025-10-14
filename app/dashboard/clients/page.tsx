@@ -63,7 +63,7 @@ import {
 import { getInvoicesByClient } from "@/lib/invoices"
 import { getProjectsByClient } from "@/lib/projects"
 import { getFiles } from "@/lib/files"
-import AddMembersModal from "@/components/AddMembersModal"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
 const tagOptions = ["VIP", "Enterprise", "Startup", "Design", "Marketing", "Retainer", "Completed"]
 
@@ -85,9 +85,6 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   
-  // Add Members modal state
-  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false)
-  const [selectedClientForMembers, setSelectedClientForMembers] = useState<Client | null>(null)
   
   // Additional client data state
   const [clientActivities, setClientActivities] = useState<Record<string, any[]>>({})
@@ -134,6 +131,8 @@ export default function ClientsPage() {
   const loadClients = async () => {
     try {
       setLoading(true)
+      
+      
       const clientsData = await getClients()
       setClients(clientsData)
       
@@ -457,10 +456,6 @@ export default function ClientsPage() {
     }
   }
 
-  const handleAddMembers = (client: Client) => {
-    setSelectedClientForMembers(client)
-    setIsAddMembersOpen(true)
-  }
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -904,15 +899,6 @@ export default function ClientsPage() {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Client
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleAddMembers(client)
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Members
-                              </DropdownMenuItem>
                               {client.portal_url && (
                                 <DropdownMenuItem 
                                   onClick={(e) => {
@@ -1028,15 +1014,6 @@ export default function ClientsPage() {
                               <Edit className="h-4 w-4 mr-2" />
                               Edit Client
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleAddMembers(client)
-                              }}
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Members
-                            </DropdownMenuItem>
                             {client.portal_url && (
                               <DropdownMenuItem 
                                 onClick={(e) => {
@@ -1147,18 +1124,6 @@ export default function ClientsPage() {
                           >
                             <Eye className="h-4 w-4 mr-1" />
                           View
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleAddMembers(client)
-                            }}
-                            className="flex-1 text-green-600 border-green-600 hover:bg-green-50"
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add Members
                           </Button>
                         {client.portal_url && (
                           <Button
@@ -1894,20 +1859,6 @@ export default function ClientsPage() {
           </SheetContent>
         </Sheet>
 
-        {/* Add Members Modal */}
-        {selectedClientForMembers && (
-          <AddMembersModal
-            isOpen={isAddMembersOpen}
-            onClose={() => {
-              setIsAddMembersOpen(false)
-              setSelectedClientForMembers(null)
-            }}
-            clientId={selectedClientForMembers.id}
-            clientName={`${selectedClientForMembers.first_name} ${selectedClientForMembers.last_name}`}
-            companySlug="acme-co" // You'll need to get this from your client data
-            clientSlug={selectedClientForMembers.portal_url || selectedClientForMembers.id}
-          />
-        )}
       </div>
     </DashboardLayout>
   )

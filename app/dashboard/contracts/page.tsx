@@ -186,33 +186,49 @@ export default function ContractsPage() {
       // Create the new contract in the database
       const newContract = await createContract(newContractData)
       
-      // If the original contract has an HTML file, duplicate it in storage
+      // If the original contract has an HTML file, duplicate it in unified storage
       if (contract.contract_html) {
         const supabase = createClient()
         
-        // Download the original file
-        const { data: originalFile, error: downloadError } = await supabase.storage
-          .from('files')
-          .download(contract.contract_html)
+        // Get account and client info for unified storage path
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_id')
+          .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+          .single()
         
-        if (!downloadError && originalFile) {
-          // Generate new filename for the duplicate
-          const fileExtension = contract.contract_html.split('.').pop()
-          const newFileName = `contracts/${newContract.id}/contract.${fileExtension}`
+        const { data: contractInfo } = await supabase
+          .from('contracts')
+          .select('client_id')
+          .eq('id', contract.id)
+          .single()
+        
+        if (profile && contractInfo) {
+          // Download the original file from unified storage
+          const bucket = 'client-portal-content'
+          const { data: originalFile, error: downloadError } = await supabase.storage
+            .from(bucket)
+            .download(contract.contract_html)
           
-          // Upload the duplicate file
-          const { error: uploadError } = await supabase.storage
-            .from('files')
-            .upload(newFileName, originalFile, {
-              contentType: originalFile.type || 'text/html',
-              cacheControl: '3600'
-            })
-          
-          if (!uploadError) {
-            // Update the new contract with the new file path
-            await updateContract(newContract.id, {
-              contract_html: newFileName
-            })
+          if (!downloadError && originalFile) {
+            // Generate new filename for the duplicate using unified storage structure
+            const fileExtension = contract.contract_html.split('.').pop()
+            const newFileName = `${profile.account_id}/clients/${contractInfo.client_id}/contracts/${newContract.id}/contract.${fileExtension}`
+            
+            // Upload the duplicate file to unified storage
+            const { error: uploadError } = await supabase.storage
+              .from('client-portal-content')
+              .upload(newFileName, originalFile, {
+                contentType: originalFile.type || 'text/html',
+                cacheControl: '3600'
+              })
+            
+            if (!uploadError) {
+              // Update the new contract with the new file path
+              await updateContract(newContract.id, {
+                contract_html: newFileName
+              })
+            }
           }
         }
       }

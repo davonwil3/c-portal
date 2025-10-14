@@ -70,17 +70,8 @@ export async function POST(request: NextRequest) {
 
     const session = sessionData[0]
 
-    // Mark the magic link token as used after successful session creation
-    const { error: markUsedError } = await supabaseAdmin.rpc('mark_magic_link_token_used', {
-      p_token: token,
-      p_company_slug: companySlug,
-      p_client_slug: clientSlug
-    })
-
-    if (markUsedError) {
-      console.error('Warning: Could not mark token as used:', markUsedError)
-      // Don't fail the request for this - the session was created successfully
-    }
+    // Note: We no longer mark tokens as used to allow reuse within expiration period
+    // This provides a smoother user experience for accessing the portal
 
     return NextResponse.json({
       success: true,

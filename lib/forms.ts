@@ -895,4 +895,123 @@ export async function getFormTemplate(templateId: string): Promise<{
   }
 
   return data
+}
+
+// =====================================================
+// FORM SUBMISSION FUNCTIONS
+// =====================================================
+
+// Submit a form (for client portal)
+export async function submitForm(
+  formId: string,
+  responses: Record<string, any>,
+  respondentName?: string,
+  respondentEmail?: string
+): Promise<FormSubmission | null> {
+  const supabase = createClient()
+  
+  // Get form details first
+  const form = await getForm(formId)
+  if (!form) {
+    throw new Error('Form not found')
+  }
+
+  // Calculate completion statistics
+  const fields = form.form_structure?.fields || []
+  const totalFields = fields.length
+  const completedFields = Object.keys(responses).length
+  const completionPercentage = totalFields > 0 ? (completedFields / totalFields) * 100 : 0
+
+  // Create submission data
+  const submissionData = {
+    form_id: formId,
+    status: 'completed' as const,
+    respondent_name: respondentName || null,
+    respondent_email: respondentEmail || null,
+    responses: responses,
+    total_fields: totalFields,
+    completed_fields: completedFields,
+    completion_percentage: completionPercentage,
+    started_at: new Date().toISOString(),
+    completed_at: new Date().toISOString(),
+    time_spent: 0 // Could be calculated if we track start time
+  }
+
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .insert(submissionData)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error submitting form:', error)
+    throw error
+  }
+
+  return data
+}
+
+// Get form submissions for a specific form
+export async function getFormSubmissionsForForm(formId: string): Promise<FormSubmission[]> {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('*')
+    .eq('form_id', formId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching form submissions:', error)
+    throw error
+  }
+
+  return data || []
+}
+
+// Check if a form has been submitted by a specific user
+export async function hasFormBeenSubmitted(formId: string, respondentEmail?: string): Promise<boolean> {
+  const supabase = createClient()
+  
+  let query = supabase
+    .from('form_submissions')
+    .select('id')
+    .eq('form_id', formId)
+    .eq('status', 'completed')
+
+  if (respondentEmail) {
+    query = query.eq('respondent_email', respondentEmail)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error checking form submission:', error)
+    return false
+  }
+
+  return (data?.length || 0) > 0
+}
+
+// Get forms for a specific client (for portal)
+export async function getClientForms(clientId: string): Promise<Form[]> {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('forms')
+    .select(`
+      *,
+      clients:clients(first_name, last_name, company),
+      projects:projects(name)
+    `)
+    .eq('client_id', clientId)
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching client forms:', error)
+    throw error
+  }
+
+  return data || []
 } 

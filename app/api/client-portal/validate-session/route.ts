@@ -29,8 +29,13 @@ export async function POST(request: NextRequest) {
     })
 
     if (error || !data || !data[0]?.is_valid) {
+      const errorMessage = data?.[0]?.message || 'Invalid or expired session'
       return NextResponse.json(
-        { success: false, message: data?.[0]?.message || 'Invalid or expired session' },
+        { 
+          success: false, 
+          message: errorMessage,
+          errorType: errorMessage.includes('expired') ? 'expired' : 'invalid'
+        },
         { status: 400 }
       )
     }

@@ -104,7 +104,7 @@ export async function uploadFile(
 
   if (!profile) throw new Error('Profile not found')
 
-  // Generate a unique file path
+  // Generate a unique file path using unified storage structure
   const timestamp = Date.now()
   const fileExtension = file.name.split('.').pop() || ''
   
@@ -117,11 +117,21 @@ export async function uploadFile(
   // Fallback if sanitized filename is empty
   const finalFileName = sanitizedFileName || `file_${timestamp}`
   const fileName = `${timestamp}-${finalFileName}`
-  const filePath = `${profile.account_id}/${fileName}`
+  
+  // Use unified storage structure: {account_id}/clients/{client_id}/files/{project_id?}/
+  let filePath: string
+  if (projectId) {
+    filePath = `${profile.account_id}/clients/${clientId}/files/${projectId}/${fileName}`
+  } else if (clientId) {
+    filePath = `${profile.account_id}/clients/${clientId}/files/general/${fileName}`
+  } else {
+    // Fallback for files without client/project context
+    filePath = `${profile.account_id}/files/general/${fileName}`
+  }
 
-  // Upload file to Supabase Storage
+  // Upload file to unified storage bucket
   const { data: uploadData, error: uploadError } = await supabase.storage
-    .from('files')
+    .from('client-portal-content')
     .upload(filePath, file, {
       cacheControl: '3600',
       upsert: false
@@ -132,15 +142,15 @@ export async function uploadFile(
     throw uploadError
   }
 
-  // Get the public URL for the file
+  // Get the public URL for the file from unified storage
   const { data: { publicUrl } } = supabase.storage
-    .from('files')
+    .from('client-portal-content')
     .getPublicUrl(filePath)
 
   // Create tag objects with name and color
   const tagObjects = (tags || []).map(tagName => ({
     name: tagName,
-    color: tagColors?.[tagName] || getTagColor(tagName)
+    color: tagColors?.[tagName] || '#3B82F6' // Default blue color
   }))
 
   // Create file record in database with tag objects
@@ -150,10 +160,11 @@ export async function uploadFile(
     file_type: fileExtension.toUpperCase(),
     mime_type: file.type,
     storage_path: filePath,
+    storage_bucket: 'client-portal-content',
     file_size: file.size,
-    client_id: clientId || null,
-    project_id: projectId || null,
-    description: description || null,
+    client_id: clientId || undefined,
+    project_id: projectId || undefined,
+    description: description || undefined,
     tags: tagObjects, // Array of tag objects with name and color
   }
 
@@ -191,6 +202,40 @@ export async function getFiles(): Promise<File[]> {
   }
 
   // Tags are already in the files.tags array column, no transformation needed
+  return files || []
+}
+
+// Get files by client ID
+export async function getFilesByClient(clientId: string): Promise<File[]> {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('User not authenticated')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('account_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile) throw new Error('Profile not found')
+
+  const { data: files, error } = await supabase
+    .from('files')
+    .select(`
+      *,
+      clients!files_client_id_fkey(first_name, last_name, company),
+      projects!files_project_id_fkey(name)
+    `)
+    .eq('account_id', profile.account_id)
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching files by client:', error)
+    throw error
+  }
+
   return files || []
 }
 
@@ -304,6 +349,7 @@ export async function createFile(fileData: {
   file_type: string
   mime_type?: string
   storage_path: string
+  storage_bucket?: string
   file_size: number
   client_id?: string
   project_id?: string
@@ -339,6 +385,7 @@ export async function createFile(fileData: {
       file_type: fileData.file_type,
       mime_type: fileData.mime_type || null,
       storage_path: fileData.storage_path,
+      storage_bucket: fileData.storage_bucket || 'client-portal-content',
       file_size: fileData.file_size,
       file_size_formatted: fileSizeFormatted,
       client_id: fileData.client_id || null,
@@ -358,6 +405,10 @@ export async function createFile(fileData: {
   }
 
   console.log('File created successfully:', file) // Debug log
+
+  // NOTE: Uploaded files (PDFs, docs, images) SHOULD be uploaded to vector store for AI semantic search
+  // This should be handled by an API route using lib/ai/vector-store.server.ts (server-only)
+  // Unlike structured data (invoices, forms, contracts), unstructured file content benefits from vector search
 
   // Log activity
   await logFileActivity(file.id, 'upload', 'uploaded file')
@@ -400,10 +451,10 @@ export async function updateFile(fileId: string, updates: Partial<{
 export async function deleteFile(fileId: string): Promise<void> {
   const supabase = createClient()
   
-  // First get the file to get the storage path
+  // First get the file to get the storage path and bucket
   const { data: file, error: fetchError } = await supabase
     .from('files')
-    .select('storage_path')
+    .select('storage_path, storage_bucket')
     .eq('id', fileId)
     .single()
 
@@ -414,8 +465,9 @@ export async function deleteFile(fileId: string): Promise<void> {
 
   // Delete from storage
   if (file?.storage_path) {
+    const bucket = file.storage_bucket || 'client-portal-content'
     const { error: storageError } = await supabase.storage
-      .from('files')
+      .from(bucket)
       .remove([file.storage_path])
 
     if (storageError) {
@@ -572,10 +624,10 @@ export async function addFileComment(fileId: string, content: string, isInternal
 export async function downloadFile(fileId: string): Promise<string | null> {
   const supabase = createClient()
   
-  // Get the file to get the storage path
+  // Get the file to get the storage path and bucket
   const { data: file, error: fetchError } = await supabase
     .from('files')
-    .select('storage_path, name')
+    .select('storage_path, storage_bucket, name')
     .eq('id', fileId)
     .single()
 
@@ -588,9 +640,10 @@ export async function downloadFile(fileId: string): Promise<string | null> {
     throw new Error('File not found or no storage path')
   }
 
-  // Get the download URL
+  // Get the download URL from unified storage
+  const bucket = file.storage_bucket || 'client-portal-content'
   const { data: { publicUrl } } = supabase.storage
-    .from('files')
+    .from(bucket)
     .getPublicUrl(file.storage_path)
 
   // Log download activity
@@ -605,7 +658,7 @@ export async function getFileUrl(fileId: string): Promise<string | null> {
   
   const { data: file, error } = await supabase
     .from('files')
-    .select('storage_path')
+    .select('storage_path, storage_bucket')
     .eq('id', fileId)
     .single()
 
@@ -614,8 +667,9 @@ export async function getFileUrl(fileId: string): Promise<string | null> {
     return null
   }
 
+  const bucket = file.storage_bucket || 'client-portal-content'
   const { data: { publicUrl } } = supabase.storage
-    .from('files')
+    .from(bucket)
     .getPublicUrl(file.storage_path)
 
   return publicUrl
