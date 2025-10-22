@@ -8,17 +8,21 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Home,
   Users,
   Package,
   CreditCard,
-  FileText,
-  FolderOpen,
   Settings,
   HelpCircle,
-  Bot,
-  FileSignature,
   Globe,
+  Search,
+  BarChart3,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -26,14 +30,10 @@ import { usePathname } from "next/navigation"
 // Navigation items
 const navigationItems = [
   { title: "Home", icon: Home, href: "/dashboard" },
-  { title: "Clients", icon: Users, href: "/dashboard/clients" },
-  { title: "Projects", icon: Package, href: "/dashboard/projects" },
-  { title: "Portals", icon: Globe, href: "/dashboard/portals" },
-  { title: "Files", icon: FolderOpen, href: "/dashboard/files" },
-  { title: "Forms", icon: FileText, href: "/dashboard/forms" },
-  { title: "Contracts", icon: FileSignature, href: "/dashboard/contracts" },
-  { title: "Invoicing", icon: CreditCard, href: "/dashboard/invoicing" },
-  { title: "AI Assistant", icon: Bot, href: "/dashboard/ai-assistant" },
+  { title: "Client Workflow", icon: Users, href: "/dashboard/workflow" },
+  { title: "Find Clients", icon: Search, href: "/dashboard/leads" },
+  { title: "Billing", icon: CreditCard, href: "/dashboard/billing" },
+  { title: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
   { title: "Settings", icon: Settings, href: "/dashboard/settings" },
   { title: "Team", icon: Users, href: "/dashboard/team", planRequired: "agency" },
   { title: "Help & Docs", icon: HelpCircle, href: "/dashboard/help" },
@@ -44,17 +44,10 @@ export function AppSidebar() {
   const userPlan = "pro" // This would come from user context/API
 
   return (
-    <Sidebar className="border-r border-gray-200">
-      <SidebarHeader className="border-b border-gray-200 p-6">
-        <Link href="/dashboard" className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-[#3C3CFF] rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">C</span>
-          </div>
-          <span className="text-xl font-bold text-gray-900 group-data-[collapsible=icon]:hidden">ClientPortalHQ</span>
-        </Link>
-      </SidebarHeader>
-      <SidebarContent className="p-4">
-        <SidebarMenu className="space-y-2">
+    <TooltipProvider delayDuration={300}>
+      <div className="fixed left-0 top-20 w-16 bg-[#3C3CFF] rounded-r-3xl flex flex-col items-center py-8 space-y-6 shadow-xl z-50">
+        {/* Navigation Items */}
+        <div className="flex flex-col space-y-4">
           {navigationItems.map((item) => {
             // Hide team item if not on agency plan
             if (item.planRequired === "agency" && userPlan !== "agency") {
@@ -64,22 +57,27 @@ export function AppSidebar() {
             const isActive = pathname === item.href
 
             return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                  className="w-full justify-start px-3 py-2.5 text-gray-700 hover:bg-[#F0F2FF] hover:text-[#3C3CFF] data-[active=true]:bg-[#F0F2FF] data-[active=true]:text-[#3C3CFF] data-[active=true]:font-medium rounded-xl transition-all duration-200"
-                >
-                  <Link href={item.href} className="flex items-center space-x-3">
+              <Tooltip key={item.title}>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 ${
+                      isActive 
+                        ? 'bg-white text-[#3C3CFF] shadow-md' 
+                        : 'text-white/80 hover:bg-white/20 hover:text-white'
+                    }`}
+                  >
                     <item.icon className="h-5 w-5" />
-                    <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                   </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-gray-900 text-white border-gray-700 shadow-lg">
+                  <p className="font-medium">{item.title}</p>
+                </TooltipContent>
+              </Tooltip>
             )
           })}
-        </SidebarMenu>
-      </SidebarContent>
-    </Sidebar>
+        </div>
+      </div>
+    </TooltipProvider>
   )
 }

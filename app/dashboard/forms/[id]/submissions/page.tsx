@@ -18,6 +18,7 @@ export default function FormSubmissionsPage() {
   const [form, setForm] = useState<any>(null)
   const [submissions, setSubmissions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [projectId, setProjectId] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -30,6 +31,7 @@ export default function FormSubmissionsPage() {
       // Load form details
       const formData = await getForm(formId)
       setForm(formData)
+      setProjectId(formData.project_id)
 
       // Load submissions
       const submissionsData = await getFormSubmissionsForForm(formId)
@@ -69,8 +71,8 @@ export default function FormSubmissionsPage() {
         <div className="text-center py-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Form Not Found</h2>
           <p className="text-gray-600 mb-4">The form you're looking for doesn't exist.</p>
-          <Button onClick={() => router.push('/dashboard/forms')}>
-            Back to Forms
+          <Button onClick={() => router.push(projectId ? `/dashboard/projects/${projectId}` : '/dashboard/forms')}>
+            {projectId ? 'Back to Project' : 'Back to Forms'}
           </Button>
         </div>
       </DashboardLayout>
@@ -85,10 +87,10 @@ export default function FormSubmissionsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push('/dashboard/forms')}
+            onClick={() => router.push(projectId ? `/dashboard/projects/${projectId}` : '/dashboard/forms')}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Forms
+            {projectId ? 'Back to Project' : 'Back to Forms'}
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{form.title} - Submission</h1>

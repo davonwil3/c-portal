@@ -265,6 +265,8 @@ export async function updateInvoice(id: string, updates: Partial<Invoice>): Prom
 
   if (!profile?.account_id) throw new Error('No account found')
 
+  console.log('Updating invoice:', id, 'with updates:', updates)
+
   const { data, error } = await supabase
     .from('invoices')
     .update(updates)
@@ -273,7 +275,12 @@ export async function updateInvoice(id: string, updates: Partial<Invoice>): Prom
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('Supabase update error:', error)
+    throw new Error(`Database error: ${error.message}`)
+  }
+  
+  console.log('Invoice updated successfully:', data)
   return data
 }
 
@@ -343,19 +350,53 @@ export async function markInvoiceAsPaid(id: string): Promise<Invoice> {
 
   if (!profile?.account_id) throw new Error('No account found')
 
-  const { data, error } = await supabase
+  console.log('Updating invoice:', id, 'for account:', profile.account_id)
+
+  // Use RPC function to bypass triggers
+  const { data, error } = await supabase.rpc('safe_update_invoice', {
+    invoice_id: id,
+    new_status: 'paid',
+    paid_date_value: new Date().toISOString()
+  })
+
+  if (error) {
+    console.error('RPC error:', error)
+    // Fallback to direct update
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('invoices')
+      .update({
+        status: 'paid',
+        paid_date: new Date().toISOString()
+      })
+      .eq('id', id)
+      .eq('account_id', profile.account_id)
+      .select()
+      .single()
+
+    if (fallbackError) {
+      console.error('Fallback error:', fallbackError)
+      throw new Error(`Database error: ${fallbackError.message}`)
+    }
+    
+    console.log('Invoice updated via fallback:', fallbackData)
+    return fallbackData
+  }
+  
+  // Get the updated invoice
+  const { data: updatedInvoice, error: fetchError } = await supabase
     .from('invoices')
-    .update({
-      status: 'paid',
-      paid_date: new Date().toISOString()
-    })
+    .select('*')
     .eq('id', id)
     .eq('account_id', profile.account_id)
-    .select()
     .single()
 
-  if (error) throw error
-  return data
+  if (fetchError) {
+    console.error('Fetch error:', fetchError)
+    throw new Error(`Database error: ${fetchError.message}`)
+  }
+  
+  console.log('Invoice updated successfully:', updatedInvoice)
+  return updatedInvoice
 }
 
 export async function getInvoicesByProject(projectId: string): Promise<Invoice[]> {

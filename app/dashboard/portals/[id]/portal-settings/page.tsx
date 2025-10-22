@@ -250,18 +250,22 @@ export default function PortalSettingsPage() {
   }
 
   // Background handlers
-  const handleBackgroundColorChange = async (color: string) => {
+  const handleBackgroundColorChange = (color: string) => {
     setBackgroundColor(color)
     setCustomBackgroundColor("")
     setUseBackgroundImage(false) // Switch to solid color
-    await saveBackgroundSettings('') // Save with empty image URL
+    setBackgroundImageUrl('') // Clear background image URL
+    setBackgroundImagePreview(null) // Clear preview
+    setHasChanges(true) // Show save button
   }
 
-  const handleCustomBackgroundColorChange = async (color: string) => {
+  const handleCustomBackgroundColorChange = (color: string) => {
     setCustomBackgroundColor(color)
     setBackgroundColor(color)
     setUseBackgroundImage(false) // Switch to solid color
-    await saveBackgroundSettings('') // Save with empty image URL
+    setBackgroundImageUrl('') // Clear background image URL
+    setBackgroundImagePreview(null) // Clear preview
+    setHasChanges(true) // Show save button
   }
 
   const handleBackgroundImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -364,11 +368,31 @@ export default function PortalSettingsPage() {
   }
 
   const handleAddEmail = () => {
-    if (newEmail && !inviteEmails.includes(newEmail)) {
-      setInviteEmails([...inviteEmails, newEmail])
-      setNewEmail("")
-      setHasChanges(true)
+    if (!newEmail) return
+
+    const emailLower = newEmail.toLowerCase().trim()
+
+    // Check if email is already in the invite list
+    if (inviteEmails.includes(emailLower)) {
+      toast.error('This email is already in the invite list')
+      return
     }
+
+    // Check if email is already in the allowlist members
+    const isAlreadyMember = allowlistMembers.some(member => 
+      member.email.toLowerCase() === emailLower
+    )
+
+    if (isAlreadyMember) {
+      toast.error('This email is already a member of this portal')
+      return
+    }
+
+    // Add the email
+    setInviteEmails([...inviteEmails, emailLower])
+    setNewEmail("")
+    setHasChanges(true)
+    toast.success('Email added to invite list')
   }
 
   const handleRemoveEmail = (email: string) => {
@@ -850,13 +874,14 @@ export default function PortalSettingsPage() {
                     <Switch
                       id="useBackgroundImage"
                       checked={useBackgroundImage}
-                      onCheckedChange={async (checked) => {
+                      onCheckedChange={(checked) => {
                         setUseBackgroundImage(checked)
-                        if (checked && backgroundImageUrl) {
-                          await saveBackgroundSettings(backgroundImageUrl)
-                        } else {
-                          await saveBackgroundSettings('')
+                        if (!checked) {
+                          // Switch to solid color - clear image
+                          setBackgroundImageUrl('')
+                          setBackgroundImagePreview(null)
                         }
+                        setHasChanges(true) // Show save button
                       }}
                     />
                     <Label htmlFor="useBackgroundImage" className="text-sm">
@@ -867,11 +892,14 @@ export default function PortalSettingsPage() {
                     <Switch
                       id="useSolidColor"
                       checked={!useBackgroundImage}
-                      onCheckedChange={async (checked) => {
+                      onCheckedChange={(checked) => {
                         setUseBackgroundImage(!checked)
                         if (!checked) {
-                          await saveBackgroundSettings('')
+                          // Switch to solid color - clear image and show save button
+                          setBackgroundImageUrl('')
+                          setBackgroundImagePreview(null)
                         }
+                        setHasChanges(true) // Show save button
                       }}
                     />
                     <Label htmlFor="useSolidColor" className="text-sm">

@@ -62,7 +62,7 @@ export default function SettingsPage() {
   ]
 
   return (
-    <DashboardLayout title="Settings" subtitle="Manage your account and portal preferences">
+    <DashboardLayout>
       <div className="max-w-6xl mx-auto">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:grid-cols-none lg:flex">

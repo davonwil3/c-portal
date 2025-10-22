@@ -4,10 +4,10 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Bell, Moon, Sun, LogOut, User, Settings } from "lucide-react"
 import { signOut } from "@/lib/auth"
 import { toast } from "sonner"
+import Image from "next/image"
 
 interface DashboardHeaderProps {
   title?: string
@@ -40,7 +40,16 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-sm border-b border-gray-200">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-4">
-          <SidebarTrigger className="text-gray-600 hover:text-gray-900" />
+          <div className="flex items-center space-x-3">
+            <Image 
+              src="/jolixlogo.png" 
+              alt="Jolix Logo" 
+              width={48} 
+              height={48}
+              className="w-12 h-12"
+            />
+            <span className="text-2xl font-bold text-gray-900">Jolix</span>
+          </div>
           {(title || subtitle) && (
             <div className="hidden md:block">
               {title && <h1 className="text-2xl font-bold text-gray-900">{title}</h1>}

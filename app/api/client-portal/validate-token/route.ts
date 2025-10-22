@@ -37,21 +37,47 @@ export async function POST(request: NextRequest) {
 
     const email = validationData[0].email
 
-    // Get user info from allowlist - use flexible logic like the magic link endpoint
-    const { data: allowlistData, error: allowlistError } = await supabaseAdmin
+    // Get user info from allowlist - find by email and account
+    // First, find the account by company slug
+    const { data: accountData, error: accountError } = await supabaseAdmin
+      .from('accounts')
+      .select('id, company_name')
+      .ilike('company_name', `%${companySlug.replace(/-/g, '%')}%`)
+      .single()
+
+    if (accountError || !accountData) {
+      console.log('Company not found for slug:', companySlug)
+      return NextResponse.json(
+        { success: false, message: 'Company not found' },
+        { status: 404 }
+      )
+    }
+
+    // Find allowlist entries for this email and account
+    const { data: allowlistEntries, error: allowlistError } = await supabaseAdmin
       .from('client_allowlist')
       .select('email, name, role, company_slug, client_slug')
       .eq('email', email)
+      .eq('account_id', accountData.id)
       .eq('is_active', true)
-      .or(`company_slug.eq.${companySlug},client_slug.eq.${clientSlug}`)
-      .maybeSingle()
 
-    if (allowlistError || !allowlistData) {
+    if (allowlistError) {
+      console.error('Allowlist error:', allowlistError)
+      return NextResponse.json(
+        { success: false, message: 'Database error checking allowlist' },
+        { status: 500 }
+      )
+    }
+
+    if (!allowlistEntries || allowlistEntries.length === 0) {
       return NextResponse.json(
         { success: false, message: 'User not found in allowlist' },
         { status: 404 }
       )
     }
+
+    // Use the first allowlist entry if multiple exist
+    const allowlistData = allowlistEntries[0]
 
     // Create session
     const { data: sessionData, error: sessionError } = await supabaseAdmin.rpc('create_client_session', {

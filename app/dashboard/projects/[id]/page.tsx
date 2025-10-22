@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
 import {
   ChevronRight,
   Edit,
@@ -33,20 +34,23 @@ import {
   ChevronUp,
   Send,
   AlertCircle,
+  RefreshCw,
   Copy,
   Crown,
   Loader2,
   ArrowLeft,
   Users,
   CreditCard,
-  TrendingUp,
   Trash2,
   XCircle,
   X,
-  CheckSquare,
   Star,
   AlertTriangle,
-
+  Clipboard,
+  FileSignature,
+  FolderOpen,
+  DollarSign,
+  Activity,
 } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -73,7 +77,7 @@ import {
 } from "@/lib/projects"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getFiles, uploadFile, downloadFile, getFileUrl, approveFile, rejectFile, deleteFile, getFileComments, addFileComment, updateFile, type File } from "@/lib/files"
-import { getProjectForms, deleteForm, type Form } from "@/lib/forms"
+import { getProjectForms, deleteForm, getFormTemplates, type Form } from "@/lib/forms"
 import { FormPreviewModal } from "@/components/forms/form-preview-modal"
 import { getContracts, type Contract } from "@/lib/contracts"
 import { getInvoicesByProject, updateInvoice, markInvoiceAsPaid, deleteInvoice, type Invoice } from "@/lib/invoices"
@@ -81,7 +85,8 @@ import { getCurrentUser, getUserProfile } from "@/lib/auth"
 import { DashboardMessageChat } from "@/components/messages/dashboard-message-chat"
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { generateContractDocument } from "@/lib/utils"
+import { SignatureModal } from "@/components/ui/signature-modal"
+import { DashboardLayout } from "@/components/dashboard/layout"
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -156,6 +161,7 @@ export default function ProjectDetailPage() {
   const [newTag, setNewTag] = useState("")
   const [newTagColor, setNewTagColor] = useState("#3B82F6")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showClientFilesOnly, setShowClientFilesOnly] = useState(false)
 
   // Forms state
   const [projectForms, setProjectForms] = useState<Form[]>([])
@@ -167,6 +173,11 @@ export default function ProjectDetailPage() {
   // Form preview modal state
   const [showFormPreview, setShowFormPreview] = useState(false)
   const [previewForm, setPreviewForm] = useState<Form | null>(null)
+
+  // Form template selection modal state
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [formTemplates, setFormTemplates] = useState<any[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
 
   // File viewer modal state
   const [selectedFileForView, setSelectedFileForView] = useState<File | null>(null)
@@ -187,6 +198,10 @@ export default function ProjectDetailPage() {
   const [loadingContracts, setLoadingContracts] = useState(false)
   const [deletingContract, setDeletingContract] = useState<string | null>(null)
 
+  // Signature modal state
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false)
+  const [contractToSign, setContractToSign] = useState<Contract | null>(null)
+
   // State for invoices
   const [projectInvoices, setProjectInvoices] = useState<Invoice[]>([])
   const [loadingInvoices, setLoadingInvoices] = useState(false)
@@ -198,6 +213,118 @@ export default function ProjectDetailPage() {
   const [changingStatusInvoice, setChangingStatusInvoice] = useState<Invoice | null>(null)
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null)
+
+  // State for activities
+  const [projectActivities, setProjectActivities] = useState<any[]>([])
+  const [loadingActivities, setLoadingActivities] = useState(false)
+
+  // Helper function to format activity time
+  const formatActivityTime = (timestamp: string) => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+    
+    if (diffInHours < 1) return 'Just now'
+    if (diffInHours < 24) return `${diffInHours}h ago`
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`
+    return date.toLocaleDateString()
+  }
+
+  // Helper function to get activity icon
+  const getActivityIcon = (activityType: string, sourceTable: string) => {
+    switch (sourceTable) {
+      case 'project_activities':
+        switch (activityType) {
+          case 'milestone': return <Target className="h-4 w-4" />
+          case 'task': return <CheckCircle className="h-4 w-4" />
+          case 'file': return <FileText className="h-4 w-4" />
+          case 'message': return <MessageCircle className="h-4 w-4" />
+          case 'status_change': return <Edit className="h-4 w-4" />
+          default: return <Circle className="h-4 w-4" />
+        }
+      case 'contract_activities':
+        switch (activityType) {
+          case 'created': return <FileText className="h-4 w-4" />
+          case 'sent': return <ExternalLink className="h-4 w-4" />
+          case 'signed': return <CheckCircle className="h-4 w-4" />
+          case 'declined': return <XCircle className="h-4 w-4" />
+          default: return <FileText className="h-4 w-4" />
+        }
+      case 'invoice_activities':
+        switch (activityType) {
+          case 'created': return <FileText className="h-4 w-4" />
+          case 'sent': return <ExternalLink className="h-4 w-4" />
+          case 'paid': return <CheckCircle className="h-4 w-4" />
+          case 'overdue': return <Clock className="h-4 w-4" />
+          default: return <FileText className="h-4 w-4" />
+        }
+      case 'file_activities':
+        switch (activityType) {
+          case 'upload': return <Upload className="h-4 w-4" />
+          case 'download': return <Download className="h-4 w-4" />
+          case 'approve': return <CheckCircle className="h-4 w-4" />
+          case 'reject': return <XCircle className="h-4 w-4" />
+          default: return <FileText className="h-4 w-4" />
+        }
+      case 'form_activities':
+        switch (activityType) {
+          case 'created': return <FileText className="h-4 w-4" />
+          case 'submitted': return <CheckCircle className="h-4 w-4" />
+          case 'viewed': return <Eye className="h-4 w-4" />
+          default: return <FileText className="h-4 w-4" />
+        }
+      default:
+        return <Circle className="h-4 w-4" />
+    }
+  }
+
+  // Helper function to get activity color
+  const getActivityColor = (activityType: string, sourceTable: string) => {
+    switch (sourceTable) {
+      case 'project_activities':
+        switch (activityType) {
+          case 'milestone': return 'text-blue-600 bg-blue-100'
+          case 'task': return 'text-green-600 bg-green-100'
+          case 'file': return 'text-purple-600 bg-purple-100'
+          case 'message': return 'text-orange-600 bg-orange-100'
+          case 'status_change': return 'text-gray-600 bg-gray-100'
+          default: return 'text-gray-600 bg-gray-100'
+        }
+      case 'contract_activities':
+        switch (activityType) {
+          case 'created': return 'text-blue-600 bg-blue-100'
+          case 'sent': return 'text-yellow-600 bg-yellow-100'
+          case 'signed': return 'text-green-600 bg-green-100'
+          case 'declined': return 'text-red-600 bg-red-100'
+          default: return 'text-gray-600 bg-gray-100'
+        }
+      case 'invoice_activities':
+        switch (activityType) {
+          case 'created': return 'text-blue-600 bg-blue-100'
+          case 'sent': return 'text-yellow-600 bg-yellow-100'
+          case 'paid': return 'text-green-600 bg-green-100'
+          case 'overdue': return 'text-red-600 bg-red-100'
+          default: return 'text-gray-600 bg-gray-100'
+        }
+      case 'file_activities':
+        switch (activityType) {
+          case 'upload': return 'text-blue-600 bg-blue-100'
+          case 'download': return 'text-purple-600 bg-purple-100'
+          case 'approve': return 'text-green-600 bg-green-100'
+          case 'reject': return 'text-red-600 bg-red-100'
+          default: return 'text-gray-600 bg-gray-100'
+        }
+      case 'form_activities':
+        switch (activityType) {
+          case 'created': return 'text-blue-600 bg-blue-100'
+          case 'submitted': return 'text-green-600 bg-green-100'
+          case 'viewed': return 'text-purple-600 bg-purple-100'
+          default: return 'text-gray-600 bg-gray-100'
+        }
+      default:
+        return 'text-gray-600 bg-gray-100'
+    }
+  }
 
   // Helper functions
   const getStatusColor = (status: string) => {
@@ -652,6 +779,34 @@ export default function ProjectDetailPage() {
     `
   }
 
+  // Load project activities
+  const loadProjectActivities = async () => {
+    if (!projectId) return
+    
+    setLoadingActivities(true)
+    try {
+      console.log('Loading project activities for project:', projectId)
+      const response = await fetch(`/api/projects/${projectId}/activities`)
+      console.log('Activity API response status:', response.status)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Activities loaded:', data.activities?.length || 0, 'activities')
+        console.log('Activities data:', data.activities)
+        setProjectActivities(data.activities || [])
+      } else {
+        const errorText = await response.text()
+        console.error('Failed to load project activities:', response.status, errorText)
+      }
+    } catch (error) {
+      console.error('Error loading project activities:', error)
+    } finally {
+      setLoadingActivities(false)
+    }
+  }
+
+  // No auto-refresh - only refresh when there's new activity
+
   // Load project data
   const loadProjectData = async () => {
     try {
@@ -973,7 +1128,22 @@ export default function ProjectDetailPage() {
   const handleMarkAsPaid = async (invoiceId: string) => {
     try {
       setMarkingAsPaid(invoiceId)
-      await markInvoiceAsPaid(invoiceId)
+      console.log('Attempting to mark invoice as paid:', invoiceId)
+      
+      // Try the specific markInvoiceAsPaid function first
+      let result
+      try {
+        result = await markInvoiceAsPaid(invoiceId)
+        console.log('Invoice marked as paid successfully:', result)
+      } catch (markError) {
+        console.log('markInvoiceAsPaid failed, trying updateInvoice:', markError)
+        // Fallback to updateInvoice if markInvoiceAsPaid fails
+        result = await updateInvoice(invoiceId, { 
+          status: 'paid', 
+          paid_date: new Date().toISOString() 
+        })
+        console.log('Invoice updated via fallback:', result)
+      }
       
       // Update local state instead of reloading
       setProjectInvoices(prevInvoices => 
@@ -985,9 +1155,56 @@ export default function ProjectDetailPage() {
       )
       
       toast.success('Invoice marked as paid successfully')
+      
+      // Log invoice payment activity
+      try {
+        const invoice = projectInvoices.find(i => i.id === invoiceId)
+        console.log('Logging invoice payment activity:', {
+          type: 'invoice',
+          action: 'marked invoice as paid',
+          projectId: projectId,
+          metadata: { 
+            invoice_number: invoice?.invoice_number,
+            invoice_id: invoiceId,
+            amount: invoice?.total_amount
+          }
+        })
+        
+        const activityResponse = await fetch('/api/log-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'invoice',
+            action: 'marked invoice as paid',
+            projectId: projectId,
+            metadata: { 
+              invoice_number: invoice?.invoice_number,
+              invoice_id: invoiceId,
+              amount: invoice?.total_amount
+            }
+          })
+        })
+        
+        if (activityResponse.ok) {
+          const activityData = await activityResponse.json()
+          console.log('Activity logged successfully:', activityData)
+        } else {
+          console.error('Failed to log activity:', await activityResponse.text())
+        }
+      } catch (error) {
+        console.error('Failed to log invoice payment activity:', error)
+      }
+      
+      // Refresh activities after logging
+      loadProjectActivities()
     } catch (error) {
       console.error('Error marking invoice as paid:', error)
-      toast.error('Failed to mark invoice as paid')
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        error: error
+      })
+      toast.error(`Failed to mark invoice as paid: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setMarkingAsPaid(null)
     }
@@ -1099,6 +1316,27 @@ export default function ProjectDetailPage() {
         // Remove from local state
         setProjectContracts((prev: Contract[]) => prev.filter((c: Contract) => c.id !== contractId))
         toast.success('Contract deleted successfully')
+        
+        // Log contract deletion activity
+        try {
+          const contract = projectContracts.find(c => c.id === contractId)
+          await fetch('/api/log-activity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'contract',
+              action: 'deleted contract',
+              projectId: projectId,
+              metadata: { 
+                contract_name: contract?.name,
+                contract_id: contractId
+              }
+            })
+          })
+        } catch (error) {
+          console.error('Failed to log contract deletion activity:', error)
+        }
+        loadProjectActivities()
       } catch (error) {
         console.error('Error deleting contract:', error)
         toast.error('Failed to delete contract')
@@ -1108,9 +1346,175 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Handle contract signing
+  const handleSignContract = (contract: Contract) => {
+    setContractToSign(contract)
+    setIsSignatureModalOpen(true)
+  }
+
+  const handleSignatureSave = async (signatureData: string) => {
+    if (!contractToSign) return
+
+    try {
+      const response = await fetch('/api/contracts/sign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: contractToSign.id,
+          signatureData,
+          clientId: null, // No clientId means this is a user signature
+          projectId: project?.id
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update the contract in local state
+        setProjectContracts(prev => 
+          prev.map(contract => {
+            if (contract.id === contractToSign.id) {
+              const updatedContract = { 
+                ...contract, 
+                user_signature_data: signatureData, 
+                user_signature_status: 'signed',
+                user_signed_at: new Date().toISOString()
+              }
+              
+              // Determine the new status based on existing client signature
+              if (contract.client_signature_status === 'signed') {
+                updatedContract.status = 'signed'
+                updatedContract.signature_status = 'signed'
+                updatedContract.signed_at = new Date().toISOString()
+              } else {
+                updatedContract.status = 'partially_signed'
+                updatedContract.signature_status = 'signed'
+                updatedContract.signed_at = new Date().toISOString()
+              }
+              
+              return updatedContract
+            }
+            return contract
+          })
+        )
+        
+        // Close modal
+        setIsSignatureModalOpen(false)
+        
+        // Show success message
+        toast.success('Contract signed successfully!')
+      } else {
+        throw new Error(result.error || 'Failed to sign contract')
+      }
+    } catch (error) {
+      console.error('Error signing contract:', error)
+      toast.error('Failed to sign contract. Please try again.')
+    }
+  }
+
+  // Handle contract PDF download
+  const handleDownloadContractPDF = async (contract: Contract) => {
+    try {
+      setDownloadingPDF(contract.id)
+      
+      // Create a temporary div with the contract content
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'absolute'
+      tempDiv.style.left = '-9999px'
+      tempDiv.style.top = '-9999px'
+      tempDiv.style.width = '800px'
+      tempDiv.style.padding = '40px'
+      tempDiv.style.backgroundColor = 'white'
+      tempDiv.style.fontFamily = 'Arial, sans-serif'
+      
+      // Generate contract HTML content
+      const contractContent = contract.contract_content || {}
+      const htmlContent = `
+        <div style="max-width: 800px; margin: 0 auto; padding: 40px; font-family: Arial, sans-serif; line-height: 1.6;">
+          <div style="text-align: center; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px;">
+            <h1 style="color: #333; margin: 0; font-size: 28px;">${contract.name}</h1>
+            <p style="color: #666; margin: 10px 0 0 0; font-size: 16px;">Contract Agreement</p>
+          </div>
+          
+          <div style="margin-bottom: 30px;">
+            <h2 style="color: #333; font-size: 20px; margin-bottom: 15px;">Contract Details</h2>
+            <p><strong>Client:</strong> ${contractContent.clientName || 'N/A'}</p>
+            <p><strong>Project:</strong> ${contractContent.projectName || 'N/A'}</p>
+            <p><strong>Start Date:</strong> ${contractContent.startDate || 'N/A'}</p>
+            <p><strong>End Date:</strong> ${contractContent.endDate || 'N/A'}</p>
+            <p><strong>Amount:</strong> $${contractContent.totalAmount || '0'}</p>
+          </div>
+          
+          <div style="margin-bottom: 30px;">
+            <h2 style="color: #333; font-size: 20px; margin-bottom: 15px;">Terms and Conditions</h2>
+            <p>${contractContent.terms || 'Standard terms and conditions apply.'}</p>
+          </div>
+          
+          <div style="margin-top: 50px; border-top: 1px solid #ccc; padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between;">
+              <div style="width: 45%;">
+                <p style="border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px;">Client Signature</p>
+                <p style="margin-top: 40px;">Date: _______________</p>
+              </div>
+              <div style="width: 45%;">
+                <p style="border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px;">Company Signature</p>
+                <p style="margin-top: 40px;">Date: _______________</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+      
+      tempDiv.innerHTML = htmlContent
+      document.body.appendChild(tempDiv)
+      
+      // Generate PDF
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true
+      })
+      
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 295
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      
+      let position = 0
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      // Clean up
+      document.body.removeChild(tempDiv)
+      
+      // Download PDF
+      pdf.save(`${contract.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_contract.pdf`)
+      
+      toast.success('Contract PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error generating contract PDF:', error)
+      toast.error('Failed to generate contract PDF')
+    } finally {
+      setDownloadingPDF(null)
+    }
+  }
+
   useEffect(() => {
     if (projectId) {
       loadProjectData()
+      loadProjectActivities()
     }
   }, [projectId])
 
@@ -1593,6 +1997,29 @@ export default function ProjectDetailPage() {
 
       // Reload project data to get updated files
       await loadProjectData()
+      
+      // Log file upload activity (only once per upload session)
+      try {
+        await fetch('/api/log-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'file',
+            action: `uploaded ${selectedFilesForUpload.length} file${selectedFilesForUpload.length > 1 ? 's' : ''}`,
+            projectId: projectId,
+            metadata: {
+              file_count: selectedFilesForUpload.length,
+              file_names: selectedFilesForUpload.map(f => f.name),
+              upload_session: Date.now() // Unique identifier for this upload session
+            }
+          })
+        })
+      } catch (error) {
+        console.error('Failed to log file upload activity:', error)
+      }
+      
+      // Refresh activities immediately
+      loadProjectActivities()
     } catch (error) {
       console.error('Error uploading files:', error)
       toast.error('Failed to upload files')
@@ -1684,22 +2111,90 @@ export default function ProjectDetailPage() {
           await approveFile(file.id)
           toast.success('File approved successfully')
           await loadProjectData()
+          
+          // Log file approval activity
+          try {
+            await fetch('/api/log-activity', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'file',
+                action: 'approved file',
+                projectId: projectId,
+                metadata: { file_name: file.name, file_id: file.id }
+              })
+            })
+          } catch (error) {
+            console.error('Failed to log file approval activity:', error)
+          }
+          loadProjectActivities()
           break
         case "reject":
           await rejectFile(file.id)
           toast.success('File rejected successfully')
           await loadProjectData()
+          
+          // Log file rejection activity
+          try {
+            await fetch('/api/log-activity', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'file',
+                action: 'rejected file',
+                projectId: projectId,
+                metadata: { file_name: file.name, file_id: file.id }
+              })
+            })
+          } catch (error) {
+            console.error('Failed to log file rejection activity:', error)
+          }
+          loadProjectActivities()
           break
         case "pending":
           await updateFile(file.id, { approval_status: 'pending' })
           toast.success('File marked as pending')
           await loadProjectData()
+          
+          // Log file status change activity
+          try {
+            await fetch('/api/log-activity', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'file',
+                action: 'marked file as pending',
+                projectId: projectId,
+                metadata: { file_name: file.name, file_id: file.id }
+              })
+            })
+          } catch (error) {
+            console.error('Failed to log file status change activity:', error)
+          }
+          loadProjectActivities()
           break
         case "delete":
           if (confirm(`Are you sure you want to delete "${file.name}"?`)) {
             await deleteFile(file.id)
             toast.success('File deleted successfully')
             await loadProjectData()
+            
+            // Log file deletion activity
+            try {
+              await fetch('/api/log-activity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'file',
+                  action: 'deleted file',
+                  projectId: projectId,
+                  metadata: { file_name: file.name, file_id: file.id }
+                })
+              })
+            } catch (error) {
+              console.error('Failed to log file deletion activity:', error)
+            }
+            loadProjectActivities()
           }
           break
       }
@@ -1824,6 +2319,38 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Template modal functions
+  const handleOpenTemplateModal = async () => {
+    setShowTemplateModal(true)
+    setLoadingTemplates(true)
+    
+    try {
+      const templates = await getFormTemplates()
+      console.log('Loaded templates:', templates)
+      setFormTemplates(templates)
+    } catch (error) {
+      console.error('Error loading templates:', error)
+      toast.error('Failed to load form templates')
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }
+
+  const handleSelectTemplate = (template: any) => {
+    // Navigate to form builder with template data
+    const templateData = {
+      templateId: template.id,
+      title: template.name,
+      fields: template.template_data?.fields || [],
+      instructions: template.description || '',
+      client_id: client?.id,
+      project_id: projectId
+    }
+    
+    const encodedData = encodeURIComponent(JSON.stringify(templateData))
+    router.push(`/dashboard/forms/builder?template=${encodedData}`)
+  }
+
   const closeFormPreview = () => {
     setShowFormPreview(false)
     setPreviewForm(null)
@@ -1856,71 +2383,88 @@ export default function ProjectDetailPage() {
   }))
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" onClick={() => router.push('/dashboard/projects')}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Projects
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-                <div className="flex items-center space-x-4 mt-1">
-                  <div className="flex items-center space-x-2">
-                    <Avatar className="h-5 w-5">
-                      <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-xs font-medium">
-                        {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-gray-600">
-                      {client ? `${client.first_name} ${client.last_name}` : 'Unknown Client'}
-                    </span>
-                  </div>
-                  <Badge variant="outline" className={getStatusColor(project.status)}>
-                    {project.status.replace("-", " ")}
-                  </Badge>
-                  {tags.length > 0 && (
-                    <div className="flex space-x-1">
-                      {tags.map((tag) => (
-                        <Badge
-                          key={tag.id}
-                          variant="outline"
-                          className="text-xs"
-                          style={{
-                            backgroundColor: `${tag.color}20`,
-                            borderColor: tag.color,
-                            color: tag.color
-                          }}
-                        >
-                          {tag.tag_name}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+    <DashboardLayout>
+      {/* Enhanced Header with Stats */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] mt-6 mb-8">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="relative z-10 p-6">
+          {/* Project Context Indicator */}
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-2 h-2 bg-white/60 rounded-full"></div>
+            <span className="text-sm text-white/80 font-medium">PROJECT DETAILS</span>
+          </div>
+          
+          {/* Top Row: Back Button + Actions */}
+          <div className="flex items-center justify-between mb-4">
+            <Button 
+              variant="ghost" 
+              onClick={() => router.push('/dashboard/workflow')}
+              className="text-white/90 hover:text-white hover:bg-white/20"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Client Workflow
+            </Button>
             <div className="flex items-center space-x-3">
-              <Button variant="outline">
+              <Button variant="outline" className="border-white/30 text-white hover:bg-white/20 bg-white/10">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 View Portal
               </Button>
-              <Button onClick={handleEditProject}>
+              <Button onClick={handleEditProject} className="bg-white text-[#3C3CFF] hover:bg-white/90">
                 <Edit className="h-4 w-4 mr-2" />
-                Edit Project
+                Edit
               </Button>
               <Button
                 variant="outline"
                 onClick={handleDeleteProject}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                className="text-red-500 border-red-400/50 hover:bg-red-500/20 hover:text-red-600 hover:border-red-500"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete Project
+                Delete
               </Button>
             </div>
+          </div>
+
+          {/* Project Title & Client Info */}
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-white mb-3">{project.name}</h1>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Avatar className="h-8 w-8 border-2 border-white/30 shadow-sm">
+                    <AvatarFallback className="bg-white/20 text-white text-sm font-semibold">
+                      {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium text-white/90">
+                    {client ? `${client.first_name} ${client.last_name}` : 'Unknown Client'}
+                    {client?.company && <span className="text-white/70 ml-1">• {client.company}</span>}
+                  </span>
+                </div>
+                <Badge 
+                  variant="outline" 
+                  className="bg-white/20 text-white border-white/30 font-medium px-3 py-1"
+                >
+                  {project.status.replace("-", " ").toUpperCase()}
+                </Badge>
+                {tags.length > 0 && (
+                  <div className="flex space-x-2">
+                    {tags.map((tag) => (
+                      <Badge
+                        key={tag.id}
+                        variant="outline"
+                        className="text-xs font-medium px-2.5 py-1 bg-white/20 text-white border-white/30"
+                      >
+                        {tag.tag_name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-12 -translate-x-12"></div>
           </div>
         </div>
       </div>
@@ -2110,19 +2654,44 @@ export default function ProjectDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-
         {/* Main Content */}
         <Tabs defaultValue="timeline" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7 mb-12 mt-4">
-            <TabsTrigger value="timeline">📅 Timeline</TabsTrigger>
-            <TabsTrigger value="messages">💬 Messages</TabsTrigger>
-            <TabsTrigger value="files">📁 Files</TabsTrigger>
-            <TabsTrigger value="forms">🧾 Forms</TabsTrigger>
-            <TabsTrigger value="contracts">📄 Contracts</TabsTrigger>
-            <TabsTrigger value="invoices">💸 Invoices</TabsTrigger>
-            <TabsTrigger value="activity">📜 Activity Log</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-7 mb-12 mt-4 h-auto p-2 bg-white border border-gray-200 rounded-xl shadow-sm">
+            <TabsTrigger value="timeline" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <CalendarDays className="h-5 w-5 mb-1" />
+              <span className="font-medium">Timeline</span>
+              <span className="text-xs opacity-75">{milestones.length} milestones</span>
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <MessageCircle className="h-5 w-5 mb-1" />
+              <span className="font-medium">Messages</span>
+              <span className="text-xs opacity-75">Chat</span>
+            </TabsTrigger>
+            <TabsTrigger value="files" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <FolderOpen className="h-5 w-5 mb-1" />
+              <span className="font-medium">Files</span>
+              <span className="text-xs opacity-75">{projectFiles.length} files</span>
+            </TabsTrigger>
+            <TabsTrigger value="forms" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <Clipboard className="h-5 w-5 mb-1" />
+              <span className="font-medium">Forms</span>
+              <span className="text-xs opacity-75">{projectForms.length} forms</span>
+            </TabsTrigger>
+            <TabsTrigger value="contracts" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <FileSignature className="h-5 w-5 mb-1" />
+              <span className="font-medium">Contracts</span>
+              <span className="text-xs opacity-75">{projectContracts.length} contracts</span>
+            </TabsTrigger>
+            <TabsTrigger value="invoices" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <DollarSign className="h-5 w-5 mb-1" />
+              <span className="font-medium">Invoices</span>
+              <span className="text-xs opacity-75">{projectInvoices.length} invoices</span>
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <Activity className="h-5 w-5 mb-1" />
+              <span className="font-medium">Activity</span>
+              <span className="text-xs opacity-75">Log</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="timeline" className="space-y-6 mt-0">
@@ -2922,7 +3491,20 @@ export default function ProjectDetailPage() {
                   <h2 className="text-xl font-semibold text-gray-900">Project Files</h2>
                   <p className="text-gray-600 mt-1">Manage and organize project files</p>
                 </div>
-                <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+                <div className="flex items-center gap-4">
+                  {/* Client Files Filter Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="client-files-only"
+                      checked={showClientFilesOnly}
+                      onCheckedChange={setShowClientFilesOnly}
+                    />
+                    <label htmlFor="client-files-only" className="text-sm text-gray-600">
+                      Show client uploads only
+                    </label>
+                  </div>
+                  
+                  <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
                   <DialogTrigger asChild>
                     <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
                       <Upload className="h-4 w-4 mr-2" />
@@ -3075,24 +3657,42 @@ export default function ProjectDetailPage() {
                   </DialogContent>
                 </Dialog>
               </div>
+            </div>
 
               <div className="grid gap-4">
-                {projectFiles.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-12 text-center">
-                      <div className="text-gray-500">
-                        <Upload className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <h3 className="text-lg font-medium mb-2">No files uploaded yet</h3>
-                        <p className="mb-4">Upload files to get started with your project</p>
-                        <Button onClick={() => setIsUploadDialogOpen(true)} className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload Files
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  projectFiles.map((file) => (
+                {(() => {
+                  const filteredFiles = showClientFilesOnly 
+                    ? projectFiles.filter(file => file.sent_by_client === true)
+                    : projectFiles;
+                  
+                  if (filteredFiles.length === 0) {
+                    return (
+                      <Card>
+                        <CardContent className="p-12 text-center">
+                          <div className="text-gray-500">
+                            <Upload className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                            <h3 className="text-lg font-medium mb-2">
+                              {showClientFilesOnly ? "No client uploads yet" : "No files uploaded yet"}
+                            </h3>
+                            <p className="mb-4">
+                              {showClientFilesOnly 
+                                ? "Files uploaded by clients will appear here" 
+                                : "Upload files to get started with your project"
+                              }
+                            </p>
+                            {!showClientFilesOnly && (
+                              <Button onClick={() => setIsUploadDialogOpen(true)} className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
+                                <Upload className="h-4 w-4 mr-2" />
+                                Upload Files
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+                  
+                  return filteredFiles.map((file) => (
                     <Card key={file.id} className="bg-white border-0 shadow-sm rounded-2xl">
                       <CardContent className="p-6">
                         <div className="space-y-4">
@@ -3244,8 +3844,8 @@ export default function ProjectDetailPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))
-                )}
+                  ));
+                })()}
               </div>
             </div>
           </TabsContent>
@@ -3256,13 +3856,23 @@ export default function ProjectDetailPage() {
                 <h2 className="text-xl font-semibold text-gray-900">Project Forms</h2>
                 <p className="text-gray-600 mt-1">Manage forms assigned to this project</p>
               </div>
-              <Button 
-                className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                onClick={() => router.push('/dashboard/forms/builder')}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Form
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="outline"
+                  className="border-[#3C3CFF] text-[#3C3CFF] hover:bg-[#F0F2FF]"
+                  onClick={handleOpenTemplateModal}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Choose from Templates
+                </Button>
+                <Button 
+                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                  onClick={() => router.push('/dashboard/forms/builder')}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Form
+                </Button>
+              </div>
             </div>
 
             {/* Forms List */}
@@ -3323,10 +3933,13 @@ export default function ProjectDetailPage() {
                     }
                   }
 
-                  const getActionButton = (status: string) => {
+                  const getActionButtons = (status: string) => {
+                    const buttons = []
+                    
                     if (status === "published") {
-                      return (
+                      buttons.push(
                         <Button
+                          key="view"
                           variant="outline"
                           size="sm"
                           className="text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF] bg-transparent"
@@ -3336,9 +3949,26 @@ export default function ProjectDetailPage() {
                           View
                         </Button>
                       )
+                      
+                      // Add "See Submissions" button if form has submissions
+                      if (form.total_submissions > 0) {
+                        buttons.push(
+                          <Button
+                            key="submissions"
+                            variant="outline"
+                            size="sm"
+                            className="text-green-600 border-green-600 hover:bg-green-50 bg-transparent"
+                            onClick={() => router.push(`/dashboard/forms/${form.id}/submissions`)}
+                          >
+                            <Clipboard className="h-4 w-4 mr-1" />
+                            See Submissions
+                          </Button>
+                        )
+                      }
                     } else {
-                      return (
+                      buttons.push(
                         <Button
+                          key="edit"
                           variant="outline"
                           size="sm"
                           className="text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF] bg-transparent"
@@ -3356,6 +3986,8 @@ export default function ProjectDetailPage() {
                         </Button>
                       )
                     }
+                    
+                    return buttons
                   }
 
                   return (
@@ -3433,7 +4065,7 @@ export default function ProjectDetailPage() {
                           </div>
 
                           <div className="flex items-center space-x-2">
-                            {getActionButton(form.status)}
+                            {getActionButtons(form.status)}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm" className="text-gray-400 hover:text-gray-600">
@@ -3449,9 +4081,9 @@ export default function ProjectDetailPage() {
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit Form
                                 </DropdownMenuItem>
-                                {form.status === "published" && (
-                                  <DropdownMenuItem>
-                                    <MessageCircle className="h-4 w-4 mr-2" />
+                                {form.status === "published" && form.total_submissions > 0 && (
+                                  <DropdownMenuItem onClick={() => router.push(`/dashboard/forms/${form.id}/submissions`)}>
+                                    <Clipboard className="h-4 w-4 mr-2" />
                                     View Submissions
                                   </DropdownMenuItem>
                                 )}
@@ -3496,64 +4128,68 @@ export default function ProjectDetailPage() {
 
             {/* Contract Summary Cards */}
             {!loadingContracts && projectContracts.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                {/* Total Contracts */}
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-blue-600" />
-                      </div>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Total Contracts</p>
-                        <p className="text-xl font-semibold text-gray-900">{projectContracts.length}</p>
+                        <p className="text-sm font-medium text-blue-600">Total Contracts</p>
+                        <p className="text-2xl font-bold text-blue-900">{projectContracts.length}</p>
+                      </div>
+                      <div className="p-2 bg-blue-200 rounded-lg">
+                        <FileText className="h-6 w-6 text-blue-600" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                {/* Signed Contracts */}
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
                   <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      </div>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Signed</p>
-                        <p className="text-xl font-semibold text-gray-900">
+                        <p className="text-sm font-medium text-emerald-600">Signed</p>
+                        <p className="text-2xl font-bold text-emerald-900">
                           {projectContracts.filter(c => c.status === 'signed').length}
                         </p>
                       </div>
+                      <div className="p-2 bg-emerald-200 rounded-lg">
+                        <CheckCircle className="h-6 w-6 text-emerald-600" />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                {/* Pending Contracts */}
+                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
                   <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                        <Clock className="h-5 w-5 text-purple-600" />
-                      </div>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Pending</p>
-                        <p className="text-xl font-semibold text-gray-900">
+                        <p className="text-sm font-medium text-orange-600">Pending</p>
+                        <p className="text-2xl font-bold text-orange-900">
                           {projectContracts.filter(c => ['awaiting_signature', 'sent'].includes(c.status)).length}
                         </p>
                       </div>
+                      <div className="p-2 bg-orange-200 rounded-lg">
+                        <Clock className="h-6 w-6 text-orange-600" />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-0 shadow-sm rounded-2xl">
+                {/* Draft Contracts */}
+                <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200">
                   <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-gray-600" />
-                      </div>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Draft</p>
-                        <p className="text-xl font-semibold text-gray-900">
+                        <p className="text-sm font-medium text-gray-600">Draft</p>
+                        <p className="text-2xl font-bold text-gray-900">
                           {projectContracts.filter(c => c.status === 'draft').length}
                         </p>
+                      </div>
+                      <div className="p-2 bg-gray-200 rounded-lg">
+                        <FileText className="h-6 w-6 text-gray-600" />
                       </div>
                     </div>
                   </CardContent>
@@ -3677,11 +4313,15 @@ export default function ProjectDetailPage() {
                                   <CheckCircle className="h-4 w-4 mr-2" />
                                   Mark as Signed
                                 </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSignContract(contract)}>
+                                  <FileSignature className="h-4 w-4 mr-2" />
+                                  Sign Contract
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleStatusChange(contract, 'archived')}>
                                   <Archive className="h-4 w-4 mr-2" />
                                   Archive
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDownloadPDF(contract)}>
+                                <DropdownMenuItem onClick={() => handleDownloadContractPDF(contract)}>
                                   <Download className="h-4 w-4 mr-2" />
                                   Download PDF
                                 </DropdownMenuItem>
@@ -3753,6 +4393,83 @@ export default function ProjectDetailPage() {
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Invoice Summary Cards */}
+              {!loadingInvoices && projectInvoices.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  {/* Total Invoices */}
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-600">Total Invoices</p>
+                          <p className="text-2xl font-bold text-blue-900">{projectInvoices.length}</p>
+                        </div>
+                        <div className="p-2 bg-blue-200 rounded-lg">
+                          <FileText className="h-6 w-6 text-blue-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Total Amount */}
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-green-600">Total Amount</p>
+                          <p className="text-2xl font-bold text-green-900">
+                            {formatCurrency(projectInvoices.reduce((sum, invoice) => sum + (invoice.total_amount || 0), 0))}
+                          </p>
+                        </div>
+                        <div className="p-2 bg-green-200 rounded-lg">
+                          <DollarSign className="h-6 w-6 text-green-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Paid Amount */}
+                  <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-emerald-600">Paid Amount</p>
+                          <p className="text-2xl font-bold text-emerald-900">
+                            {formatCurrency(projectInvoices
+                              .filter(invoice => invoice.status === 'paid')
+                              .reduce((sum, invoice) => sum + (invoice.total_amount || 0), 0)
+                            )}
+                          </p>
+                        </div>
+                        <div className="p-2 bg-emerald-200 rounded-lg">
+                          <CheckCircle className="h-6 w-6 text-emerald-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Outstanding Amount */}
+                  <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-orange-600">Outstanding</p>
+                          <p className="text-2xl font-bold text-orange-900">
+                            {formatCurrency(projectInvoices
+                              .filter(invoice => invoice.status !== 'paid')
+                              .reduce((sum, invoice) => sum + (invoice.total_amount || 0), 0)
+                            )}
+                          </p>
+                        </div>
+                        <div className="p-2 bg-orange-200 rounded-lg">
+                          <Clock className="h-6 w-6 text-orange-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
 
               {/* Invoices List */}
@@ -3847,18 +4564,106 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="activity" className="space-y-6">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="text-gray-500">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Activity coming soon</h3>
-                  <p className="mb-4">Activity tracking and history will be available soon</p>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Project Activity</h2>
+            <p className="text-gray-600 mt-1">Track all activities and changes for this project. Refreshes automatically when new activities occur.</p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={loadProjectActivities}
+            disabled={loadingActivities}
+          >
+            {loadingActivities ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
+
+            {loadingActivities ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">Loading activities...</p>
+                </CardContent>
+              </Card>
+            ) : projectActivities.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <div className="text-gray-500">
+                    <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">No activities yet</h3>
+                    <p className="mb-4">Project activities will appear here as they happen</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {projectActivities.map((activity, index) => (
+                  <Card key={activity.id} className="bg-white border-0 shadow-sm rounded-2xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-start space-x-4">
+                        <div className={`p-2 rounded-lg ${getActivityColor(activity.activity_type, activity.source_table)}`}>
+                          {getActivityIcon(activity.activity_type, activity.source_table)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium text-gray-900">
+                              {activity.action}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {formatActivityTime(activity.created_at)}
+                            </p>
+                          </div>
+                          <div className="mt-1 flex items-center space-x-2">
+                            <Badge variant="outline" className="text-xs">
+                              {activity.source_table.replace('_activities', '').replace('_', ' ')}
+                            </Badge>
+                        {activity.user_name && activity.user_name !== 'System' && (
+                          <span className="text-xs text-gray-500">
+                            by {activity.user_name}
+                          </span>
+                        )}
+                        {(!activity.user_name || activity.user_name === 'System') && (
+                          <span className="text-xs text-gray-400">
+                            by System
+                          </span>
+                        )}
+                          </div>
+                          {activity.metadata && Object.keys(activity.metadata).length > 0 && (
+                            <div className="mt-2 text-xs text-gray-600">
+                              {activity.metadata.description && (
+                                <p>{activity.metadata.description}</p>
+                              )}
+                              {activity.metadata.file_name && (
+                                <p>File: {activity.metadata.file_name}</p>
+                              )}
+                              {activity.metadata.contract_name && (
+                                <p>Contract: {activity.metadata.contract_name}</p>
+                              )}
+                              {activity.metadata.invoice_number && (
+                                <p>Invoice: {activity.metadata.invoice_number}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
-      </div>
 
       {/* File Viewer Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
@@ -4340,6 +5145,140 @@ export default function ProjectDetailPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Form Template Selection Modal */}
+      <Dialog open={showTemplateModal} onOpenChange={setShowTemplateModal}>
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Choose a Form Template</DialogTitle>
+            <p className="text-gray-600 mt-2">
+              Start with a pre-built template and customize it for your project
+            </p>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto pr-2">
+            {loadingTemplates ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-[#3C3CFF] mx-auto mb-4" />
+                  <p className="text-gray-600">Loading templates...</p>
+                </div>
+              </div>
+            ) : formTemplates.length === 0 ? (
+              <div className="text-center py-20">
+                <div className="text-6xl mb-4">📋</div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
+                <p className="text-gray-600 mb-6">
+                  You haven't saved any form templates yet. Create and save forms to use them as templates.
+                </p>
+                <Button 
+                  onClick={() => {
+                    setShowTemplateModal(false)
+                    router.push('/dashboard/forms/builder')
+                  }}
+                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Form
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+                {formTemplates.map((template) => (
+                  <Card 
+                    key={template.id}
+                    className="border-2 border-gray-200 hover:border-[#3C3CFF] hover:shadow-lg transition-all duration-200 cursor-pointer group"
+                    onClick={() => handleSelectTemplate(template)}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-900 group-hover:text-[#3C3CFF] mb-2">
+                            {template.name}
+                          </h3>
+                          {template.description && (
+                            <p className="text-sm text-gray-600 line-clamp-2">
+                              {template.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="ml-4 h-12 w-12 rounded-xl bg-gradient-to-br from-[#3C3CFF] to-[#5252FF] flex items-center justify-center flex-shrink-0">
+                          <Clipboard className="h-6 w-6 text-white" />
+                        </div>
+                      </div>
+
+                      {/* Template Stats */}
+                      <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                        <div className="flex items-center">
+                          <FileText className="h-4 w-4 mr-1.5" />
+                          <span>{template.template_data?.fields?.length || 0} fields</span>
+                        </div>
+                        {template.created_at && (
+                          <div className="flex items-center">
+                            <CalendarDays className="h-4 w-4 mr-1.5" />
+                            <span>
+                              {new Date(template.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field Preview */}
+                      {template.template_data?.fields && template.template_data.fields.length > 0 && (
+                        <div className="border-t pt-4">
+                          <p className="text-xs font-medium text-gray-500 mb-2">INCLUDES:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {template.template_data.fields.slice(0, 3).map((field: any, idx: number) => (
+                              <Badge 
+                                key={idx} 
+                                variant="outline" 
+                                className="text-xs bg-[#F0F2FF] text-[#3C3CFF] border-[#3C3CFF]/20"
+                              >
+                                {field.label || field.type}
+                              </Badge>
+                            ))}
+                            {template.template_data.fields.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{template.template_data.fields.length - 3} more
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Use Button */}
+                      <div className="mt-4 pt-4 border-t">
+                        <Button 
+                          className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] group-hover:shadow-md transition-shadow"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleSelectTemplate(template)
+                          }}
+                        >
+                          Use This Template
+                          <ChevronRight className="h-4 w-4 ml-2" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Signature Modal */}
+      <SignatureModal
+        isOpen={isSignatureModalOpen}
+        onClose={() => setIsSignatureModalOpen(false)}
+        onSignatureSave={handleSignatureSave}
+        contractTitle={contractToSign?.name || 'Contract'}
+      />
+    </DashboardLayout>
   )
 }

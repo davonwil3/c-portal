@@ -22,20 +22,70 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Checking portal existence and authorization:', { companySlug, clientSlug, email })
+    
+    // Debug: Check what accounts exist
+    const { data: allAccounts, error: accountsError } = await supabaseAdmin
+      .from('accounts')
+      .select('id, company_name')
+      .limit(10)
+    
+    if (!accountsError && allAccounts) {
+      console.log('🔍 Available accounts:', allAccounts)
+    }
 
     // Step 1: If email is provided, find the correct portal and client slug from allowlist
     if (email) {
-      // Find the allowlist entry for this email and company
-      const { data: allowlistEntry, error: allowlistError } = await supabaseAdmin
+      // First, find the account by company slug
+      const { data: accountData, error: accountError } = await supabaseAdmin
+        .from('accounts')
+        .select('id, company_name')
+        .ilike('company_name', `%${companySlug.replace(/-/g, '%')}%`)
+        .single()
+
+      if (accountError || !accountData) {
+        console.log('Company not found for slug:', companySlug)
+        return NextResponse.json({
+          success: true,
+          exists: false,
+          authorized: false,
+          message: 'Company not found'
+        })
+      }
+
+      console.log('Found account:', accountData)
+
+      // Find the allowlist entry for this email and account (ignore client slug from URL)
+      const { data: allowlistEntries, error: allowlistError } = await supabaseAdmin
         .from('client_allowlist')
         .select('id, email, is_active, company_slug, client_slug, account_id, client_id')
         .eq('email', email.toLowerCase())
-        .eq('company_slug', companySlug)
+        .eq('account_id', accountData.id)
         .eq('is_active', true)
-        .single()
 
-      if (allowlistError || !allowlistEntry) {
-        console.log('Email not found in allowlist for this company:', { email, companySlug })
+      if (allowlistError) {
+        console.error('Error querying allowlist:', allowlistError)
+        return NextResponse.json({
+          success: true,
+          exists: false,
+          authorized: false,
+          message: 'Database error checking authorization'
+        })
+      }
+
+      if (!allowlistEntries || allowlistEntries.length === 0) {
+        console.log('Email not found in allowlist for this account:', { email, accountId: accountData.id })
+        
+        // Debug: Show what's actually in the allowlist for this account
+        const { data: debugData, error: debugError } = await supabaseAdmin
+          .from('client_allowlist')
+          .select('email, company_slug, client_slug, is_active')
+          .eq('account_id', accountData.id)
+          .eq('is_active', true)
+        
+        if (!debugError && debugData) {
+          console.log('🔍 Current allowlist entries for account:', accountData.id, debugData)
+        }
+        
         return NextResponse.json({
           success: true,
           exists: false,
@@ -44,6 +94,8 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // If multiple entries, use the first one (or we could let user choose)
+      const allowlistEntry = allowlistEntries[0]
       console.log('Found allowlist entry:', allowlistEntry)
 
       // Step 2: If client_id is null, try to find the client by email and update the allowlist

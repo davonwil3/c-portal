@@ -15,12 +15,12 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, title, subtitle }: DashboardLayoutProps) {
   return (
     <SidebarProvider>
-      <div className="min-h-screen bg-gradient-to-br from-white to-[#F7F9FB] flex w-full">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 w-full">
         <AppSidebar />
-        <SidebarInset className="flex-1">
+        <div className="pl-32 pr-8">
           <DashboardHeader title={title} subtitle={subtitle} />
-          <main className="p-6">{children}</main>
-        </SidebarInset>
+          <main className="py-8">{children}</main>
+        </div>
       </div>
     </SidebarProvider>
   )

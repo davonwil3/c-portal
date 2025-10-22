@@ -679,7 +679,7 @@ export default function ClientsPage() {
   if (loading) {
   return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
+        <div className="bg-gray-50 min-h-screen -m-6 p-6 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
         </div>
       </DashboardLayout>
@@ -688,7 +688,7 @@ export default function ClientsPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 bg-gray-50 min-h-screen -m-6 p-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>

@@ -24,6 +24,7 @@ export interface File {
   metadata: any
   is_public: boolean
   access_level: 'private' | 'team' | 'client' | 'public'
+  sent_by_client: boolean
   download_count: number
   view_count: number
   created_at: string

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS portal_settings (
     project_visibility JSONB DEFAULT '{}'::jsonb,
     default_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     brand_color VARCHAR(7) DEFAULT '#3C3CFF',
+    
     welcome_message TEXT DEFAULT '',
     password_protected BOOLEAN DEFAULT false,
     portal_password TEXT DEFAULT '',

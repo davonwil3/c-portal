@@ -60,9 +60,10 @@ export default function ContractDetailsPage() {
   const [downloading, setDownloading] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [contractHtml, setContractHtml] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
 
   // Generate contract document from contract content as fallback
-  const generateContractDocument = (content: any) => {
+  const generateContractDocument = (content: any, contractData?: any) => {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -356,12 +357,14 @@ export default function ContractDetailsPage() {
                 <div class="signature-grid">
                     <div class="signature-area">
                         <h3>Company Signature</h3>
-                        ${content.companySignature ? `<img src="${content.companySignature}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.user_signature_data ? `<img src="${contractData.user_signature_data}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.user_signed_at ? `<p style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">Signed on ${new Date(contractData.user_signed_at).toLocaleDateString()}</p>` : ''}
                     </div>
                     
                     <div class="signature-area">
                         <h3>Client Signature</h3>
-                        ${content.clientSignature ? `<img src="${content.clientSignature}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.client_signature_data ? `<img src="${contractData.client_signature_data}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.client_signed_at ? `<p style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">Signed on ${new Date(contractData.client_signed_at).toLocaleDateString()}</p>` : ''}
                     </div>
                 </div>
             </div>
@@ -395,36 +398,28 @@ export default function ContractDetailsPage() {
           return
         }
         setContract(contractData)
+        setProjectId(contractData.project_id)
         
-        // Load HTML content from storage if available
-        if (contractData.contract_html) {
-          try {
-            const supabase = createClient()
-            const { data, error } = await supabase.storage
-              .from('files')
-              .download(contractData.contract_html)
-            
-            if (error) {
-              console.error('Error loading contract HTML from storage:', error)
-              // Fallback to contract content from database
-              if (contractData.contract_content) {
-                setContractHtml(generateContractDocument(contractData.contract_content))
+        // Always generate contract HTML with current signature data
+        if (contractData.contract_content) {
+          setContractHtml(generateContractDocument(contractData.contract_content, contractData))
+        } else {
+          // If no contract content, try to load from storage as fallback
+          if (contractData.contract_html) {
+            try {
+              const supabase = createClient()
+              const { data, error } = await supabase.storage
+                .from('files')
+                .download(contractData.contract_html)
+              
+              if (!error && data) {
+                const htmlText = await data.text()
+                setContractHtml(htmlText)
               }
-            } else {
-              // Convert blob to text
-              const htmlText = await data.text()
-              setContractHtml(htmlText)
-            }
-          } catch (storageError) {
-            console.error('Error accessing storage:', storageError)
-            // Fallback to contract content from database
-            if (contractData.contract_content) {
-              setContractHtml(generateContractDocument(contractData.contract_content))
+            } catch (storageError) {
+              console.error('Error accessing storage:', storageError)
             }
           }
-        } else if (contractData.contract_content) {
-          // Fallback to contract content from database
-          setContractHtml(generateContractDocument(contractData.contract_content))
         }
       } catch (error) {
         console.error('Error fetching contract:', error)
@@ -622,7 +617,9 @@ export default function ContractDetailsPage() {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/dashboard/contracts">Contracts</BreadcrumbLink>
+              <BreadcrumbLink href={projectId ? `/dashboard/projects/${projectId}` : '/dashboard/contracts'}>
+                {projectId ? 'Project' : 'Contracts'}
+              </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -723,6 +720,10 @@ export default function ContractDetailsPage() {
                     <DropdownMenuItem onClick={() => handleStatusChange('signed')}>
                       <CheckCircle className="h-4 w-4 mr-2" />
                       Mark as Signed
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {/* TODO: Add user signature modal */}}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Sign Contract (Company)
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleStatusChange('archived')}>
                       <Package className="h-4 w-4 mr-2" />
@@ -900,17 +901,37 @@ export default function ContractDetailsPage() {
                     </div>
                   )}
                   
-                  {contract.signed_at && (
+                  {contract.client_signed_at && (
                     <div className="flex gap-3">
                       <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900">Contract signed</p>
+                        <p className="text-sm text-gray-900">Contract signed by client</p>
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-xs text-gray-600">Client</p>
                           <span className="text-xs text-gray-400">•</span>
                           <p className="text-xs text-gray-600">
-                            {new Date(contract.signed_at).toLocaleDateString()} at{" "}
-                            {new Date(contract.signed_at).toLocaleTimeString([], {
+                            {new Date(contract.client_signed_at).toLocaleDateString()} at{" "}
+                            {new Date(contract.client_signed_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {contract.user_signed_at && (
+                    <div className="flex gap-3">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900">Contract signed by company</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-gray-600">Company</p>
+                          <span className="text-xs text-gray-400">•</span>
+                          <p className="text-xs text-gray-600">
+                            {new Date(contract.user_signed_at).toLocaleDateString()} at{" "}
+                            {new Date(contract.user_signed_at).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
@@ -998,7 +1019,7 @@ export default function ContractDetailsPage() {
                     <p className="text-xs text-gray-600">Service Provider</p>
                   </div>
                   <div className="text-right">
-                    {contract.status === "signed" ? (
+                    {contract.user_signature_status === "signed" ? (
                       <div className="flex items-center gap-1 text-green-600">
                         <CheckCircle className="h-4 w-4" />
                         <span className="text-xs">Signed</span>
@@ -1029,12 +1050,12 @@ export default function ContractDetailsPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    {contract.status === "signed" ? (
+                    {contract.client_signature_status === "signed" ? (
                       <div className="flex items-center gap-1 text-green-600">
                         <CheckCircle className="h-4 w-4" />
                         <span className="text-xs">Signed</span>
                       </div>
-                    ) : contract.status === "declined" ? (
+                    ) : contract.client_signature_status === "declined" ? (
                       <div className="flex items-center gap-1 text-red-600">
                         <AlertCircle className="h-4 w-4" />
                         <span className="text-xs">Declined</span>

@@ -50,6 +50,7 @@ import {
   UserCheck,
   Clock,
   AlertCircle,
+  Package,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -420,6 +421,7 @@ export default function FormBuilderPage() {
   useEffect(() => {
     const title = searchParams.get('title')
     const editData = searchParams.get('edit')
+    const templateData = searchParams.get('template')
     
     // Reset initialization flag
     setIsFormInitialized(false)
@@ -453,6 +455,32 @@ export default function FormBuilderPage() {
       } catch (error) {
         console.error("Error parsing form data:", error)
         toast.error("Failed to load form data")
+        setTimeout(() => setIsFormInitialized(true), 100)
+      }
+    } else if (templateData) {
+      try {
+        const template = JSON.parse(decodeURIComponent(templateData))
+        console.log('Loading template:', template)
+        setFormTitle(template.title || "Untitled Form")
+        setFields(template.fields || [])
+        
+        // Set publish form data from template
+        setPublishFormData(prev => ({
+          ...prev,
+          title: template.title || "",
+          description: template.instructions || "",
+          instructions: template.instructions || "",
+          clientId: template.client_id || "",
+          projectId: template.project_id || "",
+        }))
+        
+        toast.success(`Template "${template.title}" loaded successfully`)
+        
+        // Small delay to ensure all state is set before allowing auto-save
+        setTimeout(() => setIsFormInitialized(true), 100)
+      } catch (error) {
+        console.error("Error parsing template data:", error)
+        toast.error("Failed to load template")
         setTimeout(() => setIsFormInitialized(true), 100)
       }
     } else if (title) {
@@ -966,8 +994,11 @@ export default function FormBuilderPage() {
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem>
-                    <BreadcrumbLink href="/dashboard/forms" className="text-gray-600 hover:text-gray-900">
-                      Forms
+                    <BreadcrumbLink 
+                      href={publishFormData.projectId ? `/dashboard/projects/${publishFormData.projectId}` : "/dashboard/projects"} 
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      Projects
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                   <BreadcrumbSeparator />
@@ -1676,159 +1707,51 @@ export default function FormBuilderPage() {
               />
             </div>
 
-            {/* Client and Project Selection */}
+            {/* Client and Project Display (Read-only) */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">Link to Client & Project</h3>
+              <h3 className="text-sm font-medium text-gray-900">Form Assignment</h3>
+              <p className="text-sm text-gray-600">This form will be created for the project you're currently viewing.</p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="publish-client" className="text-sm font-medium text-gray-700 mb-2 block">
-                    Client (Optional)
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Client
                   </Label>
-                  <Select value={publishFormData.clientId} onValueChange={handleClientChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={loadingClients ? "Loading clients..." : "Select a client"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No client</SelectItem>
-                      {loadingClients ? (
-                        <SelectItem value="loading" disabled>
-                          <div className="flex items-center">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading clients...
-                          </div>
-                        </SelectItem>
-                      ) : (
-                        clients.map((client) => (
-                          <SelectItem key={client.id} value={client.id}>
-                            {client.company || `${client.first_name} ${client.last_name}`}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                    {loadingClients ? (
+                      <div className="flex items-center">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </div>
+                    ) : (
+                      <div className="flex items-center">
+                        <Users className="h-4 w-4 mr-2 text-gray-500" />
+                        {clients.find(c => c.id === publishFormData.clientId)?.company || 
+                         clients.find(c => c.id === publishFormData.clientId) ? 
+                         `${clients.find(c => c.id === publishFormData.clientId)?.first_name} ${clients.find(c => c.id === publishFormData.clientId)?.last_name}` : 
+                         'Not specified'}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="publish-project" className="text-sm font-medium text-gray-700 mb-2 block">
-                    Project (Optional)
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Project
                   </Label>
-                  <Select 
-                    value={publishFormData.projectId} 
-                    onValueChange={(projectId) => setPublishFormData(prev => ({ ...prev, projectId }))}
-                    disabled={publishFormData.clientId === "none" || publishFormData.clientId === ""}
-                  >
-                    <SelectTrigger className={cn(
-                      "w-full",
-                      (publishFormData.clientId === "none" || publishFormData.clientId === "") && "opacity-50 cursor-not-allowed"
-                    )}>
-                      <SelectValue placeholder={
-                        publishFormData.clientId === "none" || publishFormData.clientId === ""
-                          ? "Select a client first" 
-                          : loadingProjects
-                            ? "Loading projects..."
-                            : availableProjects.length === 0 
-                              ? "No projects for this client" 
-                              : "Select a project"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No project</SelectItem>
-                      {loadingProjects ? (
-                        <SelectItem value="loading" disabled>
-                          <div className="flex items-center">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading projects...
-                          </div>
-                        </SelectItem>
-                      ) : (
-                        availableProjects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {publishFormData.clientId === "none" || publishFormData.clientId === "" ? (
-                    <p className="text-sm text-gray-500 mt-1">
-                      Select a client first to see available projects
-                    </p>
-                  ) : loadingProjects ? (
-                    <p className="text-sm text-gray-500 mt-1">
-                      Loading projects...
-                    </p>
-                  ) : availableProjects.length === 0 && publishFormData.clientId !== "none" ? (
-                    <p className="text-sm text-gray-500 mt-1">
-                      No projects found for this client
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            {/* Access Level */}
-            <div>
-              <Label className="text-sm font-medium text-gray-700 mb-3 block">Access Level</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <div
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    publishFormData.accessLevel === 'public' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setPublishFormData(prev => ({ ...prev, accessLevel: 'public' }))}
-                >
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Globe className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium">Public</span>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                    {loadingProjects ? (
+                      <div className="flex items-center">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </div>
+                    ) : (
+                      <div className="flex items-center">
+                        <Package className="h-4 w-4 mr-2 text-gray-500" />
+                        {availableProjects.find(p => p.id === publishFormData.projectId)?.name || 'Not specified'}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-600">Anyone with the link can access</p>
-                </div>
-                
-                <div
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    publishFormData.accessLevel === 'client' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setPublishFormData(prev => ({ ...prev, accessLevel: 'client' }))}
-                >
-                  <div className="flex items-center space-x-2 mb-2">
-                    <UserCheck className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium">Client Only</span>
-                  </div>
-                  <p className="text-sm text-gray-600">Only linked clients can access</p>
-                </div>
-                
-                <div
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    publishFormData.accessLevel === 'team' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setPublishFormData(prev => ({ ...prev, accessLevel: 'team' }))}
-                >
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Users className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium">Team Only</span>
-                  </div>
-                  <p className="text-sm text-gray-600">Only your team can access</p>
-                </div>
-                
-                <div
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    publishFormData.accessLevel === 'private' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setPublishFormData(prev => ({ ...prev, accessLevel: 'private' }))}
-                >
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Lock className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium">Private</span>
-                  </div>
-                  <p className="text-sm text-gray-600">Only you can access</p>
                 </div>
               </div>
             </div>

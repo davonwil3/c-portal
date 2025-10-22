@@ -13,10 +13,10 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 // GET portal settings
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const portalId = params.id
+    const { id: portalId } = await params
 
     if (!portalId) {
       return NextResponse.json(
@@ -165,10 +165,10 @@ export async function GET(
 // PUT update portal settings
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const portalId = params.id
+    const { id: portalId } = await params
     const body = await request.json()
 
     if (!portalId) {

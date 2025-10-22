@@ -51,15 +51,12 @@ export async function POST(request: NextRequest) {
     })
 
     // Check if email is in allowlist for this account
-    // User can access if they're in the allowlist for this company OR this specific client
-    const { data: allowlistData, error: allowlistError } = await supabaseAdmin
+    const { data: allowlistEntries, error: allowlistError } = await supabaseAdmin
       .from('client_allowlist')
       .select('email, name, role, company_slug, client_slug')
       .eq('account_id', accountData.id)
       .eq('email', email.toLowerCase())
       .eq('is_active', true)
-      .or(`company_slug.eq.${companySlug},client_slug.eq.${clientSlug}`)
-      .maybeSingle()
 
     if (allowlistError) {
       console.error('❌ Allowlist query error:', allowlistError)
@@ -69,7 +66,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!allowlistData) {
+    if (!allowlistEntries || allowlistEntries.length === 0) {
       console.log('❌ Email not found in allowlist:', {
         email: email.toLowerCase(),
         companySlug,
@@ -94,6 +91,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use the first allowlist entry if multiple exist
+    const allowlistData = allowlistEntries[0]
     console.log('✅ Email authorized:', allowlistData)
 
     // Generate magic link token

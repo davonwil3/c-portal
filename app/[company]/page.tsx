@@ -400,7 +400,7 @@ export default function CompanyPortal({ params }: CompanyPortalProps) {
               
               <Button
                 type="submit"
-                className="w-full h-11 bg-[${brandColor}] hover:bg-[${brandColor}CC] text-white"
+                className="w-full h-11 bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white font-medium shadow-lg"
                 disabled={loading}
               >
                 {loading ? (

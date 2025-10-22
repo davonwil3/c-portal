@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import {
   Download,
   Upload,
@@ -39,6 +40,8 @@ import { getClientForms, submitForm, hasFormBeenSubmitted, type Form } from "@/l
 import { FormFillingModal } from "@/components/forms/form-filling-modal"
 import { FormSubmissionViewer } from "@/components/forms/form-submission-viewer"
 import { MessageChat } from "@/components/messages/message-chat"
+import { SignatureModal } from "@/components/ui/signature-modal"
+import { FileUploadModal } from "@/components/ui/file-upload-modal"
 
 // Mock data based on client slug
 const getClientData = (slug: string) => {
@@ -153,21 +156,77 @@ export default function ClientPortalPage() {
     checkPortalExists()
   }, [companySlug, clientSlug, isPreview])
 
+  // Track portal view
+  const trackPortalView = async (portalId?: string) => {
+    try {
+      // Only track views for actual client portal, not preview
+      if (isPreview) return
+
+      // Use the passed portalId or get it from the client data
+      const idToUse = portalId || realClientData?.portalId
+      if (!idToUse) return
+
+      console.log('Tracking portal view for portal:', idToUse)
+      
+      const response = await fetch(`/api/portals/${idToUse}/increment-view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('View tracked successfully:', result)
+      } else {
+        console.error('Failed to track view:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Error tracking portal view:', error)
+    }
+  }
+
   // Check for existing session on component mount
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // In preview mode, skip authentication and show the portal
+        // In preview mode, verify user is authenticated and owns this portal
         if (isPreview) {
-          setUser({
-            email: 'preview@example.com',
-            name: 'Preview User',
-            role: 'client',
-            companySlug,
-            clientSlug
-          })
-          setLoading(false)
-          return
+          // Verify user has access to this portal by checking if they can access the portal data
+          // The API will handle authentication verification
+          try {
+            const response = await fetch(`/api/test-portal-data?clientSlug=${clientSlug}&companySlug=${companySlug}&preview=true`)
+            const result = await response.json()
+            
+            if (!result.success) {
+              console.log('User does not have access to this portal:', result.error)
+              setLoading(false)
+              // Redirect to dashboard if user is authenticated but doesn't have access
+              // Redirect to auth if user is not authenticated
+              if (response.status === 401) {
+                window.location.href = '/auth'
+              } else {
+                window.location.href = '/dashboard'
+              }
+              return
+            }
+
+            // User has access, set preview user
+            setUser({
+              email: 'preview@example.com',
+              name: 'Preview User',
+              role: 'client',
+              companySlug,
+              clientSlug
+            })
+            setLoading(false)
+            return
+          } catch (error) {
+            console.error('Error verifying portal access:', error)
+            setLoading(false)
+            window.location.href = '/auth'
+            return
+          }
         }
 
         const sessionData = localStorage.getItem('client_session')
@@ -251,7 +310,7 @@ export default function ClientPortalPage() {
         console.log('API response:', result)
         
         if (result.success) {
-          const { projects, invoices, files, contracts, allowlist, portalSettings } = result.data
+          const { projects, invoices, files, contracts, allowlist, portalSettings, portalId, milestones, messages, branding } = result.data
           
           console.log('Data received:', { 
             projects: projects?.length || 0, 
@@ -259,7 +318,9 @@ export default function ClientPortalPage() {
             files: files?.length || 0, 
             contracts: contracts?.length || 0, 
             allowlist, 
-            portalSettings 
+            portalSettings,
+            milestones: milestones?.length || 0,
+            messages: messages?.length || 0
           })
           console.log('Projects data:', projects)
           console.log('Portal settings:', portalSettings)
@@ -295,8 +356,22 @@ export default function ClientPortalPage() {
           
           // Set real data from database
           console.log('Setting visible projects:', visibleProjects)
-          setRealProjects(visibleProjects)
+          
+          // Add milestones to projects
+          const projectsWithMilestones = visibleProjects.map(project => ({
+            ...project,
+            milestones: milestones?.filter(milestone => milestone.project_id === project.id) || []
+          }))
+          
+          setRealProjects(projectsWithMilestones)
           setRealInvoices(invoices || [])
+          setRealFiles(files || [])
+          setRealContracts(contracts || [])
+          setRealMilestones(milestones || [])
+          setRealMessages(messages || [])
+
+          // Track portal view after data is loaded
+          await trackPortalView(portalId)
 
           // Load forms for this client
           if (allowlist?.client_id) {
@@ -348,7 +423,7 @@ export default function ClientPortalPage() {
             clientName: user.name || allowlist.name || clientData?.clientName,
             companyName: allowlist.company_name || clientData?.companyName,
             avatar: user.name ? user.name.split(' ').map(n => n[0]).join('') : clientData?.avatar,
-            branding: clientData?.branding,
+            branding: branding || clientData?.branding, // Use real branding data from API
             accountId: allowlist.account_id || result.data.account?.id,
             clientId: allowlist.client_id, // Add client ID for AI assistant
             email: allowlist.email || user.email
@@ -371,6 +446,9 @@ export default function ClientPortalPage() {
           setRealProjects([])
           setRealInvoices([])
           setRealFiles([])
+          setRealContracts([])
+          setRealMilestones([])
+          setRealMessages([])
           setRealClientData(clientData)
         }
         
@@ -380,6 +458,9 @@ export default function ClientPortalPage() {
         setRealProjects([])
         setRealInvoices([])
         setRealFiles([])
+        setRealContracts([])
+        setRealMilestones([])
+        setRealMessages([])
         setRealClientData(clientData)
       } finally {
         setDataLoading(false)
@@ -426,6 +507,10 @@ export default function ClientPortalPage() {
   const [contractHtml, setContractHtml] = useState<string | null>(null)
   const [loadingContract, setLoadingContract] = useState(false)
 
+  // Signature modal state
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false)
+  const [contractToSign, setContractToSign] = useState<any>(null)
+
   const [realForms, setRealForms] = useState<Form[]>([])
   const [selectedForm, setSelectedForm] = useState<Form | null>(null)
   const [isFormModalOpen, setIsFormModalOpen] = useState(false)
@@ -435,12 +520,20 @@ export default function ClientPortalPage() {
 
   const [activeDocumentTab, setActiveDocumentTab] = useState<'contracts' | 'invoices' | 'forms' | 'files'>('contracts')
   const [selectedProject, setSelectedProject] = useState<any>(null)
+  
+  // File upload state
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [showClientFilesOnly, setShowClientFilesOnly] = useState(false)
 
   // Real data state
   const [realProjects, setRealProjects] = useState<any[]>([])
   const [realInvoices, setRealInvoices] = useState<any[]>([])
   const [realFiles, setRealFiles] = useState<any[]>([])
   const [realContracts, setRealContracts] = useState<any[]>([])
+  const [realMilestones, setRealMilestones] = useState<any[]>([])
+  const [realMessages, setRealMessages] = useState<any[]>([])
   const [realClientData, setRealClientData] = useState<any>(null)
   const [dataLoading, setDataLoading] = useState(true)
   const hasFetchedData = useRef(false)
@@ -703,7 +796,7 @@ export default function ClientPortalPage() {
             console.error('Error loading contract HTML from storage:', error)
             // Fallback to contract content from database
             if (contractData.contract_content) {
-              setContractHtml(generateContractDocument(contractData.contract_content))
+              setContractHtml(generateContractDocument(contractData.contract_content, contractData))
             }
           } else {
             // Convert blob to text
@@ -714,21 +807,249 @@ export default function ClientPortalPage() {
           console.error('Error accessing storage:', storageError)
           // Fallback to contract content from database
           if (contractData.contract_content) {
-            setContractHtml(generateContractDocument(contractData.contract_content))
+            setContractHtml(generateContractDocument(contractData.contract_content, contractData))
           }
         }
       } else if (contractData.contract_content) {
         // Fallback to contract content from database
-        setContractHtml(generateContractDocument(contractData.contract_content))
+        setContractHtml(generateContractDocument(contractData.contract_content, contractData))
       }
     } catch (error) {
       console.error('Error fetching contract:', error)
       // Generate fallback document
       if (contract.contract_content) {
-        setContractHtml(generateContractDocument(contract.contract_content))
+        setContractHtml(generateContractDocument(contract.contract_content, contract))
       }
     } finally {
       setLoadingContract(false)
+    }
+  }
+
+  // Handle contract signing
+  const handleSignContract = (contract: any) => {
+    setContractToSign(contract)
+    setIsSignatureModalOpen(true)
+  }
+
+  const handleSignatureSave = async (signatureData: string) => {
+    if (!contractToSign) return
+
+    try {
+      const response = await fetch('/api/contracts/sign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: contractToSign.id,
+          signatureData,
+          clientId: realClientData?.client_id,
+          projectId: selectedProject?.id
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update the contract in local state
+        setRealContracts(prev => 
+          prev.map(contract => {
+            if (contract.id === contractToSign.id) {
+              const updatedContract = { 
+                ...contract, 
+                client_signature_data: signatureData, 
+                client_signature_status: 'signed',
+                client_signed_at: new Date().toISOString()
+              }
+              
+              // Determine the new status based on existing user signature
+              if (contract.user_signature_status === 'signed') {
+                updatedContract.status = 'signed'
+                updatedContract.signature_status = 'signed'
+                updatedContract.signed_at = new Date().toISOString()
+              } else {
+                updatedContract.status = 'partially_signed'
+                updatedContract.signature_status = 'signed'
+                updatedContract.signed_at = new Date().toISOString()
+              }
+              
+              return updatedContract
+            }
+            return contract
+          })
+        )
+        
+        // Update the selected contract if it's the same one
+        if (selectedContract && selectedContract.id === contractToSign.id) {
+          const updatedSelectedContract = { 
+            ...selectedContract, 
+            client_signature_data: signatureData, 
+            client_signature_status: 'signed',
+            client_signed_at: new Date().toISOString()
+          }
+          
+          // Determine the new status based on existing user signature
+          if (selectedContract.user_signature_status === 'signed') {
+            updatedSelectedContract.status = 'signed'
+            updatedSelectedContract.signature_status = 'signed'
+            updatedSelectedContract.signed_at = new Date().toISOString()
+          } else {
+            updatedSelectedContract.status = 'partially_signed'
+            updatedSelectedContract.signature_status = 'signed'
+            updatedSelectedContract.signed_at = new Date().toISOString()
+          }
+          
+          setSelectedContract(updatedSelectedContract)
+          
+          // Regenerate contract HTML with signature
+          if (selectedContract.contract_content) {
+            setContractHtml(generateContractDocument(selectedContract.contract_content, updatedSelectedContract))
+          }
+        }
+        
+        // Close modals
+        setIsSignatureModalOpen(false)
+        setIsContractModalOpen(false)
+        
+        // Show success message
+        alert('Contract signed successfully!')
+      } else {
+        throw new Error(result.error || 'Failed to sign contract')
+      }
+    } catch (error) {
+      console.error('Error signing contract:', error)
+      alert('Failed to sign contract. Please try again.')
+    }
+  }
+
+  // Reload client data
+  const reloadClientData = async () => {
+    if (!user) return
+    
+    try {
+      const response = await fetch(`/api/test-portal-data?clientSlug=${clientSlug}&companySlug=${companySlug}&preview=${isPreview}`)
+      const result = await response.json()
+      
+      if (result.success) {
+        const { projects, invoices, files, contracts, allowlist, portalSettings, portalId, milestones, messages, branding } = result.data
+        
+        // Apply project visibility from settings (if provided)
+        let visibleProjects = projects || []
+        if (portalSettings?.projectVisibility && Object.keys(portalSettings.projectVisibility).length > 0) {
+          const visibilityMap = portalSettings.projectVisibility as Record<string, boolean>
+          const hasVisibleProjects = Object.values(visibilityMap).some(visible => visible)
+          
+          if (hasVisibleProjects) {
+            visibleProjects = (projects || []).filter((p: any) => visibilityMap[p.id])
+          } else {
+            visibleProjects = projects || []
+          }
+        }
+        
+        // Add milestones to projects
+        const projectsWithMilestones = visibleProjects.map(project => ({
+          ...project,
+          milestones: milestones?.filter(milestone => milestone.project_id === project.id) || []
+        }))
+        
+        setRealProjects(projectsWithMilestones)
+        setRealInvoices(invoices || [])
+        setRealFiles(files || [])
+        setRealContracts(contracts || [])
+        setRealMilestones(milestones || [])
+        setRealMessages(messages || [])
+      }
+    } catch (error) {
+      console.error('Error reloading client data:', error)
+    }
+  }
+
+  // Handle file upload
+  const handleFileUpload = async (file: File) => {
+    if (!file || !user) return
+
+    setIsUploading(true)
+    setUploadProgress(0)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('companySlug', companySlug)
+      formData.append('clientSlug', clientSlug)
+      formData.append('description', `Uploaded by ${user.name || user.email}`)
+      formData.append('isPreview', isPreview.toString())
+
+      // Add client data for preview mode
+      if (isPreview && realClientData) {
+        formData.append('clientId', realClientData.clientId || '')
+        formData.append('accountId', realClientData.accountId || '')
+      }
+
+      // Add project ID if a project is selected
+      if (selectedProject) {
+        formData.append('projectId', selectedProject.id)
+      }
+
+      // Only add session token if not in preview mode
+      if (!isPreview) {
+        const sessionData = localStorage.getItem('client_session')
+        if (!sessionData) {
+          throw new Error('No session found. Please log in again.')
+        }
+        
+        const session = JSON.parse(sessionData)
+        const sessionToken = session.sessionToken
+        
+        if (!sessionToken) {
+          localStorage.removeItem('client_session')
+          window.location.href = `/${companySlug}?client=${clientSlug}`
+          return
+        }
+        
+        formData.append('sessionToken', sessionToken)
+      }
+
+      console.log('Upload data:', {
+        fileName: file.name,
+        fileSize: file.size,
+        companySlug,
+        clientSlug,
+        user: user.name || user.email,
+        isPreview
+      })
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return prev
+          }
+          return prev + Math.random() * 20
+        })
+      }, 200)
+
+      const response = await fetch('/api/client-portal/upload-file', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setUploadProgress(100)
+        // Refresh the files list
+        await reloadClientData()
+        return Promise.resolve()
+      } else {
+        throw new Error(result.message || 'Failed to upload file')
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      throw error
+    } finally {
+      setIsUploading(false)
+      setUploadProgress(0)
     }
   }
 
@@ -781,8 +1102,217 @@ export default function ClientPortalPage() {
     }
   }
 
+  // Handle PDF downloads
+  const handleDownloadContractPDF = async (contract: any) => {
+    try {
+      // Create a temporary div with the contract content
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'absolute'
+      tempDiv.style.left = '-9999px'
+      tempDiv.style.top = '-9999px'
+      tempDiv.style.width = '800px'
+      tempDiv.style.padding = '40px'
+      tempDiv.style.backgroundColor = 'white'
+      tempDiv.style.fontFamily = 'Arial, sans-serif'
+      
+      // Generate contract HTML content with signatures
+      const contractContent = contract.contract_content || {}
+      const htmlContent = generateContractDocument(contractContent, contract)
+      tempDiv.innerHTML = htmlContent
+      
+      document.body.appendChild(tempDiv)
+      
+      // Convert to canvas and PDF
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: 800,
+        height: tempDiv.scrollHeight,
+      })
+      
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 295
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      let position = 0
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      // Clean up
+      document.body.removeChild(tempDiv)
+      
+      // Download PDF
+      pdf.save(`${contract.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_contract.pdf`)
+      
+      toast.success('Contract PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error generating contract PDF:', error)
+      toast.error('Failed to download contract PDF')
+    }
+  }
+
+  const handleDownloadInvoicePDF = async (invoice: any) => {
+    try {
+      // Create a temporary div with the invoice content
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'absolute'
+      tempDiv.style.left = '-9999px'
+      tempDiv.style.top = '-9999px'
+      tempDiv.style.width = '800px'
+      tempDiv.style.padding = '40px'
+      tempDiv.style.backgroundColor = 'white'
+      tempDiv.style.fontFamily = 'Arial, sans-serif'
+      tempDiv.style.fontSize = '14px'
+      tempDiv.style.lineHeight = '1.4'
+      
+      // Generate the HTML content
+      tempDiv.innerHTML = `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+          <!-- Invoice Header -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+            <div>
+              <h1 style="font-size: 28px; font-weight: bold; color: #111827; margin: 0 0 8px 0;">
+                ${invoice.title || 'Untitled Invoice'}
+              </h1>
+              <p style="color: #6B7280; margin: 0; font-size: 16px;">
+                Invoice #${invoice.invoice_number}
+              </p>
+            </div>
+            <div style="text-align: right;">
+              <p style="color: #6B7280; margin: 0; font-size: 14px;">Issue Date</p>
+              <p style="font-weight: 600; margin: 0; font-size: 16px;">
+                ${new Date(invoice.issue_date).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+          
+          <!-- Invoice Details -->
+          <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <div>
+                <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Bill To:</h3>
+                <p style="color: #6B7280; margin: 0; font-size: 14px;">${invoice.client_name || 'N/A'}</p>
+              </div>
+              <div>
+                <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Amount Due:</h3>
+                <p style="font-size: 24px; font-weight: bold; color: #111827; margin: 0;">
+                  $${(invoice.total_amount || 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Invoice Items -->
+          <div style="margin-bottom: 30px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background-color: #F9FAFB;">
+                  <th style="padding: 12px; text-align: left; font-weight: 600; color: #111827; border-bottom: 1px solid #E5E7EB;">Description</th>
+                  <th style="padding: 12px; text-align: right; font-weight: 600; color: #111827; border-bottom: 1px solid #E5E7EB;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding: 12px; border-bottom: 1px solid #E5E7EB; color: #374151;">
+                    ${invoice.description || 'Service provided'}
+                  </td>
+                  <td style="padding: 12px; text-align: right; border-bottom: 1px solid #E5E7EB; font-weight: 600; color: #111827;">
+                    $${(invoice.total_amount || 0).toLocaleString()}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Payment Terms -->
+          <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px;">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Payment Terms</h3>
+            <p style="color: #6B7280; margin: 0; font-size: 14px;">
+              ${invoice.payment_terms || 'Payment due within 30 days of invoice date.'}
+            </p>
+          </div>
+        </div>
+      `
+      
+      document.body.appendChild(tempDiv)
+      
+      // Convert to canvas and PDF
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: 800,
+        height: tempDiv.scrollHeight,
+      })
+      
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 295
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      let position = 0
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      // Clean up
+      document.body.removeChild(tempDiv)
+      
+      // Download PDF
+      pdf.save(`invoice_${invoice.invoice_number}_${invoice.title?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'invoice'}.pdf`)
+      
+      toast.success('Invoice PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error generating invoice PDF:', error)
+      toast.error('Failed to download invoice PDF')
+    }
+  }
+
+  const handleDownloadFile = async (file: any) => {
+    try {
+      if (file.file_url) {
+        // Create a temporary link to download the file
+        const link = document.createElement('a')
+        link.href = file.file_url
+        link.download = file.name || 'download'
+        link.target = '_blank'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        toast.success('File downloaded successfully')
+      } else {
+        toast.error('File download URL not available')
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error)
+      toast.error('Failed to download file')
+    }
+  }
+
   // Generate contract document from contract content as fallback
-  const generateContractDocument = (content: any) => {
+  const generateContractDocument = (content: any, contractData?: any) => {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -1076,12 +1606,14 @@ export default function ClientPortalPage() {
                 <div class="signature-grid">
                     <div class="signature-area">
                         <h3>Company Signature</h3>
-                        ${content.companySignature ? `<img src="${content.companySignature}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.user_signature_data ? `<img src="${contractData.user_signature_data}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.user_signed_at ? `<p style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">Signed on ${new Date(contractData.user_signed_at).toLocaleDateString()}</p>` : ''}
                     </div>
                     
                     <div class="signature-area">
                         <h3>Client Signature</h3>
-                        ${content.clientSignature ? `<img src="${content.clientSignature}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.client_signature_data ? `<img src="${contractData.client_signature_data}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                        ${contractData?.client_signed_at ? `<p style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">Signed on ${new Date(contractData.client_signed_at).toLocaleDateString()}</p>` : ''}
                     </div>
                 </div>
             </div>
@@ -1113,7 +1645,10 @@ export default function ClientPortalPage() {
     status, 
     date, 
     amount, 
+    tags,
+    uploadedBy,
     onView, 
+    onDownload,
     onAction, 
     actionText, 
     actionColor 
@@ -1124,7 +1659,10 @@ export default function ClientPortalPage() {
     status: string
     date: string
     amount?: number
+    tags?: Array<{name: string, color: string}>
+    uploadedBy?: string
     onView?: () => void
+    onDownload?: () => void
     onAction?: () => void
     actionText?: string
     actionColor?: 'red' | 'blue' | 'green'
@@ -1208,6 +1746,31 @@ export default function ClientPortalPage() {
                     </span>
                   )}
                 </div>
+                {/* Tags and Upload Info */}
+                <div className="flex items-center space-x-2 mt-2">
+                  {tags && tags.length > 0 && (
+                    <div className="flex space-x-1">
+                      {tags.map((tag, index) => (
+                        <Badge 
+                          key={index}
+                          className="text-xs"
+                          style={{ 
+                            backgroundColor: tag.color + '20', 
+                            color: tag.color,
+                            borderColor: tag.color + '40'
+                          }}
+                        >
+                          {tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {uploadedBy && (
+                    <span className="text-xs text-gray-500">
+                      {uploadedBy}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -1221,6 +1784,17 @@ export default function ClientPortalPage() {
                 <Eye className="h-4 w-4 mr-1" />
                 View
               </Button>
+              )}
+              {onDownload && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDownload}
+                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Download
+                </Button>
               )}
               {onAction && actionText && (
                 <Button
@@ -1274,6 +1848,38 @@ export default function ClientPortalPage() {
           >
             Back to Login
           </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Show unauthorized access message for preview mode when user is not authenticated
+  if (isPreview && !user && !loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+            <AlertCircle className="h-8 w-8 text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-gray-600 mb-6">
+            You must be logged in to preview this portal. Only the portal owner can access the preview.
+          </p>
+          <div className="space-y-3">
+            <Button 
+              onClick={() => window.location.href = '/auth'}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Log In
+            </Button>
+            <Button 
+              onClick={() => window.location.href = '/dashboard'}
+              variant="outline"
+              className="w-full"
+            >
+              Go to Dashboard
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -1382,14 +1988,22 @@ export default function ClientPortalPage() {
       </nav>
 
       {/* Branded Header Section */}
+      {/* Debug branding data */}
+      {console.log('Branding data:', {
+        useBackgroundImage: realClientData?.branding?.useBackgroundImage,
+        headerBackgroundImage: realClientData?.branding?.headerBackgroundImage,
+        backgroundColor: realClientData?.branding?.backgroundColor,
+        brandColor
+      })}
+      
       <div
         className="relative w-full shadow-lg"
         style={{
           aspectRatio: '6 / 1', // Half the height - matches the crop aspect ratio perfectly
           minHeight: '100px', // Minimum height for smaller screens
-          background: portalSettings?.useBackgroundImage && portalSettings?.backgroundImageUrl
-            ? `linear-gradient(135deg, rgba(60, 60, 255, 0.1) 0%, rgba(245, 247, 255, 0.9) 100%), url('${portalSettings?.backgroundImageUrl}?t=${Date.now()}') center/cover`
-            : portalSettings?.backgroundColor || "#F5F7FF",
+          background: realClientData?.branding?.useBackgroundImage && realClientData?.branding?.headerBackgroundImage
+            ? `linear-gradient(135deg, rgba(60, 60, 255, 0.1) 0%, rgba(245, 247, 255, 0.9) 100%), url('${realClientData?.branding?.headerBackgroundImage}?t=${Date.now()}') center/cover`
+            : realClientData?.branding?.backgroundColor || `linear-gradient(135deg, ${brandColor}20 0%, ${brandColor}10 100%)`,
         }}
       >
         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/20"></div>
@@ -1590,6 +2204,15 @@ export default function ClientPortalPage() {
                               View
                             </Button>
                             <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-300 text-gray-700 hover:bg-white"
+                              onClick={() => handleDownloadInvoicePDF(invoice)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Download
+                            </Button>
+                            <Button
                               size="sm"
                               onClick={() => handlePayInvoice(invoice)}
                               className="bg-red-600 hover:bg-red-700 text-white"
@@ -1608,10 +2231,16 @@ export default function ClientPortalPage() {
 
 
               {/* Contracts - Light Red Background */}
-              {realContracts.filter((contract: any) => contract.status === "awaiting_signature").length > 0 && (
+              {realContracts.filter((contract: any) => 
+                contract.status === "awaiting_signature" || 
+                (contract.status === "partially_signed" && contract.client_signature_status !== "signed")
+              ).length > 0 && (
                       <div className="space-y-3">
                   <h3 className="text-lg font-medium text-gray-800">Contracts to Sign</h3>
-                  {realContracts.filter((contract: any) => contract.status === "awaiting_signature").map((contract: any) => (
+                  {realContracts.filter((contract: any) => 
+                    contract.status === "awaiting_signature" || 
+                    (contract.status === "partially_signed" && contract.client_signature_status !== "signed")
+                  ).map((contract: any) => (
                     <Card key={`contract-${contract.id}`} className="border-0 shadow-sm rounded-2xl bg-red-50 ring-1 ring-red-100">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
@@ -1630,13 +2259,24 @@ export default function ClientPortalPage() {
                               variant="outline"
                               size="sm"
                               className="border-gray-300 text-gray-700 hover:bg-white"
+                              onClick={() => openContractModal(contract)}
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
                             </Button>
                             <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-300 text-gray-700 hover:bg-white"
+                              onClick={() => handleDownloadContractPDF(contract)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Download
+                            </Button>
+                            <Button
                               size="sm"
                               className="bg-red-600 hover:bg-red-700 text-white"
+                              onClick={() => handleSignContract(contract)}
                             >
                               <PenTool className="h-4 w-4 mr-1" />
                               Sign
@@ -1707,10 +2347,10 @@ export default function ClientPortalPage() {
               )}
 
               {/* Files Pending Approval - No Red Background */}
-              {selectedProject && realFiles.filter((file: any) => (file.approval_status || file.status) === "pending" && file.project_id === selectedProject.id).length > 0 && (
+              {selectedProject && realFiles.filter((file: any) => (file.approval_status || file.status) === "pending" && file.project_id === selectedProject.id && !file.sent_by_client).length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-lg font-medium text-gray-800">Files to Review</h3>
-                  {realFiles.filter((file: any) => (file.approval_status || file.status) === "pending" && file.project_id === selectedProject.id).map((file: any) => (
+                  {realFiles.filter((file: any) => (file.approval_status || file.status) === "pending" && file.project_id === selectedProject.id && !file.sent_by_client).map((file: any) => (
                     <Card key={`file-${file.id}`} className="border-0 shadow-sm rounded-2xl bg-white">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
@@ -1725,6 +2365,31 @@ export default function ClientPortalPage() {
                                  (file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(1)} MB` : file.size) || 'Unknown size'}
                               </p>
                               <p className="text-sm text-yellow-600 font-medium">Pending approval</p>
+                              {/* Tags and Upload Info */}
+                              <div className="flex items-center space-x-2 mt-1">
+                                {file.tags && file.tags.length > 0 && (
+                                  <div className="flex space-x-1">
+                                    {file.tags.map((tag: any, index: number) => (
+                                      <Badge 
+                                        key={index}
+                                        className="text-xs"
+                                        style={{ 
+                                          backgroundColor: tag.color + '20', 
+                                          color: tag.color,
+                                          borderColor: tag.color + '40'
+                                        }}
+                                      >
+                                        {tag.name}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                                {file.uploaded_by_name && (
+                                  <span className="text-xs text-gray-500">
+                                    {file.sent_by_client ? `Sent by client (${file.uploaded_by_name})` : `Uploaded by ${file.uploaded_by_name}`}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex space-x-2">
@@ -1736,6 +2401,15 @@ export default function ClientPortalPage() {
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                              onClick={() => handleDownloadFile(file)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Download
                             </Button>
                             <Button
                               size="sm"
@@ -1755,9 +2429,12 @@ export default function ClientPortalPage() {
 
               {/* Show empty state if no action items */}
               {realInvoices.filter((invoice: any) => invoice.status === "sent").length === 0 &&
-               realContracts.filter((contract: any) => contract.status === "awaiting_signature").length === 0 &&
+               realContracts.filter((contract: any) => 
+                 contract.status === "awaiting_signature" || 
+                 (contract.status === "partially_signed" && contract.client_signature_status !== "signed")
+               ).length === 0 &&
                realProjects.filter((project: any) => project.status === "form_sent").length === 0 &&
-               realFiles.filter((file: any) => (file.approval_status || file.status) === "pending").length === 0 && (
+               realFiles.filter((file: any) => (file.approval_status || file.status) === "pending" && !file.sent_by_client).length === 0 && (
                 <div className="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1776,7 +2453,12 @@ export default function ClientPortalPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center">📚 Documents</h2>
-                <Button variant="outline" className="bg-transparent" style={{ color: brandColor, borderColor: brandColor, backgroundColor: 'transparent' }}>
+                <Button 
+                  variant="outline" 
+                  className="bg-transparent" 
+                  style={{ color: brandColor, borderColor: brandColor, backgroundColor: 'transparent' }}
+                  onClick={() => setIsUploadModalOpen(true)}
+                >
                   <Upload className="h-4 w-4 mr-2" />
                   Upload Document
                 </Button>
@@ -1852,22 +2534,29 @@ export default function ClientPortalPage() {
                       {/* Contracts Tab */}
                       {portalModules.contracts !== false && activeDocumentTab === 'contracts' && (
                         <div className="space-y-4">
-                          {realContracts.filter((contract: any) => contract.status === "awaiting_signature").length > 0 ? (
+                          {selectedProject && realContracts.filter((contract: any) => contract.project_id === selectedProject.id).length > 0 ? (
                             <div className="grid gap-4">
-                              {realContracts.filter((contract: any) => contract.status === "awaiting_signature").map((contract: any) => (
+                              {realContracts.filter((contract: any) => contract.project_id === selectedProject.id).map((contract: any) => {
+                                // Determine if contract needs action
+                                const needsAction = contract.status === "awaiting_signature" || 
+                                  (contract.status === "partially_signed" && contract.client_signature_status !== "signed")
+                                
+                                return (
                                 <DocumentCard
                                   key={`contract-${contract.id}`}
                                   type="contract"
                                   title={contract.name}
                                   description={contract.description || 'Contract document'}
-                                  status="pending"
+                                  status={contract.status}
                                   date={contract.created_at}
                                   onView={() => openContractModal(contract)}
-                                  onAction={() => {/* TODO: Sign contract */}}
-                                  actionText="Sign"
-                                  actionColor="red"
+                                  onDownload={() => handleDownloadContractPDF(contract)}
+                                  onAction={needsAction ? () => handleSignContract(contract) : undefined}
+                                  actionText={needsAction ? "Sign" : undefined}
+                                  actionColor={needsAction ? "red" : undefined}
                                 />
-                              ))}
+                              )
+                              })}
                             </div>
                           ) : (
                             <div className="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
@@ -1898,6 +2587,7 @@ export default function ClientPortalPage() {
                                   date={invoice.issue_date}
                                   amount={invoice.total_amount || invoice.subtotal}
                                   onView={() => openInvoiceModal(invoice)}
+                                  onDownload={() => handleDownloadInvoicePDF(invoice)}
                                   onAction={() => handlePayInvoice(invoice)}
                                   actionText="Pay"
                                   actionColor="red"
@@ -1962,9 +2652,32 @@ export default function ClientPortalPage() {
                       {/* Files Tab */}
                       {portalModules.files !== false && activeDocumentTab === 'files' && (
                         <div className="space-y-4">
-                          {selectedProject && realFiles.filter((file: any) => file.project_id === selectedProject.id).length > 0 ? (
+                          {/* Files Filter Toggle */}
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-medium text-gray-900">Project Files</h3>
+                            <div className="flex items-center space-x-2">
+                              <Switch
+                                id="client-files-only"
+                                checked={showClientFilesOnly}
+                                onCheckedChange={setShowClientFilesOnly}
+                              />
+                              <label htmlFor="client-files-only" className="text-sm text-gray-600">
+                                Show your uploads
+                              </label>
+                            </div>
+                          </div>
+                          
+                          {selectedProject && realFiles.filter((file: any) => {
+                            const projectMatch = file.project_id === selectedProject.id
+                            if (!showClientFilesOnly) return projectMatch
+                            return projectMatch && file.sent_by_client === true
+                          }).length > 0 ? (
                             <div className="grid gap-4">
-                              {realFiles.filter((file: any) => file.project_id === selectedProject.id).map((file: any) => (
+                              {realFiles.filter((file: any) => {
+                                const projectMatch = file.project_id === selectedProject.id
+                                if (!showClientFilesOnly) return projectMatch
+                                return projectMatch && file.sent_by_client === true
+                              }).map((file: any) => (
                                 <DocumentCard
                                   key={`file-${file.id}`}
                                   type="file"
@@ -1972,7 +2685,10 @@ export default function ClientPortalPage() {
                                   description={`${file.file_size_formatted || (file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(1)} MB` : file.size) || 'Unknown size'}`}
                                   status={file.approval_status || file.status}
                                   date={file.created_at}
+                                  tags={file.tags}
+                                  uploadedBy={file.sent_by_client ? `Sent by client (${file.uploaded_by_name})` : file.uploaded_by_name}
                                   onView={() => openFileModal(file)}
+                                  onDownload={() => handleDownloadFile(file)}
                                   onAction={file.approval_status === "pending" ? () => handleApproveFile(file.id) : undefined}
                                   actionText={file.approval_status === "pending" ? "Approve" : undefined}
                                   actionColor="green"
@@ -2344,7 +3060,7 @@ export default function ClientPortalPage() {
 
     
 
-           {/* Invoice Preview Modal */}
+      {/* Invoice Preview Modal */}
       {isInvoiceModalOpen && selectedInvoice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -2561,7 +3277,7 @@ export default function ClientPortalPage() {
                   Close
                 </Button>
                 <Button
-                  onClick={() => {/* TODO: Sign contract */}}
+                  onClick={() => handleSignContract(selectedContract)}
                   className="bg-[${brandColor}] hover:bg-[${brandColor}CC] text-white"
                 >
                   <PenTool className="h-4 w-4 mr-2" />
@@ -2706,6 +3422,23 @@ export default function ClientPortalPage() {
         open={isFormSubmissionModalOpen}
         onOpenChange={setIsFormSubmissionModalOpen}
         submission={selectedFormSubmission}
+      />
+
+      {/* Signature Modal */}
+      <SignatureModal
+        isOpen={isSignatureModalOpen}
+        onClose={() => setIsSignatureModalOpen(false)}
+        onSignatureSave={handleSignatureSave}
+        contractTitle={contractToSign?.name || 'Contract'}
+      />
+
+      {/* File Upload Modal */}
+      <FileUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUpload={handleFileUpload}
+        isUploading={isUploading}
+        uploadProgress={uploadProgress}
       />
 
       {/* Footer */}

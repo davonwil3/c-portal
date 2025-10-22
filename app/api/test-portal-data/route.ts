@@ -1,249 +1,266 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseServiceKey) {
-  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required')
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const clientSlug = searchParams.get('clientSlug')
     const companySlug = searchParams.get('companySlug')
-    const isPreview = searchParams.get('preview') === 'true'
+    const preview = searchParams.get('preview') === 'true'
 
     if (!clientSlug || !companySlug) {
-      return NextResponse.json(
-        { success: false, message: 'Missing clientSlug or companySlug' },
-        { status: 400 }
-      )
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Missing clientSlug or companySlug' 
+      }, { status: 400 })
     }
 
-    // Get account data
-    const { data: accountData, error: accountError } = await supabaseAdmin
-      .from('accounts')
-      .select('id, company_name')
-      .ilike('company_name', `%${companySlug.replace(/-/g, '%')}%`)
-      .single()
+    const supabase = await createClient()
 
-    if (accountError || !accountData) {
-      return NextResponse.json(
-        { success: false, message: 'Company not found' },
-        { status: 404 }
-      )
-    }
-
-    let allowlistData = null
-    let clientId = null
-
-    if (isPreview) {
-      // In preview mode, find the client directly by slug without allowlist check
-      console.log('Preview mode: Finding client directly by slug:', { clientSlug, companySlug })
+    // In preview mode, verify user is authenticated and owns this portal
+    if (preview) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
       
-      // First, try to find the client by matching the slug with company name
-      const { data: clients } = await supabaseAdmin
-        .from('clients')
-        .select('id, first_name, last_name, company, email')
-        .eq('account_id', accountData.id)
-        .or(`company.ilike.%${clientSlug.replace(/-/g, '%')}%,first_name.ilike.%${clientSlug.replace(/-/g, '%')}%,last_name.ilike.%${clientSlug.replace(/-/g, '%')}%`)
-        .limit(1)
-
-      if (clients && clients.length > 0) {
-        clientId = clients[0].id
-        allowlistData = {
-          client_id: clients[0].id,
-          name: `${clients[0].first_name} ${clients[0].last_name}`,
-          company_name: clients[0].company,
-          email: clients[0].email || `${clients[0].first_name?.toLowerCase()}.${clients[0].last_name?.toLowerCase()}@example.com`
-        }
-        console.log('Preview mode: Found client directly:', allowlistData)
-      } else {
-        return NextResponse.json(
-          { success: false, message: 'Client not found for preview' },
-          { status: 404 }
-        )
-      }
-    } else {
-      // Regular mode: Check allowlist for authentication
-      console.log('Regular mode: Looking for client in allowlist:', { 
-        accountId: accountData.id, 
-        clientSlug, 
-        companySlug 
-      })
-      
-      const { data: allowlist, error: allowlistError } = await supabaseAdmin
-        .from('client_allowlist')
-        .select('*')
-        .eq('account_id', accountData.id)
-        .eq('client_slug', clientSlug)
-        .eq('is_active', true)
-        .maybeSingle()
-
-      if (allowlistError) {
-        console.error('Error fetching allowlist data:', allowlistError)
-        return NextResponse.json(
-          { success: false, message: 'Database error' },
-          { status: 500 }
-        )
+      if (authError || !user) {
+        console.log('No authenticated user for preview access')
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Authentication required for preview access' 
+        }, { status: 401 })
       }
 
-      console.log('Allowlist data found:', allowlist)
+      // Get user's profile to get their account_id
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
+        .single()
 
-      if (!allowlist) {
-        // Let's also try to find by partial match or show all allowlist entries for debugging
-        const { data: allAllowlist } = await supabaseAdmin
-          .from('client_allowlist')
-          .select('*')
-          .eq('account_id', accountData.id)
-          .eq('is_active', true)
-        
-        console.log('All allowlist entries for this account:', allAllowlist)
-        
-        return NextResponse.json(
-          { success: false, message: 'Client not found in allowlist' },
-          { status: 404 }
-        )
+      if (profileError || !profile) {
+        console.log('User profile not found:', { userId: user.id, profileError })
+        return NextResponse.json({ 
+          success: false, 
+          error: 'User profile not found' 
+        }, { status: 404 })
       }
 
-      allowlistData = allowlist
-      clientId = allowlist.client_id
+      console.log('Authenticated user account:', { userId: user.id, accountId: profile.account_id })
     }
 
-    // Get projects for this client
-    const { data: projects, error: projectsError } = await supabaseAdmin
-      .from('projects')
+    // Get client data from allowlist
+    const { data: allowlistEntries, error: allowlistError } = await supabase
+      .from('client_allowlist')
       .select('*')
-      .eq('account_id', accountData.id)
-      .eq('client_id', clientId)
-      .order('created_at', { ascending: false })
+      .eq('client_slug', clientSlug)
+      .eq('company_slug', companySlug)
+      .eq('is_active', true)
 
-    // Get project milestones for each project
-    let projectsWithMilestones = []
-    if (projects && projects.length > 0) {
-      for (const project of projects) {
-        const { data: milestones, error: milestonesError } = await supabaseAdmin
-          .from('project_milestones')
-          .select('*')
-          .eq('project_id', project.id)
-          .order('sort_order', { ascending: true })
-          .order('created_at', { ascending: true })
-        
-        projectsWithMilestones.push({
-          ...project,
-          milestones: milestones || []
+    if (allowlistError) {
+      console.error('Allowlist error:', allowlistError)
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Database error checking allowlist' 
+      }, { status: 500 })
+    }
+
+    if (!allowlistEntries || allowlistEntries.length === 0) {
+      console.error('No allowlist entries found for:', { clientSlug, companySlug })
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Client not found in allowlist' 
+      }, { status: 404 })
+    }
+
+    // Use the first allowlist entry if multiple exist
+    const allowlistData = allowlistEntries[0]
+    const clientId = allowlistData.client_id
+    const accountId = allowlistData.account_id
+
+    console.log('Found client:', { clientId, accountId, clientSlug, companySlug })
+
+    // In preview mode, verify the authenticated user's account matches the portal's account
+    if (preview) {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (profile.account_id !== accountId) {
+        console.log('Account mismatch:', { 
+          userAccountId: profile.account_id, 
+          portalAccountId: accountId,
+          userId: user.id 
         })
+        return NextResponse.json({ 
+          success: false, 
+          error: 'You do not have access to this portal' 
+        }, { status: 403 })
       }
+
+      console.log('Account verification passed:', { userAccountId: profile.account_id, portalAccountId: accountId })
     }
 
-    // Get invoices for this client
-    const { data: invoices, error: invoicesError } = await supabaseAdmin
-      .from('invoices')
-      .select('*')
-      .eq('account_id', accountData.id)
-      .eq('client_id', clientId)
-      .order('created_at', { ascending: false })
-
-    // Get files for this client
-    const { data: files, error: filesError } = await supabaseAdmin
-      .from('files')
-      .select('*')
-      .eq('account_id', accountData.id)
-      .eq('client_id', clientId)
-      .order('created_at', { ascending: false })
-
-    // Get contracts for this client (either directly linked to client or linked to client's projects)
-    const { data: contracts, error: contractsError } = await supabaseAdmin
-      .from('contracts')
-      .select('*')
-      .eq('account_id', accountData.id)
-      .or(`client_id.eq.${clientId},project_id.in.(${projects?.map(p => p.id) || []})`)
-      .order('created_at', { ascending: false })
-
-    // Get portal for this client
-    const { data: portal, error: portalError } = await supabaseAdmin
+    // Get portal settings - need to find portal_id first
+    const { data: portal, error: portalError } = await supabase
       .from('portals')
-      .select(`
-        id,
-        name,
-        status,
-        url,
-        description,
-        brand_color
-      `)
+      .select('id')
       .eq('client_id', clientId)
-      .eq('account_id', accountData.id)
       .single()
 
     let portalSettings = null
-    if (!portalError && portal) {
-      // Get portal settings
-      const { data: settings, error: settingsError } = await supabaseAdmin
+    if (portal && portal.id) {
+      const { data: settings, error: settingsError } = await supabase
         .from('portal_settings')
-        .select('modules, project_visibility, default_project_id, brand_color, welcome_message, password_protected, portal_password, logo_url, use_background_image, background_image_url, background_color')
+        .select('*')
         .eq('portal_id', portal.id)
         .single()
 
-      const modules = settings?.modules || {
-        timeline: true,
-        files: true,
-        invoices: true,
-        contracts: true,
-        forms: false,
-        messages: true,
-        "ai-assistant": false
+      if (settingsError) {
+        console.error('Portal settings error:', settingsError)
+        console.log('No portal settings found for portal:', portal.id)
+      } else {
+        console.log('Portal settings found:', settings)
+        portalSettings = settings
       }
+    } else {
+      console.error('No portal found for client:', clientId)
+    }
 
-      portalSettings = {
-        id: portal.id,
-        name: portal.name,
-        status: portal.status,
-        url: portal.url,
-        description: portal.description || '',
-        brandColor: settings?.brand_color || portal.brand_color || '#3C3CFF',
-        welcomeMessage: settings?.welcome_message || '',
-        passwordProtected: settings?.password_protected || false,
-        portalPassword: settings?.portal_password || '',
-        logoUrl: settings?.logo_url || '',
-        useBackgroundImage: settings?.use_background_image || false,
-        backgroundImageUrl: settings?.background_image_url || '',
-        backgroundColor: settings?.background_color || '#3C3CFF',
-        modules,
-        projectVisibility: settings?.project_visibility || {},
-        defaultProject: settings?.default_project_id || null,
-      }
+    // Get projects
+    const { data: projects, error: projectsError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (projectsError) {
+      console.error('Projects error:', projectsError)
+    }
+
+    // Get invoices
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (invoicesError) {
+      console.error('Invoices error:', invoicesError)
+    }
+
+    // Get files
+    const { data: files, error: filesError } = await supabase
+      .from('files')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (filesError) {
+      console.error('Files error:', filesError)
+    }
+
+    // Get contracts
+    const { data: contracts, error: contractsError } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (contractsError) {
+      console.error('Contracts error:', contractsError)
+    }
+
+    // Get forms
+    const { data: forms, error: formsError } = await supabase
+      .from('forms')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (formsError) {
+      console.error('Forms error:', formsError)
+    }
+
+    // Get project milestones - get all milestones for projects belonging to this client
+    const { data: milestones, error: milestonesError } = await supabase
+      .from('project_milestones')
+      .select(`
+        *,
+        projects!inner(
+          id,
+          client_id,
+          account_id
+        )
+      `)
+      .eq('projects.client_id', clientId)
+      .eq('projects.account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (milestonesError) {
+      console.error('Milestones error:', milestonesError)
+    }
+
+    // Get messages
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+
+    if (messagesError) {
+      console.error('Messages error:', messagesError)
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Portal data retrieved successfully',
       data: {
-        account: accountData,
         allowlist: allowlistData,
-        projects: projectsWithMilestones,
+        portalSettings: portalSettings || null,
+        portalId: portal?.id || null, // Add portal ID for view tracking
+        projects: projects || [],
         invoices: invoices || [],
         files: files || [],
         contracts: contracts || [],
-        portalSettings,
-        errors: {
-          projects: projectsError?.message,
-          invoices: invoicesError?.message,
-          files: filesError?.message,
-          contracts: contractsError?.message,
-          portal: portalError?.message
+        forms: forms || [],
+        milestones: milestones || [],
+        messages: messages || [],
+        // Add branding data in the format expected by client portal
+        branding: {
+          logo: portalSettings?.logo_url || "/placeholder.svg?height=60&width=200&text=Logo",
+          primaryColor: portalSettings?.brand_color || "#3C3CFF",
+          headerBackgroundImage: portalSettings?.background_image_url || null,
+          useBackgroundImage: portalSettings?.use_background_image ?? false, // Use nullish coalescing to properly handle false values
+          backgroundColor: portalSettings?.background_color || "#F5F7FF"
         }
+      }
+    })
+
+    console.log('Portal settings debug:', {
+      use_background_image: portalSettings?.use_background_image,
+      background_image_url: portalSettings?.background_image_url,
+      background_color: portalSettings?.background_color,
+      branding: {
+        logo: portalSettings?.logo_url || "/placeholder.svg?height=60&width=200&text=Logo",
+        primaryColor: portalSettings?.brand_color || "#3C3CFF",
+        headerBackgroundImage: portalSettings?.background_image_url || null,
+        useBackgroundImage: portalSettings?.use_background_image ?? false,
+        backgroundColor: portalSettings?.background_color || "#F5F7FF"
       }
     })
 
   } catch (error) {
     console.error('Error in test-portal-data API:', error)
-    return NextResponse.json(
-      { success: false, message: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Internal server error' 
+    }, { status: 500 })
   }
 }

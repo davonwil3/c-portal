@@ -51,6 +51,7 @@ CREATE TABLE public.files (
   -- Access Control
   is_public boolean DEFAULT false,
   access_level text DEFAULT 'team' CHECK (access_level IN ('private', 'team', 'client', 'public')),
+  sent_by_client boolean DEFAULT false, -- Indicates if file was uploaded by client
   
   -- Analytics
   download_count integer DEFAULT 0,
@@ -175,6 +176,7 @@ CREATE INDEX idx_files_approval_status ON public.files(approval_status);
 CREATE INDEX idx_files_file_type ON public.files(file_type);
 CREATE INDEX idx_files_created_at ON public.files(created_at);
 CREATE INDEX idx_files_last_accessed ON public.files(last_accessed_at);
+CREATE INDEX idx_files_sent_by_client ON public.files(sent_by_client);
 CREATE INDEX idx_files_name ON public.files USING gin(to_tsvector('english', name));
 CREATE INDEX idx_files_tags ON public.files USING gin(tags);
 
