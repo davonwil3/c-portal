@@ -450,7 +450,7 @@ export async function createContractTemplate(templateData: Partial<ContractTempl
 
   if (!profile?.account_id) throw new Error('No account found')
 
-  // Create full name from first_name and last_name
+  // Create full name from first_name and last_namee
   const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown User'
 
   // Generate a unique template number manually
