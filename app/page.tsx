@@ -29,7 +29,7 @@ import LoomVideoEmbed from "@/components/LoomVideoEmbed"
 
 export default function JolixLanding() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <header className="border-b border-gray-200/50 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
@@ -41,6 +41,8 @@ export default function JolixLanding() {
                 width={60}
                 height={60}
                 className="w-14 h-14"
+                priority
+                quality={90}
               />
               <span className="text-3xl font-bold text-gray-900">Jolix</span>
             </div>
@@ -105,6 +107,8 @@ export default function JolixLanding() {
                     fill
                     className="object-cover"
                     priority
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 800px, 800px"
+                    quality={85}
                 />
               </div>
               </div>
@@ -227,6 +231,8 @@ export default function JolixLanding() {
                     alt="Freelancer working"
                     fill
                     className="object-cover opacity-90"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 600px, 600px"
+                    quality={85}
                   />
                 </div>
                 </div>
@@ -549,6 +555,8 @@ export default function JolixLanding() {
                         alt="Alex Rivera"
                         fill
                         className="object-cover"
+                        sizes="80px"
+                        quality={90}
               />
             </div>
                     <div>
@@ -1107,6 +1115,7 @@ export default function JolixLanding() {
                 width={32}
                 height={32}
                 className="w-8 h-8"
+                quality={90}
               />
               <span className="text-xl font-bold">Jolix</span>
                 </div>

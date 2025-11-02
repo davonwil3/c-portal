@@ -4,32 +4,22 @@ import { useEffect, useRef, useState } from 'react'
 
 export default function LoomVideoEmbed() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [hasBeenInView, setHasBeenInView] = useState(false)
+  const [shouldLoad, setShouldLoad] = useState(false)
+  const hasInitializedRef = useRef(false)
 
   useEffect(() => {
+    // Start loading when section is near viewport (400px before)
+    // This gives time for the iframe to load before it becomes visible
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && !hasBeenInView) {
-            setHasBeenInView(true)
-            // Once in view, send postMessage to play if needed
-            // The autoplay parameter should handle this, but we can trigger it smoothly
-            if (iframeRef.current && iframeRef.current.contentWindow) {
-              try {
-                // Try to communicate with Loom iframe to ensure smooth playback
-                iframeRef.current.contentWindow.postMessage(
-                  { type: 'play', autoplay: true },
-                  'https://www.loom.com'
-                )
-              } catch (e) {
-                // Silently fail if postMessage doesn't work
-              }
-            }
+          if (entry.isIntersecting && !hasInitializedRef.current) {
+            hasInitializedRef.current = true
+            setShouldLoad(true)
           }
         })
       },
-      { threshold: 0.1 }
+      { threshold: 0, rootMargin: '400px' }
     )
 
     if (containerRef.current) {
@@ -41,23 +31,31 @@ export default function LoomVideoEmbed() {
         observer.unobserve(containerRef.current)
       }
     }
-  }, [hasBeenInView])
+  }, [])
 
-  // Load with all parameters from the start - no reload needed
-  const videoUrl = "https://www.loom.com/embed/055a6f28fc8a4cf38719de58b6f56cb5?autoplay=1&loop=1&muted=1"
+  // Load with autoplay parameters from the start to avoid any src changes
+  // Only render iframe when ready to avoid loading it too early
+  const videoUrl = shouldLoad
+    ? "https://www.loom.com/embed/055a6f28fc8a4cf38719de58b6f56cb5?autoplay=1&loop=1&muted=1"
+    : null
 
   return (
     <div ref={containerRef} className="relative w-full rounded-xl aspect-video overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer shadow-lg border border-gray-200/60">
-      <iframe
-        ref={iframeRef}
-        src={videoUrl}
-        className="absolute inset-0 w-full h-full"
-        frameBorder={0}
-        allowFullScreen
-        allow="autoplay; encrypted-media"
-        title="Jolix Portfolio Preview"
-        loading="lazy"
-      />
+      {videoUrl ? (
+        <iframe
+          src={videoUrl}
+          className="absolute inset-0 w-full h-full"
+          frameBorder={0}
+          allowFullScreen
+          allow="autoplay; encrypted-media; fullscreen"
+          title="Jolix Portfolio Preview"
+        />
+      ) : (
+        // Placeholder to maintain aspect ratio while loading
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+          <div className="w-16 h-16 border-4 border-gray-300 border-t-[#3C3CFF] rounded-full animate-spin"></div>
+        </div>
+      )}
     </div>
   )
 }
