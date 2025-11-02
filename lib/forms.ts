@@ -527,6 +527,7 @@ export interface FormField {
   placeholder?: string
   options?: string[]
   settings?: Record<string, any>
+  currency?: string
 }
 
 export interface FormBuilderData {

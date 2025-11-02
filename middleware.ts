@@ -4,6 +4,27 @@ import { parseDomainFromHost } from './lib/domain-config'
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
   const url = request.nextUrl.clone()
+  const pathname = request.nextUrl.pathname
+  
+  // Handle jolix.io portfolio subdomains (production)
+  // Route: subdomain.jolix.io -> /portfolio/[subdomain]
+  if (host.endsWith('.jolix.io')) {
+    const subdomain = host.replace('.jolix.io', '')
+    if (subdomain && subdomain !== 'www' && subdomain !== 'app') {
+      url.pathname = `/portfolio/${subdomain}`
+      return NextResponse.rewrite(url)
+    }
+  }
+  
+  // Handle localhost portfolio subdomains (development)
+  // Route: subdomain.localhost:3000 or subdomain.localhost -> /portfolio/[subdomain]
+  if (host.includes('.localhost')) {
+    const subdomain = host.split('.localhost')[0]
+    if (subdomain && subdomain !== 'www' && subdomain !== 'app') {
+      url.pathname = `/portfolio/${subdomain}`
+      return NextResponse.rewrite(url)
+    }
+  }
   
   // Parse domain to extract company and client slugs
   const domainConfig = parseDomainFromHost(host)
@@ -23,6 +44,12 @@ export function middleware(request: NextRequest) {
   }
   
   // For development or non-custom domains, continue with normal routing
+  // Block access to auth routes
+  if (pathname.startsWith('/auth')) {
+    url.pathname = '/'
+    return NextResponse.redirect(url)
+  }
+
   return NextResponse.next()
 }
 
@@ -33,6 +60,7 @@ export const config = {
     // - _next/static (static files)
     // - _next/image (image optimization files)
     // - favicon.ico (favicon file)
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    // - static assets (.jpg, .jpeg, .png, .svg, .gif, .webp, .ico, .pdf, etc.)
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.jpg|.*\\.jpeg|.*\\.png|.*\\.svg|.*\\.gif|.*\\.webp|.*\\.ico|.*\\.pdf|.*\\.woff|.*\\.woff2).*)',
   ],
 } 

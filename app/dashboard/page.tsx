@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { DashboardLayout } from "@/components/dashboard/layout"
+import { RevenueTrend } from "@/components/charts/RevenueTrend"
 import { 
   Plus, 
   ChevronRight, 
@@ -29,11 +30,14 @@ import {
   Globe,
   BarChart3,
   PieChart,
-  LineChart
+  LineChart,
+  UserPlus,
+  Briefcase
 } from "lucide-react"
 import { getCurrentUser, getUserProfile, getAccount, signOut } from "@/lib/auth"
 import { User } from "@supabase/supabase-js"
 import { Profile, Account } from "@/lib/auth"
+import { fetchRealInvoices, groupByMonth } from "@/lib/analytics"
 
 // Enhanced mock data
 const revenueData = [
@@ -49,7 +53,7 @@ const kpiData = [
   { 
     title: "Monthly Revenue", 
     value: "$28,450", 
-    change: "+12.5%", 
+    change: "+12.5% this month", 
     trend: "up",
     icon: DollarSign,
     color: "text-green-600",
@@ -67,21 +71,21 @@ const kpiData = [
     iconColor: "text-blue-600"
   },
   { 
-    title: "Portal Views", 
-    value: "1,247", 
-    change: "+8.2%", 
+    title: "Total Leads", 
+    value: "142", 
+    change: "+18 this month", 
     trend: "up",
-    icon: Eye,
+    icon: UserPlus,
     color: "text-purple-600",
     bgColor: "bg-purple-50",
     iconColor: "text-purple-600"
   },
   { 
-    title: "Messages Sent", 
-    value: "89", 
-    change: "-2.1%", 
-    trend: "down",
-    icon: MessageSquare,
+    title: "Followers", 
+    value: "1,247", 
+    change: "+128 this month", 
+    trend: "up",
+    icon: Users,
     color: "text-orange-600",
     bgColor: "bg-orange-50",
     iconColor: "text-orange-600"
@@ -141,62 +145,34 @@ const upcomingTasks = [
   { id: 4, task: "Invoice #1235 follow-up", client: "Marketing Plus", due: "Today", priority: "high" },
 ]
 
-// Revenue Chart Component
-function RevenueChart() {
-  const maxRevenue = Math.max(...revenueData.map(d => d.revenue))
-  
+// Quick Stat Card Component
+function QuickStatCard({ title, value, change, icon: Icon, trend, color }: {
+  title: string
+  value: string
+  change: string
+  icon: any
+  trend: "up" | "down"
+  color: string
+}) {
   return (
-    <Card className="bg-gradient-to-br from-white to-blue-50/30 border-0 shadow-sm rounded-2xl">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg font-semibold text-gray-900">Revenue Trend</CardTitle>
-            <p className="text-sm text-gray-600 mt-1">Last 6 months performance</p>
+    <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className={`w-10 h-10 ${color} bg-opacity-10 rounded-xl flex items-center justify-center`}>
+            <Icon className={`h-5 w-5 ${color}`} />
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-sm text-gray-600">+12.5% vs last month</span>
-          </div>
+          <Badge variant={trend === "up" ? "default" : "secondary"} className={`${
+            trend === "up" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            <div className="flex items-center gap-1">
+              {trend === "up" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {change}
+            </div>
+          </Badge>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Chart */}
-          <div className="flex items-end justify-between h-32 space-x-2">
-            {revenueData.map((data, index) => (
-              <div key={data.month} className="flex flex-col items-center space-y-2 flex-1">
-                <div className="relative w-full">
-                  <div 
-                    className="bg-gradient-to-t from-[#3C3CFF] to-[#6366F1] rounded-t-lg transition-all duration-500 hover:from-[#2D2DCC] hover:to-[#4F46E5]"
-                    style={{ 
-                      height: `${(data.revenue / maxRevenue) * 100}%`,
-                      minHeight: '20px'
-                    }}
-                  ></div>
-                  <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600">
-                    ${(data.revenue / 1000).toFixed(0)}k
-                  </div>
-                </div>
-                <span className="text-xs text-gray-500 font-medium">{data.month}</span>
-              </div>
-            ))}
-          </div>
-          
-          {/* Summary Stats */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100">
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">${(revenueData.reduce((sum, d) => sum + d.revenue, 0) / 1000).toFixed(0)}k</div>
-              <div className="text-xs text-gray-600">Total Revenue</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">{revenueData[revenueData.length - 1].clients}</div>
-              <div className="text-xs text-gray-600">Active Clients</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold text-gray-900">${Math.round(revenueData.reduce((sum, d) => sum + d.revenue, 0) / revenueData.length / 1000)}k</div>
-              <div className="text-xs text-gray-600">Avg Monthly</div>
-            </div>
-          </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-gray-600">{title}</p>
+          <p className="text-3xl font-bold text-gray-900">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -290,6 +266,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
+  const [invoices, setInvoices] = useState<any[]>([])
 
   useEffect(() => {
     async function loadUserData() {
@@ -306,6 +283,15 @@ export default function DashboardPage() {
             if (userAccount) {
               setAccount(userAccount)
             }
+
+            // Fetch invoices
+            try {
+              const invoiceData = await fetchRealInvoices()
+              setInvoices(invoiceData)
+            } catch (error) {
+              console.error('Error fetching invoices:', error)
+              setInvoices([])
+            }
           }
         }
       } catch (error) {
@@ -317,6 +303,11 @@ export default function DashboardPage() {
 
     loadUserData()
   }, [])
+
+  // Calculate revenue trend data
+  const revenueChartData = useMemo(() => {
+    return groupByMonth(invoices, "6m")
+  }, [invoices])
 
   const handleSignOut = async () => {
     try {
@@ -395,8 +386,44 @@ export default function DashboardPage() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Revenue Chart - Takes up 2 columns */}
-          <div className="lg:col-span-2">
-            <RevenueChart />
+          <div className="lg:col-span-2 space-y-6">
+            <RevenueTrend data={revenueChartData} />
+            
+            {/* Quick Stats under chart */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <QuickStatCard
+                title="New Leads"
+                value="12"
+                change="+18%"
+                icon={UserPlus}
+                trend="up"
+                color="text-blue-600"
+              />
+              <QuickStatCard
+                title="New Clients"
+                value="5"
+                change="+25%"
+                icon={Users}
+                trend="up"
+                color="text-green-600"
+              />
+              <QuickStatCard
+                title="Billed Hours"
+                value="127"
+                change="+8%"
+                icon={Clock}
+                trend="up"
+                color="text-purple-600"
+              />
+              <QuickStatCard
+                title="Projects"
+                value="18"
+                change="+12%"
+                icon={Briefcase}
+                trend="up"
+                color="text-orange-600"
+              />
+            </div>
           </div>
 
           {/* Quick Actions */}
@@ -410,8 +437,8 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button className="w-full justify-start bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] hover:from-[#2D2DCC] hover:to-[#4F46E5] text-white rounded-xl h-12 shadow-lg">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create New Portal
+                  <Users className="mr-2 h-4 w-4" />
+                  Add New Client
                 </Button>
                 <Button
                   variant="outline"
@@ -424,15 +451,15 @@ export default function DashboardPage() {
                   variant="outline"
                   className="w-full justify-start border-gray-200 hover:bg-[#F0F2FF] hover:border-[#3C3CFF] hover:text-[#3C3CFF] rounded-xl h-12 bg-transparent"
                 >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Upload File
+                  <Briefcase className="mr-2 h-4 w-4" />
+                  Create a Project
                 </Button>
                 <Button
                   variant="outline"
                   className="w-full justify-start border-gray-200 hover:bg-[#F0F2FF] hover:border-[#3C3CFF] hover:text-[#3C3CFF] rounded-xl h-12 bg-transparent"
                 >
-                  <Users className="mr-2 h-4 w-4" />
-                  Add New Client
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Schedule a Meeting
                 </Button>
               </CardContent>
             </Card>

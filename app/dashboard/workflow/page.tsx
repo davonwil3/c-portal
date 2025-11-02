@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -562,7 +564,7 @@ function ClientsSection({
                       {client.portal_url && (
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation()
-                          window.open(client.portal_url, '_blank')
+                          window.open(client.portal_url ?? undefined, '_blank')
                         }}>
                           <ExternalLink className="h-4 w-4 mr-2" />
                           View Portal
@@ -1050,7 +1052,7 @@ function PortalsSection({
   viewMode: "grid" | "list"
   setViewMode: (mode: "grid" | "list") => void
   getStatusConfig: (status: string) => any
-  getActivityIndicator: (lastActivity: string) => JSX.Element
+  getActivityIndicator: (lastActivity: string) => React.ReactNode
   handlePortalAction: (action: string, portal: Portal, e: React.MouseEvent) => void
 }) {
   const statusOptions = [

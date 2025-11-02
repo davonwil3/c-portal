@@ -14,6 +14,7 @@ interface ConfirmDeductModalProps {
   leadTitle: string
   currentBalance: number
   deductionAmount?: number
+  source?: string
 }
 
 export function ConfirmDeductModal({ 
@@ -22,7 +23,8 @@ export function ConfirmDeductModal({
   onConfirm, 
   leadTitle, 
   currentBalance, 
-  deductionAmount = 1 
+  deductionAmount = 1, 
+  source
 }: ConfirmDeductModalProps) {
   const newBalance = currentBalance - deductionAmount
   const isOutOfCredits = currentBalance === 0
@@ -40,7 +42,7 @@ export function ConfirmDeductModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Coins className="h-5 w-5 text-[#3C3CFF]" />
@@ -57,9 +59,8 @@ export function ConfirmDeductModal({
               </h4>
               <div className="flex items-center space-x-2">
                 <Badge variant="outline" className="text-xs">
-                  Reddit
+                  {source || 'Source'}
                 </Badge>
-                <span className="text-xs text-gray-500">r/forhire</span>
               </div>
             </CardContent>
           </Card>

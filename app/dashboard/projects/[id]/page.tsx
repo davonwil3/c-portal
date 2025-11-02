@@ -87,6 +87,7 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { SignatureModal } from "@/components/ui/signature-modal"
 import { DashboardLayout } from "@/components/dashboard/layout"
+import { getProjectTimeEntries, calculateTotalDuration, calculateTotalBillable, formatDuration, type TimeEntry } from "@/lib/time-tracking"
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -206,6 +207,10 @@ export default function ProjectDetailPage() {
   const [projectInvoices, setProjectInvoices] = useState<Invoice[]>([])
   const [loadingInvoices, setLoadingInvoices] = useState(false)
   const [deletingInvoice, setDeletingInvoice] = useState<string | null>(null)
+
+  // State for time tracking
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([])
+  const [loadingTimeEntries, setLoadingTimeEntries] = useState(false)
   const [markingAsPaid, setMarkingAsPaid] = useState<string | null>(null)
   const [changingStatus, setChangingStatus] = useState<string | null>(null)
   const [downloadingPDF, setDownloadingPDF] = useState<string | null>(null)
@@ -853,6 +858,9 @@ export default function ProjectDetailPage() {
       // Load project invoices
       await loadProjectInvoices()
 
+      // Load project time entries
+      await loadProjectTimeEntries()
+
       // Load clients and tags for edit modal
       const [clientsData, tagsData] = await Promise.all([
         getClientsForProjects(),
@@ -903,6 +911,22 @@ export default function ProjectDetailPage() {
       toast.error('Failed to load project invoices')
     } finally {
       setLoadingInvoices(false)
+    }
+  }
+
+  const loadProjectTimeEntries = async () => {
+    try {
+      setLoadingTimeEntries(true)
+      const entries = await getProjectTimeEntries(projectId)
+      setTimeEntries(entries)
+    } catch (error) {
+      console.error('Error loading time entries:', error)
+      // Fail silently if table doesn't exist yet
+      if (error && typeof error === 'object' && 'code' in error && error.code !== '42P01') {
+        toast.error('Failed to load time entries')
+      }
+    } finally {
+      setLoadingTimeEntries(false)
     }
   }
 
@@ -2656,7 +2680,7 @@ export default function ProjectDetailPage() {
 
         {/* Main Content */}
         <Tabs defaultValue="timeline" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7 mb-12 mt-4 h-auto p-2 bg-white border border-gray-200 rounded-xl shadow-sm">
+          <TabsList className="grid w-full grid-cols-8 mb-12 mt-4 h-auto p-2 bg-white border border-gray-200 rounded-xl shadow-sm">
             <TabsTrigger value="timeline" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <CalendarDays className="h-5 w-5 mb-1" />
               <span className="font-medium">Timeline</span>
@@ -2686,6 +2710,11 @@ export default function ProjectDetailPage() {
               <DollarSign className="h-5 w-5 mb-1" />
               <span className="font-medium">Invoices</span>
               <span className="text-xs opacity-75">{projectInvoices.length} invoices</span>
+            </TabsTrigger>
+            <TabsTrigger value="time" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+              <Clock className="h-5 w-5 mb-1" />
+              <span className="font-medium">Time Tracked</span>
+              <span className="text-xs opacity-75">{timeEntries.length} entries</span>
             </TabsTrigger>
             <TabsTrigger value="activity" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <Activity className="h-5 w-5 mb-1" />
@@ -4559,6 +4588,189 @@ export default function ProjectDetailPage() {
                     </Card>
                   ))}
                 </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="time" className="space-y-6">
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Time Tracked</h3>
+                  <p className="text-gray-600">View all time entries logged for this project</p>
+                </div>
+                <Link href="/dashboard/time-tracking">
+                  <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
+                    <Clock className="mr-2 h-4 w-4" />
+                    Track Time
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Loading State */}
+              {loadingTimeEntries && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!loadingTimeEntries && timeEntries.length === 0 && (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <div className="text-gray-500">
+                      <Clock className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <h3 className="text-lg font-medium mb-2">No time tracked yet</h3>
+                      <p className="mb-4">Start tracking time for this project to see your entries here</p>
+                      <Link href="/dashboard/time-tracking">
+                        <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
+                          <Clock className="mr-2 h-4 w-4" />
+                          Start Tracking
+                        </Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Time Summary Cards */}
+              {!loadingTimeEntries && timeEntries.length > 0 && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    {/* Total Time */}
+                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-blue-600">Total Time</p>
+                            <p className="text-2xl font-bold text-blue-900 mt-1">
+                              {formatDuration(calculateTotalDuration(timeEntries))}
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                            <Clock className="h-6 w-6 text-blue-600" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Total Entries */}
+                    <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-purple-600">Total Entries</p>
+                            <p className="text-2xl font-bold text-purple-900 mt-1">
+                              {timeEntries.length}
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center">
+                            <Activity className="h-6 w-6 text-purple-600" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Total Billable */}
+                    <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-green-600">Total Billable</p>
+                            <p className="text-2xl font-bold text-green-900 mt-1">
+                              ${calculateTotalBillable(timeEntries).toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                            <DollarSign className="h-6 w-6 text-green-600" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Average Duration */}
+                    <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-amber-600">Avg per Entry</p>
+                            <p className="text-2xl font-bold text-amber-900 mt-1">
+                              {formatDuration(Math.round(calculateTotalDuration(timeEntries) / timeEntries.length))}
+                            </p>
+                          </div>
+                          <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+                            <Target className="h-6 w-6 text-amber-600" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Time Entries List */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {timeEntries.map((entry) => {
+                      const startDate = new Date(entry.start_time)
+                      const isToday = startDate.toDateString() === new Date().toDateString()
+                      const isYesterday = startDate.toDateString() === new Date(Date.now() - 86400000).toDateString()
+                      
+                      return (
+                        <Card key={entry.id} className="hover:shadow-md transition-shadow">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Clock className="h-4 w-4 text-blue-600" />
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {isToday ? 'Today' : isYesterday ? 'Yesterday' : startDate.toLocaleDateString('en-US', { 
+                                      month: 'short', 
+                                      day: 'numeric',
+                                      year: startDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <span>{startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span>→</span>
+                                  <span>
+                                    {entry.end_time 
+                                      ? new Date(entry.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                                      : 'Running...'}
+                                  </span>
+                                </div>
+                              </div>
+                              <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+                                {entry.duration_seconds ? formatDuration(entry.duration_seconds) : '-'}
+                              </Badge>
+                            </div>
+
+                            {entry.note && (
+                              <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                                {entry.note}
+                              </p>
+                            )}
+
+                            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                                {entry.hourly_rate && (
+                                  <>
+                                    <DollarSign className="h-3 w-3" />
+                                    <span>{entry.hourly_rate}/hr</span>
+                                  </>
+                                )}
+                              </div>
+                              {entry.billable_amount && (
+                                <div className="text-sm font-semibold text-green-600">
+                                  ${entry.billable_amount.toFixed(2)}
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </>
               )}
             </div>
           </TabsContent>

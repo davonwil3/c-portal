@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard/layout"
@@ -398,7 +400,7 @@ export default function ContractDetailsPage() {
           return
         }
         setContract(contractData)
-        setProjectId(contractData.project_id)
+        setProjectId(contractData.project_id ?? null)
         
         // Always generate contract HTML with current signature data
         if (contractData.contract_content) {

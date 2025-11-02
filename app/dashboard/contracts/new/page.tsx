@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { Button } from "@/components/ui/button"
@@ -37,7 +39,10 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
-import SignatureCanvas from 'react-signature-canvas'
+import NextDynamic from 'next/dynamic'
+import type SignatureCanvasType from 'react-signature-canvas'
+// react-signature-canvas is a client-only library; avoid SSR to prevent prerender errors
+const SignatureCanvas = NextDynamic(() => import('react-signature-canvas'), { ssr: false })
 import { getContractTemplates, type ContractTemplate, createContract, updateContract, getContract, type Contract, createContractTemplate, getContractTemplateByNumber, updateContractTemplate } from "@/lib/contracts"
 import { getClients as getClientsData } from "@/lib/clients"
 import { getProjectsByClient as getProjectsByClientData } from "@/lib/projects"
@@ -61,8 +66,8 @@ export default function NewContractPage() {
   const [newProjectDueDate, setNewProjectDueDate] = useState("")
 
   // Signature refs
-  const companySignatureRef = useRef<SignatureCanvas>(null)
-  const clientSignatureRef = useRef<SignatureCanvas>(null)
+  const companySignatureRef = useRef<SignatureCanvasType | null>(null)
+  const clientSignatureRef = useRef<SignatureCanvasType | null>(null)
 
   // Data loading states
   const [templates, setTemplates] = useState<ContractTemplate[]>([])

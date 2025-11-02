@@ -1073,6 +1073,7 @@ export default function LeadsPage() {
           onConfirm={handleConfirmDeduct}
           leadTitle={selectedLead?.title || ''}
           currentBalance={credits.count}
+          source={selectedLead?.source}
         />
 
         <RefinePreferencesModal

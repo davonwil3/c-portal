@@ -1,9 +1,21 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+
+// Import Google Font for signature
+if (typeof document !== 'undefined') {
+  const link = document.createElement('link')
+  link.href = 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap'
+  link.rel = 'stylesheet'
+  if (!document.querySelector(`link[href="${link.href}"]`)) {
+    document.head.appendChild(link)
+  }
+}
+import { useSearchParams, useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,14 +25,6 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
 import {
   Type,
   AlignLeft,
@@ -40,6 +44,7 @@ import {
   Rocket,
   Plus,
   ChevronRight,
+  ArrowLeft,
   Settings,
   Loader2,
   Check,
@@ -51,6 +56,9 @@ import {
   Clock,
   AlertCircle,
   Package,
+  ImageIcon,
+  Building2,
+  DollarSign,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -82,6 +90,58 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
+// Phone number formatting helper
+const formatPhoneNumber = (value: string) => {
+  const cleaned = value.replace(/\D/g, '')
+  const match = cleaned.match(/^(\d{0,3})(\d{0,3})(\d{0,4})$/)
+  if (match) {
+    let formatted = ''
+    if (match[1]) formatted = `(${match[1]}`
+    if (match[2]) formatted += `)-${match[2]}`
+    if (match[3]) formatted += `-${match[3]}`
+    return formatted
+  }
+  return value
+}
+
+// Format date for display
+const formatDateDisplay = (dateString: string) => {
+  if (!dateString) return new Date().toLocaleDateString()
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+// Parse freeform date text to ISO (YYYY-MM-DD). Returns null if invalid
+const parseDateTextToISO = (text: string): string | null => {
+  const cleaned = text.trim()
+  if (!cleaned) return null
+  // Try native Date
+  const d1 = new Date(cleaned)
+  if (!Number.isNaN(d1.getTime())) {
+    return d1.toISOString().split('T')[0]
+  }
+  // Try YYYY-MM-DD
+  const isoMatch = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    const d = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`)
+    if (!Number.isNaN(d.getTime())) return d.toISOString().split('T')[0]
+  }
+  // Try M/D/YYYY or MM/DD/YYYY
+  const mdY = cleaned.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  if (mdY) {
+    const mm = mdY[1].padStart(2, '0')
+    const dd = mdY[2].padStart(2, '0')
+    const yyyy = mdY[3]
+    const d = new Date(`${yyyy}-${mm}-${dd}`)
+    if (!Number.isNaN(d.getTime())) return d.toISOString().split('T')[0]
+  }
+  return null
+}
+
 // Field types
 const basicFields = [
   { id: "short-text", name: "Short Text", icon: Type, description: "Single line text input" },
@@ -94,26 +154,26 @@ const basicFields = [
   { id: "date", name: "Date Picker", icon: CalendarIcon, description: "Date selection" },
   { id: "file-upload", name: "File Upload", icon: Upload, description: "File attachment" },
   { id: "signature", name: "Signature", icon: PenTool, description: "Digital signature" },
-]
-
-const advancedFields = [
   { id: "rating", name: "Rating", icon: Star, description: "Star or number rating" },
+  { id: "budget", name: "Budget", icon: DollarSign, description: "Currency amount input" },
 ]
 
 const getFieldIcon = (type: string) => {
-  const allFields = [...basicFields, ...advancedFields]
+  const allFields = [...basicFields]
   const field = allFields.find((f) => f.id === type)
   return field?.icon || Type
 }
 
-// Sortable Field Component
-function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected }: {
+// Sortable Field Component - Professional Form Style
+function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected, builderValue, onBuilderValueChange }: {
   field: FormField
   index: number
   onUpdate: (fieldId: string, updates: Partial<FormField>) => void
   onDelete: (fieldId: string) => void
   onSelect: (fieldId: string) => void
   isSelected: boolean
+  builderValue?: any
+  onBuilderValueChange?: (value: any) => void
 }) {
   const {
     attributes,
@@ -132,54 +192,39 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected 
   const Icon = getFieldIcon(field.type)
 
   return (
-    <Card
+    <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "transition-all", 
-        isSelected && "ring-2 ring-[#3C3CFF] shadow-md",
+        "relative group transition-all",
+        isSelected && "ring-2 ring-blue-500 ring-offset-2",
         isDragging && "opacity-50"
       )}
       data-field-id={field.id}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start space-x-3">
+      {/* Professional Form Field */}
+      <div className="space-y-2">
+        {/* Field Label */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div {...attributes} {...listeners}>
-              <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-            </div>
-            <Icon className="h-4 w-4 text-gray-600" />
+            <label className="text-sm font-medium text-gray-900">
+              <input
+                type="text"
+                value={field.label}
+                onChange={(e) => onUpdate(field.id, { label: e.target.value })}
+                onClick={(e) => e.stopPropagation()}
+                className="border-none p-0 focus:outline-none focus:ring-0 bg-transparent placeholder-gray-400 font-medium"
+                placeholder="Enter field label..."
+              />
+              {field.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
           </div>
 
-          <div className="flex-1">
-            {/* Field Preview */}
-            <div className="mt-3 p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-              {/* Field Header with Settings */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-blue-50 rounded-lg">
-                    <Icon className="h-4 w-4 text-blue-600" />
+          {/* Field Controls - Hidden by default, shown on hover */}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+            <div {...attributes} {...listeners} className="cursor-move p-1 hover:bg-gray-100 rounded">
+              <GripVertical className="h-4 w-4 text-gray-400" />
                   </div>
-                  <span className="text-sm font-medium text-gray-600">
-                    {field.type === "short-text" ? "Text Input" :
-                     field.type === "paragraph" ? "Paragraph" :
-                     field.type === "email" ? "Email" :
-                     field.type === "phone" ? "Phone" :
-                     field.type === "dropdown" ? "Dropdown" :
-                     field.type === "multiple-choice" ? "Multiple Choice" :
-                     field.type === "checkbox" ? "Checkbox" :
-                     field.type === "date" ? "Date Picker" :
-                     field.type === "file-upload" ? "File Upload" :
-                     field.type === "signature" ? "Signature" :
-                     field.type === "rating" ? "Rating" : field.type}
-                  </span>
-                </div>
-              <div className="flex items-center space-x-2">
-                {field.required && (
-                    <Badge variant="secondary" className="text-xs bg-red-50 text-red-700 border-red-200">
-                    Required
-                  </Badge>
-                )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -187,7 +232,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected 
                       e.stopPropagation()
                       onSelect(field.id)
                     }}
-                    className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
@@ -198,57 +243,44 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected 
                     e.stopPropagation()
                     onDelete(field.id)
                   }}
-                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-              {/* Inline Editable Form Field */}
-              <div className="space-y-3">
-                {/* Editable Label */}
-                <div>
-                  <input
-                    type="text"
-                    value={field.label}
-                    onChange={(e) => onUpdate(field.id, { label: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full text-lg font-medium text-gray-900 border-none p-0 focus:outline-none focus:ring-0 bg-transparent placeholder-gray-400"
-                    placeholder="Enter field label..."
-                  />
-                  {field.required && <span className="text-red-500 ml-1">*</span>}
-                </div>
-
-                {/* Editable Description */}
+        {/* Field Description */}
             {field.description && (
-                  <div>
+          <p className="text-sm text-gray-600">
                     <textarea
                       value={field.description}
                       onChange={(e) => onUpdate(field.id, { description: e.target.value })}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-full text-sm text-gray-600 border-none p-0 focus:outline-none focus:ring-0 bg-transparent resize-none placeholder-gray-400"
+              className="w-full border-none p-0 focus:outline-none focus:ring-0 bg-transparent resize-none placeholder-gray-400"
                       placeholder="Add description (optional)..."
                       rows={1}
                     />
-                  </div>
+          </p>
                 )}
 
-                {/* Form Field Preview */}
-                <div className="mt-4">
+        {/* Professional Form Input */}
+        <div className="mt-2">
                   {field.type === "short-text" && (
                     <input 
                       type="text" 
                       placeholder={field.placeholder || "Enter text..."} 
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled
                     />
                   )}
                   
               {field.type === "paragraph" && (
                     <textarea 
-                      placeholder={field.placeholder || "Enter text..."} 
+              placeholder={field.placeholder || "Enter your response..."} 
                       rows={4}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled
                     />
                   )}
                   
@@ -256,7 +288,8 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected 
                     <input 
                       type="email" 
                       placeholder="Enter email address..." 
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled
                     />
                   )}
                   
@@ -264,105 +297,136 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected 
                     <input 
                       type="tel" 
                       placeholder="Enter phone number..." 
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled
                     />
+                  )}
+                  
+                  {field.type === "budget" && (
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+                        {(field as any).currency === 'EUR' ? '€' : '$'}
+                      </span>
+                      <input 
+                        type="text" 
+                        placeholder="0.00" 
+                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        disabled
+                      />
+                    </div>
                   )}
                   
                   {field.type === "date" && (
                     <input 
                       type="date" 
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  )}
-                  
-                  {(field.type === "dropdown" || field.type === "multiple-choice" || field.type === "checkbox") &&
-                field.options && (
-                      <div className="space-y-3">
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled
+            />
+          )}
+          
+          {field.type === "dropdown" && field.options && (
+            <select 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            >
+              <option value="">Select an option</option>
                     {field.options.map((option, idx) => (
-                          <div key={idx} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                        {field.type === "multiple-choice" && (
-                              <div className="w-4 h-4 border-2 border-gray-300 rounded-full flex-shrink-0" />
-                        )}
-                        {field.type === "checkbox" && (
-                              <div className="w-4 h-4 border-2 border-gray-300 rounded flex-shrink-0" />
-                            )}
-                            {field.type === "dropdown" && (
-                              <div className="w-4 h-4 border-2 border-gray-300 rounded flex-shrink-0 flex items-center justify-center">
-                                <ChevronDown className="h-3 w-3 text-gray-400" />
+                <option key={idx} value={option}>{option}</option>
+              ))}
+            </select>
+          )}
+          
+          {field.type === "multiple-choice" && field.options && (
+            <div className="space-y-3">
+              {field.options.map((option, idx) => (
+                <label key={idx} className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name={`field-${field.id}`} 
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" 
+                    disabled
+                  />
+                  <span className="text-sm text-gray-700">{option}</span>
+                </label>
+              ))}
                               </div>
                             )}
+          
+          {field.type === "checkbox" && field.options && (
+            <div className="space-y-3">
+              {field.options.map((option, idx) => (
+                <label key={idx} className="flex items-center space-x-3 cursor-pointer">
                             <input
-                              type="text"
-                              value={option}
-                              onChange={(e) => {
-                                const newOptions = [...(field.options || [])]
-                                newOptions[idx] = e.target.value
-                                onUpdate(field.id, { options: newOptions })
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="flex-1 text-sm text-gray-700 border-none p-0 focus:outline-none focus:ring-0 bg-transparent"
-                              placeholder={`Option ${idx + 1}`}
-                            />
-                      </div>
-                    ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const newOptions = [
-                              ...(field.options || []),
-                              `Option ${(field.options?.length || 0) + 1}`,
-                            ]
-                            onUpdate(field.id, { options: newOptions })
-                          }}
-                          className="w-full"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Option
-                        </Button>
+                    type="checkbox" 
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                    disabled
+                  />
+                  <span className="text-sm text-gray-700">{option}</span>
+                </label>
+              ))}
                   </div>
                 )}
                   
               {field.type === "file-upload" && (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
-                      <Upload className="h-10 w-10 text-gray-400 mx-auto mb-4" />
-                      <div className="text-sm font-medium text-gray-700 mb-2">Click to upload or drag and drop</div>
+            <div className="border-2 border-dashed border-gray-300 rounded-md p-6 text-center bg-gray-50">
+              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-sm text-gray-600 mb-1">Click to upload or drag and drop</div>
                       <div className="text-xs text-gray-500">PDF, DOC, JPG, PNG up to 10MB</div>
                 </div>
               )}
                   
                   {field.type === "signature" && (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
-                      <PenTool className="h-10 w-10 text-gray-400 mx-auto mb-4" />
-                      <div className="text-sm font-medium text-gray-700 mb-2">Click to sign</div>
-                      <div className="text-xs text-gray-500">Draw your signature in the box above</div>
+                    <div className="space-y-3">
+                      <div className="border-2 border-gray-300 rounded-md p-4 bg-white max-w-md">
+                        {!builderValue ? (
+                          <div className="text-center py-4">
+                            <PenTool className="h-6 w-6 text-gray-400 mx-auto mb-2" />
+                            <div className="text-sm text-gray-600 mb-1">Type your full legal name below</div>
+                            <div className="text-xs text-gray-500">Your typed name acts as your signature</div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-3">
+                            <div 
+                              className="text-3xl md:text-4xl text-gray-900"
+                              style={{ fontFamily: "'Dancing Script', cursive", lineHeight: 1.15 }}
+                            >
+                              {builderValue}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <Input
+                        placeholder="Type your full legal name"
+                        value={builderValue || ''}
+                        onChange={(e) => onBuilderValueChange?.(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      />
+                      <p className="text-xs text-gray-500 max-w-md">
+                        By typing your name above, you agree that this constitutes a legal signature
+                      </p>
             </div>
                   )}
                   
                   {field.type === "rating" && (
-                    <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1">
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <Star key={star} className="h-6 w-6 text-gray-300 hover:text-yellow-400 transition-colors cursor-pointer" />
+                <Star key={star} className="h-5 w-5 text-gray-300 cursor-pointer" />
                       ))}
-                      <span className="ml-3 text-sm text-gray-500">Click to rate</span>
+              <span className="ml-3 text-sm text-gray-500">Rate from 1 to 5</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
 export default function FormBuilderPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [formTitle, setFormTitle] = useState("Untitled Form")
   const [fields, setFields] = useState<FormField[]>([])
   const [selectedField, setSelectedField] = useState<string | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateName, setTemplateName] = useState("")
@@ -372,6 +436,18 @@ export default function FormBuilderPage() {
   const [draggedField, setDraggedField] = useState<string | null>(null)
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [previewValues, setPreviewValues] = useState<Record<string, any>>({})
+  const [builderValues, setBuilderValues] = useState<Record<string, any>>({})
+  const [brandColor, setBrandColor] = useState<string>("#3C3CFF")
+  const [formDate, setFormDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  )
+  const [footerLine1, setFooterLine1] = useState<string>(
+    "Thank you for taking the time to complete this form."
+  )
+  const [footerLine2, setFooterLine2] = useState<string>(
+    "We will review your submission and get back to you soon."
+  )
   const [publishFormData, setPublishFormData] = useState({
     title: "",
     description: "",
@@ -393,6 +469,11 @@ export default function FormBuilderPage() {
   const [editingFormId, setEditingFormId] = useState<string | null>(null) // Track if we're editing an existing form
   const [draftFormId, setDraftFormId] = useState<string | null>(null) // Track the draft form ID for auto-save
   const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState("Your Company Name")
+  const [companyAddress, setCompanyAddress] = useState("123 Business Street, City, State 12345")
+  const [companyPhone, setCompanyPhone] = useState("(555) 123-4567")
+  const [companyEmail, setCompanyEmail] = useState("contact@yourcompany.com")
   const [isFormInitialized, setIsFormInitialized] = useState(false) // Track if form data is loaded
 
   // DnD sensors
@@ -588,7 +669,7 @@ export default function FormBuilderPage() {
   }
 
   const getFieldIcon = (type: string) => {
-    const allFields = [...basicFields, ...advancedFields]
+    const allFields = [...basicFields]
     const field = allFields.find((f) => f.id === type)
     return field?.icon || Type
   }
@@ -991,22 +1072,15 @@ export default function FormBuilderPage() {
         <div className="border-b bg-white px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink 
-                      href={publishFormData.projectId ? `/dashboard/projects/${publishFormData.projectId}` : "/dashboard/projects"} 
-                      className="text-gray-600 hover:text-gray-900"
-                    >
-                      Projects
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-gray-900 font-medium">{formTitle}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/dashboard/lead-workflow?active=forms')}
+                className="flex items-center space-x-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back</span>
+              </Button>
 
               <div className="flex items-center text-sm text-gray-500">
                 {isAutoSaving ? (
@@ -1068,52 +1142,34 @@ export default function FormBuilderPage() {
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Add a Field</h2>
 
+              {/* Brand Color */}
+              <div className="mb-6 p-3 bg-white rounded-lg border border-gray-200">
+                <label className="text-sm font-medium text-gray-700 block mb-2">Brand Color</label>
+                        <div className="flex items-center space-x-3">
+                  <input
+                    type="color"
+                    value={brandColor}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    className="h-9 w-9 rounded cursor-pointer border border-gray-200"
+                    aria-label="Pick brand color"
+                  />
+                  <input
+                    type="text"
+                    value={brandColor}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    className="flex-1 h-9 px-3 rounded-md border border-gray-300 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="#3C3CFF"
+                  />
+                          </div>
+                <div className="mt-3 flex items-center text-xs text-gray-500">
+                  <span className="mr-2">Preview:</span>
+                  <span className="inline-block h-1 w-12 rounded" style={{ backgroundColor: brandColor }}></span>
+                          </div>
+              </div>
+
               {/* Basic Fields */}
               <div className="space-y-2 mb-6">
                 {basicFields.map((field) => {
-                  const Icon = field.icon
-                  return (
-                    <Card
-                      key={field.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify(field))
-                        e.dataTransfer.effectAllowed = 'copy'
-                      }}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="p-2 bg-gray-100 rounded-lg">
-                            <Icon className="h-4 w-4 text-gray-600" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900">{field.name}</div>
-                            <div className="text-sm text-gray-500">{field.description}</div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-
-              {/* Advanced Fields Toggle */}
-              <div className="mb-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="w-full justify-between p-0 h-auto text-gray-700 hover:text-gray-900"
-                >
-                  <span className="font-medium">Advanced Fields</span>
-                  <ChevronRight className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-90")} />
-                </Button>
-              </div>
-
-              {/* Advanced Fields */}
-              {showAdvanced && (
-                <div className="space-y-2">
-                  {advancedFields.map((field) => {
                     const Icon = field.icon
                     return (
                       <Card
@@ -1140,14 +1196,14 @@ export default function FormBuilderPage() {
                     )
                   })}
                 </div>
-              )}
+
             </div>
           </div>
 
           {/* Center - Form Canvas */}
           <div 
             className={cn(
-              "flex-1 overflow-y-auto bg-white transition-colors duration-200",
+              "flex-1 overflow-y-auto bg-white transition-colors duration-200 p-8",
               isDragOver && "bg-blue-50"
             )}
             onDragOver={(e) => {
@@ -1255,54 +1311,179 @@ export default function FormBuilderPage() {
               }
             }}
           >
-            <div className="max-w-2xl mx-auto p-8">
-              {/* Form Header - Styled like preview */}
-              <div className="text-center mb-8 pb-6 border-b border-gray-200">
-              {/* Form Title */}
-                <div className="mb-4">
+            {/* Professional Form Document */}
+            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-lg overflow-hidden">
+              {/* Company Header */}
+              <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  {/* Logo and Company Info */}
+                  <div className="flex items-start space-x-6">
+                    {/* Logo */}
+                    <div className="flex-shrink-0">
+                      {logoUrl ? (
+                        <div className="relative group">
+                          <img 
+                            src={logoUrl} 
+                            alt="Company Logo" 
+                            className="w-16 h-16 object-contain rounded-lg border border-gray-200"
+                          />
+                          <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center cursor-pointer"
+                               onClick={() => {
+                                 const input = document.createElement('input')
+                                 input.type = 'file'
+                                 input.accept = 'image/*'
+                                 input.onchange = (e) => {
+                                   const file = (e.target as HTMLInputElement).files?.[0]
+                                   if (file) {
+                                     const reader = new FileReader()
+                                     reader.onload = (e) => setLogoUrl(e.target?.result as string)
+                                     reader.readAsDataURL(file)
+                                   }
+                                 }
+                                 input.click()
+                               }}>
+                            <ImageIcon className="h-6 w-6 text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+                          onClick={() => {
+                            const input = document.createElement('input')
+                            input.type = 'file'
+                            input.accept = 'image/*'
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0]
+                              if (file) {
+                                const reader = new FileReader()
+                                reader.onload = (e) => setLogoUrl(e.target?.result as string)
+                                reader.readAsDataURL(file)
+                              }
+                            }
+                            input.click()
+                          }}
+                        >
+                          <ImageIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Company Details */}
+                    <div className="flex-1">
+                      <h2 
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setCompanyName(e.currentTarget.textContent || "Your Company Name")}
+                        className="text-xl font-bold text-gray-900 outline-none focus:ring-0 bg-transparent mb-1 hover:bg-gray-50 px-1 rounded"
+                      >
+                        {companyName}
+                      </h2>
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p 
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => setCompanyAddress(e.currentTarget.textContent || "123 Business Street, City, State 12345")}
+                          className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                        >
+                          {companyAddress}
+                        </p>
+                        <div className="flex space-x-4">
+                          <span 
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => setCompanyPhone(e.currentTarget.textContent || "(555) 123-4567")}
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                          >
+                            {companyPhone}
+                          </span>
+                          <span 
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => setCompanyEmail(e.currentTarget.textContent || "contact@yourcompany.com")}
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                          >
+                            {companyEmail}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Form Date */}
+                  <div className="text-right text-sm">
+                    <div className="text-gray-500 mb-1">Form Date:</div>
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={(e) => {
+                        const text = (e.currentTarget.textContent || '').trim()
+                        const iso = parseDateTextToISO(text)
+                        if (iso) {
+                          setFormDate(iso)
+                          e.currentTarget.textContent = formatDateDisplay(iso)
+                        } else {
+                          // Revert to current formatted date if parse failed
+                          e.currentTarget.textContent = formatDateDisplay(formDate)
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          ;(e.currentTarget as HTMLElement).blur()
+                        }
+                      }}
+                      className="font-medium text-gray-900 px-2 py-1 rounded hover:bg-gray-50 outline-none focus:ring-0 cursor-text select-text text-sm"
+                      aria-label="Form Date"
+                    >
+                      {formatDateDisplay(formDate)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Form Content */}
+              <div className="px-8 py-8">
+                {/* Form Title and Description */}
+                <div className="text-center mb-8">
                   <h1 
                     contentEditable
                     suppressContentEditableWarning
                     onBlur={(e) => setFormTitle(e.currentTarget.textContent || "Untitled Form")}
-                    className="text-3xl font-bold text-gray-900 text-center outline-none focus:ring-0 bg-transparent min-h-[2.5rem] flex items-center justify-center"
-                    style={{ minHeight: '2.5rem' }}
+                    className="text-3xl font-bold text-gray-900 outline-none focus:ring-0 bg-transparent mb-4 hover:bg-gray-50 px-2 py-1 rounded"
                   >
                     {formTitle || "Enter form title..."}
                   </h1>
-                </div>
                 
-                {/* Form Description/Instructions */}
-                <div className="mb-2">
                   <Textarea
                     value={publishFormData.instructions}
                     onChange={(e) => setPublishFormData(prev => ({ ...prev, instructions: e.target.value }))}
-                    className="text-gray-600 border-none p-0 focus-visible:ring-0 bg-transparent text-center resize-none placeholder-gray-400"
+                    className="text-gray-600 border-none p-2 focus-visible:ring-0 bg-transparent text-center resize-none placeholder-gray-400 hover:bg-gray-50 rounded max-w-2xl mx-auto"
                     placeholder="Add instructions for respondents..."
                     rows={2}
                   />
-                </div>
                 
-                {/* Helper text */}
-                <p className="text-sm text-gray-500">Please fill out the form below</p>
+                  <div className="w-24 h-1 mx-auto rounded-full mt-4" style={{ backgroundColor: brandColor }}></div>
               </div>
 
               {/* Form Fields */}
+                <div className="space-y-6">
               {fields.length === 0 ? (
                 <div 
                   className={cn(
-                    "text-center py-16 border-2 border-dashed rounded-lg transition-colors duration-200",
+                        "text-center py-16 border-2 border-dashed rounded-lg transition-colors duration-200 bg-gray-50",
                     isDragOver 
                       ? "border-blue-400 bg-blue-50" 
                       : "border-gray-300"
                   )}
                 >
-                  <div className={cn(
-                    "mb-2 transition-colors duration-200",
-                    isDragOver ? "text-blue-600" : "text-gray-500"
-                  )}>
-                    {isDragOver ? "Drop field here" : "Start building your form by adding fields on the left"}
+                      <div className="text-gray-400 mb-4">
+                        <Type className="h-12 w-12 mx-auto" />
                   </div>
-                  <div className="text-sm text-gray-400">Drag and drop fields from the left sidebar</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Start building your form</h3>
+                      <p className="text-gray-600 mb-4">Drag fields from the sidebar to create your professional form</p>
+                      <div className="text-sm text-gray-500">
+                        💡 Your form will appear here as a professional document
+                      </div>
                 </div>
               ) : (
                 <DndContext
@@ -1311,30 +1492,66 @@ export default function FormBuilderPage() {
                   onDragEnd={handleDndDragEnd}
                 >
                   <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-4">
+                        <div className="space-y-6">
                       {fields.map((field, index) => {
                         const isSelected = selectedField === field.id
                         return (
+                              <div key={field.id} className="group">
                           <SortableField
-                            key={field.id}
                             field={field}
                             index={index}
                             onUpdate={updateField}
                             onDelete={deleteField}
                             onSelect={setSelectedField}
                             isSelected={isSelected}
+                            builderValue={builderValues[field.id]}
+                            onBuilderValueChange={(value) => setBuilderValues(prev => ({ ...prev, [field.id]: value }))}
                           />
+                              </div>
                         )
                       })}
                     </div>
                   </SortableContext>
                 </DndContext>
               )}
+                  
+                  {/* Form Footer */}
+                  {fields.length > 0 && (
+                    <div className="mt-12 pt-8 border-t border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-gray-500">
+                          <div
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => setFooterLine1(e.currentTarget.textContent || "")}
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                          >
+                            {footerLine1}
+                          </div>
+                          <div
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => setFooterLine2(e.currentTarget.textContent || "")}
+                            className="mt-1 outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                          >
+                            {footerLine2}
+                          </div>
+                        </div>
+                        <Button className="text-white hover:opacity-90 px-8 py-3 text-lg font-medium" style={{ backgroundColor: brandColor }}>
+                          Submit Form
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Right Sidebar - Field Settings */}
           {selectedFieldData && (
+            <>
+              <div className="fixed inset-0 bg-transparent z-40" onClick={() => setSelectedField(null)} />
             <div className="fixed right-0 top-0 w-80 h-screen bg-white border-l border-gray-200 shadow-xl z-50 transform transition-transform duration-300 ease-in-out">
               <div className="h-full flex flex-col">
                 {/* Header */}
@@ -1459,10 +1676,32 @@ export default function FormBuilderPage() {
                       </div>
                     </div>
                   )}
+
+                    {/* Currency selector for budget field */}
+                    {selectedFieldData.type === "budget" && (
+                      <div>
+                        <Label htmlFor="field-currency" className="text-sm font-medium text-gray-700 mb-2 block">
+                          Currency Type
+                        </Label>
+                        <Select
+                          value={(selectedFieldData as any).currency || 'USD'}
+                          onValueChange={(value) => updateField(selectedFieldData.id, { currency: value })}
+                        >
+                          <SelectTrigger id="field-currency">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="USD">USD ($)</SelectItem>
+                            <SelectItem value="EUR">EUR (€)</SelectItem>
+                          </SelectContent>
+                        </Select>
                   </div>
+                    )}
                 </div>
               </div>
             </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -1483,25 +1722,72 @@ export default function FormBuilderPage() {
 
       {/* Preview Modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">Form Preview</DialogTitle>
             <div className="text-sm text-gray-600">This is how your form will appear to users</div>
           </DialogHeader>
           <div className="py-6">
-            {/* Form Header */}
-            <div className="text-center mb-8 pb-6 border-b border-gray-200">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{formTitle}</h1>
+            {/* Professional Form Document Preview */}
+            <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+              {/* Company Header */}
+              <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  {/* Logo and Company Info */}
+                  <div className="flex items-start space-x-6">
+                    {/* Logo */}
+                    <div className="flex-shrink-0">
+                      {logoUrl ? (
+                        <img 
+                          src={logoUrl} 
+                          alt="Company Logo" 
+                          className="w-16 h-16 object-contain rounded-lg border border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                          <ImageIcon className="h-8 w-8 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Company Details */}
+                    <div className="flex-1">
+                      <h2 className="text-xl font-bold text-gray-900 mb-1">{companyName}</h2>
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p>{companyAddress}</p>
+                        <div className="flex space-x-4">
+                          <span>{companyPhone}</span>
+                          <span>{companyEmail}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Form Date */}
+                  <div className="text-right text-sm">
+                    <div className="text-gray-500 mb-1">Form Date:</div>
+                    <div className="font-medium text-gray-900">{formatDateDisplay(formDate)}</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Form Content */}
+              <div className="px-8 py-8">
+                {/* Form Title and Description */}
+                <div className="text-center mb-8">
+                  <h1 className="text-3xl font-bold text-gray-900 mb-4">{formTitle}</h1>
               {publishFormData.instructions && (
-                <p className="text-gray-600 mb-2">{publishFormData.instructions}</p>
+                    <p className="text-gray-600 mb-4 max-w-2xl mx-auto leading-relaxed">
+                      {publishFormData.instructions}
+                    </p>
               )}
-              <p className="text-gray-600">Please fill out the form below</p>
+                  <div className="w-24 h-1 mx-auto rounded-full" style={{ backgroundColor: brandColor }}></div>
             </div>
 
             {/* Form Fields */}
             <div className="space-y-6">
               {fields.length === 0 ? (
-                <div className="text-center py-12">
+                    <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                   <div className="text-gray-400 mb-4">
                     <Type className="h-12 w-12 mx-auto" />
                   </div>
@@ -1509,64 +1795,92 @@ export default function FormBuilderPage() {
                   <p className="text-gray-600">Add some fields to your form to see them here</p>
                 </div>
               ) : (
-                fields.map((field, index) => {
-              return (
-                    <div key={field.id} className="space-y-3">
+                    fields.map((field, index) => (
+                      <div key={field.id} className="space-y-2">
                       {/* Field Label */}
-                  <div className="flex items-center space-x-2">
-                        <Label className="text-sm font-medium text-gray-900">
+                        <label className="text-sm font-medium text-gray-900">
                       {field.label}
                       {field.required && <span className="text-red-500 ml-1">*</span>}
-                    </Label>
-                  </div>
+                        </label>
                       
                       {/* Field Description */}
                       {field.description && (
-                        <div className="text-sm text-gray-600">{field.description}</div>
+                          <p className="text-sm text-gray-600">{field.description}</p>
                       )}
                       
-                      {/* Field Input */}
-                      <div>
+                        {/* Professional Form Input */}
+                        <div className="mt-2">
                         {field.type === "short-text" && (
-                          <Input 
-                            placeholder={field.placeholder} 
-                            className="max-w-md"
+                            <input 
+                              type="text" 
+                              placeholder={field.placeholder || "Enter text..."} 
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
                         {field.type === "paragraph" && (
-                          <Textarea 
-                            placeholder={field.placeholder} 
+                            <textarea 
+                              placeholder={field.placeholder || "Enter your response..."} 
                             rows={4}
-                            className="max-w-md resize-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
                         {field.type === "email" && (
-                          <Input 
+                            <input 
                             type="email" 
-                            placeholder="Enter email address" 
-                            className="max-w-md"
+                              placeholder="Enter email address..." 
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
                         {field.type === "phone" && (
-                          <Input 
+                            <input 
                             type="tel" 
-                            placeholder="Enter phone number" 
-                            className="max-w-md"
+                              placeholder="(555)-555-5555" 
+                              value={previewValues[field.id] || ''}
+                              onChange={(e) => {
+                                const formatted = formatPhoneNumber(e.target.value)
+                                setPreviewValues(prev => ({ ...prev, [field.id]: formatted }))
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
+                        {field.type === "budget" && (
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+                              {(field as any).currency === 'EUR' ? '€' : '$'}
+                            </span>
+                            <input 
+                              type="text" 
+                              placeholder="0.00" 
+                              value={previewValues[field.id] || ''}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^\d.]/g, '')
+                                const parts = value.split('.')
+                                if (parts.length > 2) return
+                                if (parts[1] && parts[1].length > 2) return
+                                setPreviewValues(prev => ({ ...prev, [field.id]: value }))
+                              }}
+                              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            />
+                          </div>
+                        )}
+                        
                         {field.type === "date" && (
-                          <Input 
+                            <input 
                             type="date" 
-                            className="max-w-md"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
                         {field.type === "dropdown" && field.options && (
-                          <select className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3C3CFF] focus:border-transparent">
+                            <select 
+                              value={previewValues[field.id] || ''}
+                              onChange={(e) => setPreviewValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            >
                             <option value="">Select an option</option>
                             {field.options.map((option, idx) => (
                               <option key={idx} value={option}>{option}</option>
@@ -1575,10 +1889,14 @@ export default function FormBuilderPage() {
                         )}
                         
                         {field.type === "multiple-choice" && field.options && (
-                          <div className="space-y-2 max-w-md">
+                            <div className="space-y-3">
                             {field.options.map((option, idx) => (
-                              <label key={idx} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                <input type="radio" name={`field-${field.id}`} className="w-4 h-4 text-[#3C3CFF] border-gray-300 focus:ring-[#3C3CFF]" />
+                                <label key={idx} className="flex items-center space-x-3 cursor-pointer">
+                                  <input 
+                                    type="radio" 
+                                    name={`field-${field.id}`} 
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" 
+                                  />
                                 <span className="text-sm text-gray-700">{option}</span>
                               </label>
                             ))}
@@ -1586,10 +1904,13 @@ export default function FormBuilderPage() {
                         )}
                         
                         {field.type === "checkbox" && field.options && (
-                          <div className="space-y-2 max-w-md">
+                            <div className="space-y-3">
                             {field.options.map((option, idx) => (
-                              <label key={idx} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                <input type="checkbox" className="w-4 h-4 text-[#3C3CFF] border-gray-300 rounded focus:ring-[#3C3CFF]" />
+                                <label key={idx} className="flex items-center space-x-3 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                                  />
                                 <span className="text-sm text-gray-700">{option}</span>
                               </label>
                             ))}
@@ -1598,48 +1919,109 @@ export default function FormBuilderPage() {
                         
                         {field.type === "rating" && (
                           <div className="flex items-center space-x-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button key={star} className="text-gray-300 hover:text-yellow-400 transition-colors">
-                                <Star className="h-6 w-6" />
-                              </button>
-                            ))}
-                            <span className="ml-3 text-sm text-gray-500">Click to rate</span>
+                              {[1, 2, 3, 4, 5].map((star) => {
+                                const isSelected = (previewValues[field.id] || 0) >= star
+                                return (
+                                  <Star 
+                                    key={star} 
+                                    className={`h-6 w-6 cursor-pointer transition-colors ${
+                                      isSelected ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400'
+                                    }`}
+                                    onClick={() => setPreviewValues(prev => ({ ...prev, [field.id]: star }))}
+                                  />
+                                )
+                              })}
+                              <span className="ml-3 text-sm text-gray-500">
+                                {previewValues[field.id] ? `${previewValues[field.id]} star${previewValues[field.id] > 1 ? 's' : ''}` : 'Rate from 1 to 5'}
+                              </span>
                           </div>
                         )}
                         
                         {field.type === "file-upload" && (
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#3C3CFF] transition-colors cursor-pointer">
-                            <Upload className="h-10 w-10 text-gray-400 mx-auto mb-4" />
-                            <div className="text-sm font-medium text-gray-700 mb-2">Click to upload or drag and drop</div>
+                            <div 
+                              className="border-2 border-dashed border-gray-300 rounded-md p-6 text-center bg-gray-50 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                              onClick={() => {
+                                const input = document.createElement('input')
+                                input.type = 'file'
+                                input.accept = '*/*'
+                                input.onchange = (e) => {
+                                  const file = (e.target as HTMLInputElement).files?.[0]
+                                  if (file) {
+                                    setPreviewValues(prev => ({ ...prev, [field.id]: file.name }))
+                                  }
+                                }
+                                input.click()
+                              }}
+                            >
+                              {previewValues[field.id] ? (
+                                <>
+                                  <Check className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                                  <div className="text-sm text-gray-900 mb-1 font-medium">{previewValues[field.id]}</div>
+                                  <div className="text-xs text-gray-500">Click to change file</div>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                                  <div className="text-sm text-gray-600 mb-1">Click to upload or drag and drop</div>
                             <div className="text-xs text-gray-500">PDF, DOC, JPG, PNG up to 10MB</div>
+                                </>
+                              )}
                           </div>
                         )}
                         
                         {field.type === "signature" && (
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#3C3CFF] transition-colors cursor-pointer">
-                            <PenTool className="h-10 w-10 text-gray-400 mx-auto mb-4" />
-                            <div className="text-sm font-medium text-gray-700 mb-2">Click to sign</div>
-                            <div className="text-xs text-gray-500">Draw your signature in the box above</div>
+                          <div className="space-y-3">
+                            <div className="border-2 border-gray-300 rounded-md p-4 bg-white">
+                              {!previewValues[field.id] ? (
+                                <div className="text-center py-6">
+                                  <PenTool className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                                  <div className="text-sm text-gray-600 mb-1">Type your full legal name below</div>
+                                  <div className="text-xs text-gray-500">Your typed name acts as your signature</div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4">
+                                  <div 
+                                    className="text-4xl md:text-5xl text-gray-900"
+                                    style={{ fontFamily: "'Dancing Script', cursive", lineHeight: 1.15 }}
+                                  >
+                                    {previewValues[field.id]}
+                                  </div>
                           </div>
                         )}
                       </div>
+                            <Input
+                              placeholder="Type your full legal name"
+                              value={previewValues[field.id] || ''}
+                              onChange={(e) => setPreviewValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            />
+                            <p className="text-xs text-gray-500 text-center">
+                              By typing your name above, you agree that this constitutes a legal signature
+                            </p>
                 </div>
-              )
-                })
               )}
             </div>
+                </div>
+                    ))
+              )}
 
             {/* Form Footer */}
             {fields.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                <div className="flex justify-end space-x-3">
-                  <Button variant="outline">Cancel</Button>
-                  <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90">
+                    <div className="mt-12 pt-8 border-t border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-gray-500">
+                          <div>{footerLine1}</div>
+                          <div className="mt-1">{footerLine2}</div>
+                        </div>
+                        <Button className="text-white hover:opacity-90 px-8 py-3 text-lg font-medium" style={{ backgroundColor: brandColor }}>
                     Submit Form
                   </Button>
                 </div>
               </div>
             )}
+                </div>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
