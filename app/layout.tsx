@@ -5,8 +5,8 @@ import './globals.css'
 import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
-  title: 'ClientPortalHQ',
-  description: 'Make every client experience feel like magic',
+  title: 'Jolix',
+  description: 'Your entire freelance business, in one place',
   generator: 'v0.dev',
 }
 

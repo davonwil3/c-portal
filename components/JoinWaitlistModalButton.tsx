@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import WaitlistForm from '@/components/WaitlistForm'
 import { cn } from '@/lib/utils'
 
@@ -20,10 +20,12 @@ export default function JoinWaitlistModalButton({ className, size = 'lg', label 
         <DialogContent className="sm:max-w-md p-0 overflow-hidden">
           <div className="px-6 py-8">
             <DialogHeader className="mb-4">
-              <DialogTitle className="text-2xl">Join waitlist</DialogTitle>
+              <DialogTitle className="text-3xl font-bold text-gray-900">Join the Waitlist</DialogTitle>
+              <DialogDescription className="text-gray-600">
+                Be the first to know when Jolix opens up. Enter your email below.
+              </DialogDescription>
             </DialogHeader>
-            <p className="text-gray-600 mb-6">Be the first to know when Jolix opens up. Enter your email below.</p>
-            <WaitlistForm />
+            <WaitlistForm onSuccess={() => setOpen(false)} />
           </div>
         </DialogContent>
       </Dialog>

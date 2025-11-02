@@ -2,9 +2,13 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { toast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
-export default function WaitlistForm() {
+interface WaitlistFormProps {
+  onSuccess?: () => void
+}
+
+export default function WaitlistForm({ onSuccess }: WaitlistFormProps) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -12,7 +16,9 @@ export default function WaitlistForm() {
     e.preventDefault()
     const value = email.trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      toast({ title: 'Enter a valid email', description: 'Please check the format and try again.' })
+      toast.error('Invalid email', {
+        description: 'Please enter a valid email address.',
+      })
       return
     }
     try {
@@ -22,14 +28,34 @@ export default function WaitlistForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: value }),
       })
+      
+      const data = await res.json()
+      
       if (res.ok) {
-        toast({ title: 'You\'re on the list!', description: 'We\'ll be in touch soon.' })
+        // Check if it's already on waitlist or new signup
+        if (data.message?.includes('Already')) {
+          toast.info('You\'re already on the list! 🎉', {
+            description: 'We\'ll notify you when Jolix launches.',
+          })
+        } else {
+          toast.success('You\'re on the list! 🎉', {
+            description: 'We\'ll notify you when Jolix launches.',
+          })
+        }
         setEmail('')
+        // Call onSuccess callback to close modal if provided
+        if (onSuccess) {
+          onSuccess()
+        }
       } else {
-        toast({ title: 'Something went wrong', description: 'Please try again in a moment.' })
+        toast.error('Something went wrong', {
+          description: data.error || 'Please try again in a moment.',
+        })
       }
-    } catch {
-      toast({ title: 'Network error', description: 'Please try again.' })
+    } catch (error) {
+      toast.error('Network error', {
+        description: 'Please check your connection and try again.',
+      })
     } finally {
       setLoading(false)
     }
