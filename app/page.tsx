@@ -32,7 +32,7 @@ export default function JolixLanding() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <header className="border-b border-gray-200/50 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-3">
               <Image
@@ -66,7 +66,7 @@ export default function JolixLanding() {
 
       {/* 1️⃣ HERO SECTION */}
       <section className="py-16 lg:py-24 bg-gradient-to-br from-blue-50 via-blue-50/50 to-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center w-full">
             {/* Left Column - Content */}
             <div className="space-y-8">
@@ -101,7 +101,7 @@ export default function JolixLanding() {
               <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 via-purple-50/30 to-pink-100/50 rounded-3xl blur-3xl"></div>
 
               {/* Main Image */}
-              <div className="relative w-full aspect-square" style={{ maxWidth: '800px' }}>
+              <div className="relative w-full aspect-square" style={{ maxWidth: '700px' }}>
                 <div className="relative w-full h-full rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden">
                 <Image
                     src="/womanoncomp.jpeg"
@@ -142,7 +142,7 @@ export default function JolixLanding() {
                   </div>
 
               {/* Floating Project Card */}
-              <div className="absolute bottom-16 w-56 bg-white rounded-xl shadow-lg border border-gray-200/60 p-4 hidden xl:block" style={{ left: 'calc(50% - 320px - 110px)' }}>
+              <div className="absolute bottom-16 w-56 bg-white rounded-xl shadow-lg border border-gray-200/60 p-4 hidden xl:block" style={{ left: 'calc(50% - 280px - 110px)' }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
@@ -217,7 +217,7 @@ export default function JolixLanding() {
 
       {/* 2️⃣ WHY JOLIX EXISTS - The Problem */}
       <section className="py-20 lg:py-24 bg-gradient-to-br from-blue-50/30 via-white to-purple-50/20">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             
             {/* Left Side - Visual Storytelling */}
@@ -335,7 +335,7 @@ export default function JolixLanding() {
 
       {/* 3️⃣ GROW SECTION */}
       <section id="features" className="py-20 lg:py-28 bg-gradient-to-br from-blue-50 via-blue-100/60 to-blue-50/80">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           
           {/* Section Header */}
           <div className="text-center mb-20">
@@ -594,7 +594,7 @@ export default function JolixLanding() {
 
       {/* 4️⃣ MANAGE SECTION */}
       <section className="py-28 lg:py-36 bg-gradient-to-br from-white via-gray-50/30 to-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           
           {/* Header */}
           <div className="text-center mb-24 lg:mb-32">
@@ -791,7 +791,7 @@ export default function JolixLanding() {
 
       {/* 5️⃣ UTILITIES SECTION */}
       <section className="pt-16 pb-24 lg:pt-20 lg:pb-32 bg-gradient-to-br from-[#F9FAFB] via-white to-blue-50/30">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="max-w-6xl mx-auto">
             {/* Header */}
             <div className="text-center mb-20">
@@ -868,7 +868,7 @@ export default function JolixLanding() {
 
       {/* 6️⃣ AI SECTION */}
       <section className="py-20 bg-gradient-to-r from-[#3C3CFF] to-purple-600 text-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="max-w-4xl mx-auto text-center">
             <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-3xl flex items-center justify-center mb-8 mx-auto">
               <Sparkles className="h-10 w-10 text-white" />
@@ -886,7 +886,7 @@ export default function JolixLanding() {
 
       {/* 7️⃣ PRICING SECTION */}
       <section id="pricing" className="py-20 bg-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
@@ -1011,7 +1011,7 @@ export default function JolixLanding() {
 
       {/* 8️⃣ FAQ SECTION */}
       <section id="faq" className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
@@ -1084,7 +1084,7 @@ export default function JolixLanding() {
 
       {/* 🔟 FINAL CTA */}
       <section className="py-20 bg-gradient-to-r from-[#3C3CFF] to-purple-600 text-white">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-4xl lg:text-6xl font-bold mb-6">
               Take control of your freelance business today
@@ -1108,7 +1108,7 @@ export default function JolixLanding() {
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-12">
-        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1500px] mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-6 md:mb-0">
               <Image
