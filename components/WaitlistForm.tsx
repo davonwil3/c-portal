@@ -6,9 +6,10 @@ import { toast } from 'sonner'
 
 interface WaitlistFormProps {
   onSuccess?: () => void
+  variant?: 'stacked' | 'inline'
 }
 
-export default function WaitlistForm({ onSuccess }: WaitlistFormProps) {
+export default function WaitlistForm({ onSuccess, variant = 'stacked' }: WaitlistFormProps) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -61,19 +62,37 @@ export default function WaitlistForm({ onSuccess }: WaitlistFormProps) {
     }
   }
 
+  const isInline = variant === 'inline'
+
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3 w-full max-w-xl">
+    <form
+      onSubmit={onSubmit}
+      className={
+        `flex ${isInline ? 'flex-row' : 'flex-col'} gap-3 w-full m-0 ` +
+        `${isInline ? 'max-w-2xl' : 'max-w-xl'}`
+      }
+    >
       <input
         type="email"
         inputMode="email"
         placeholder="Enter your email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-4 text-base text-gray-900 placeholder-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3C3CFF] focus:border-transparent"
+        className={
+          `${isInline ? 'flex-1 h-14' : 'w-full py-4'} ` +
+          'rounded-lg border border-gray-300 bg-white px-4 text-base text-gray-900 placeholder-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3C3CFF] focus:border-transparent'
+        }
         aria-label="Email address"
         disabled={loading}
       />
-      <Button type="submit" disabled={loading} className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white px-7 py-6 rounded-lg shadow-sm hover:shadow-md transition-all">
+      <Button
+        type="submit"
+        disabled={loading}
+        className={
+          `${isInline ? 'h-14 px-6' : 'w-full px-7 py-6'} ` +
+          'bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white rounded-lg shadow-sm hover:shadow-md transition-all'
+        }
+      >
         {loading ? 'Joining…' : 'Join waitlist'}
       </Button>
     </form>

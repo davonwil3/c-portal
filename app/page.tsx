@@ -71,7 +71,7 @@ export default function JolixLanding() {
             {/* Left Column - Content */}
             <div className="space-y-8">
               <div className="space-y-7">
-                <h1 className="text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 leading-tight tracking-tight">
+                <h1 className="text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 leading-tight tracking-tight m-0">
                   Your entire freelance business,{" "}
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#3C3CFF] via-purple-600 to-pink-600">
                     in one place
@@ -82,7 +82,9 @@ export default function JolixLanding() {
                 </p>
               </div>
 
-              <WaitlistForm />
+              <div className="m-0">
+                <WaitlistForm variant="inline" />
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-6 pt-4">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
