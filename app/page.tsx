@@ -83,7 +83,7 @@ export default function JolixLanding() {
               </div>
 
               <div className="m-0">
-                <WaitlistForm variant="inline" />
+                <WaitlistForm />
               </div>
 
               <div className="flex flex-col sm:flex-row gap-6 pt-4">
@@ -467,7 +467,7 @@ export default function JolixLanding() {
           </div>
 
                 {/* LinkedIn Card */}
-                <div className="absolute bottom-8 left-0 w-96 bg-white rounded-xl shadow-xl border border-gray-200/60 p-6" style={{ boxShadow: '0 20px 60px rgba(14, 118, 168, 0.2)' }}>
+                <div className="absolute bottom-8 left-8 w-96 bg-white rounded-xl shadow-xl border border-gray-200/60 p-6" style={{ boxShadow: '0 20px 60px rgba(14, 118, 168, 0.2)' }}>
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-12 h-12 bg-blue-700 rounded flex items-center justify-center flex-shrink-0">
                       <span className="text-white font-bold text-xl">in</span>
