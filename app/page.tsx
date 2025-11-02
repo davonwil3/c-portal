@@ -67,7 +67,7 @@ export default function JolixLanding() {
       {/* 1️⃣ HERO SECTION */}
       <section className="py-16 lg:py-24 bg-gradient-to-br from-blue-50 via-blue-50/50 to-white">
         <div className="w-full px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 xl:gap-20 items-center w-full">
             {/* Left Column - Content */}
             <div className="space-y-8">
               <div className="space-y-7">
@@ -101,7 +101,7 @@ export default function JolixLanding() {
               <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 via-purple-50/30 to-pink-100/50 rounded-3xl blur-3xl"></div>
 
               {/* Main Image */}
-              <div className="relative w-full aspect-square" style={{ maxWidth: '700px' }}>
+              <div className="relative w-full aspect-square" style={{ maxWidth: '600px' }}>
                 <div className="relative w-full h-full rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden">
                 <Image
                     src="/womanoncomp.jpeg"
@@ -142,7 +142,7 @@ export default function JolixLanding() {
                   </div>
 
               {/* Floating Project Card */}
-              <div className="absolute bottom-16 w-56 bg-white rounded-xl shadow-lg border border-gray-200/60 p-4 hidden xl:block" style={{ left: 'calc(50% - 280px - 110px)' }}>
+              <div className="absolute bottom-16 w-56 bg-white rounded-xl shadow-lg border border-gray-200/60 p-4 hidden xl:block" style={{ left: 'calc(50% - 240px - 110px)' }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
