@@ -149,6 +149,63 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Log message as project activity
+    try {
+      // Get sender_id if senderType is account_user
+      let senderUserId = null
+      if (senderType === 'account_user') {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('account_id', accountId)
+          .ilike('first_name || \' \' || last_name', `%${senderName}%`)
+          .limit(1)
+          .single()
+        
+        if (profile) {
+          senderUserId = profile.user_id
+        }
+      }
+
+      // Create activity entry
+      const actionText = parentMessageId 
+        ? `${senderName} replied to a message`
+        : `${senderName} sent a message`
+      
+      const { error: activityError } = await supabase
+        .from('project_activities')
+        .insert({
+          project_id: projectId,
+          account_id: accountId,
+          user_id: senderUserId,
+          activity_type: 'message',
+          action: actionText,
+          metadata: {
+            message_id: message.id,
+            sender_name: senderName,
+            sender_type: senderType,
+            client_id: clientId || null,
+            has_attachment: !!(attachmentUrl || attachmentName),
+            attachment_name: attachmentName || null,
+            content_preview: content.trim().substring(0, 100), // First 100 chars
+          }
+        })
+
+      if (activityError) {
+        console.error('Error logging message activity:', activityError)
+        // Don't fail the request if activity logging fails
+      }
+
+      // Update project last_activity_at
+      await supabase
+        .from('projects')
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq('id', projectId)
+    } catch (activityErr) {
+      console.error('Error in activity logging:', activityErr)
+      // Don't fail the request if activity logging fails
+    }
+
     return NextResponse.json({
       success: true,
       data: message

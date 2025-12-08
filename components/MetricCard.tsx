@@ -1,14 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { LucideIcon, TrendingUp, TrendingDown } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { LucideIcon, TrendingUp, TrendingDown, Info } from "lucide-react"
 
 interface MetricCardProps {
   title: string
   value: string
   hintIcon?: LucideIcon
   trendBadge?: {
-    value: string
+    value: string | null
     direction: 'up' | 'down' | 'neutral'
+    hasData?: boolean
   }
   className?: string
 }
@@ -55,10 +57,30 @@ export function MetricCard({
       <CardContent>
         <div className="text-2xl font-bold text-gray-900 mb-2">{value}</div>
         {trendBadge && (
-          <Badge variant="outline" className={`text-xs ${getTrendColor()}`}>
-            {getTrendIcon()}
-            <span className="ml-1">{trendBadge.value}</span>
-          </Badge>
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className={`text-xs ${getTrendColor()}`}>
+              {trendBadge.value === null || !trendBadge.hasData ? (
+                <>
+                  <span>--</span>
+                  <TooltipProvider delayDuration={100}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 ml-1 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">Need more data to display trend (MoM)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </>
+              ) : (
+                <>
+                  {getTrendIcon()}
+                  <span className="ml-1">{trendBadge.value}</span>
+                </>
+              )}
+            </Badge>
+          </div>
         )}
       </CardContent>
     </Card>

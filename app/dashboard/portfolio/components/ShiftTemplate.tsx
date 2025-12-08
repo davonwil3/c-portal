@@ -8,7 +8,7 @@ import { IconPicker } from "./IconPicker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ExternalLink, Trash2, Edit2, Send, ChevronDown, ArrowDown } from "lucide-react"
+import { ExternalLink, Trash2, Edit2, Send, ChevronDown, ArrowDown, Calendar, ArrowRight } from "lucide-react"
 import { useState } from "react"
 
 interface TemplateProps {
@@ -67,6 +67,13 @@ export function ShiftTemplate({
 
   const handleContactChange = (field: string, value: string) => {
     onDataChange({ contact: { ...data.contact, [field]: value } })
+  }
+
+  const handleContactItemChange = (itemId: string, field: 'label' | 'value', value: string) => {
+    const updatedItems = data.contactItems.map(item =>
+      item.id === itemId ? { ...item, [field]: value } : item
+    )
+    onDataChange({ contactItems: updatedItems })
   }
 
   const handleSectionHeaderChange = (section: string, value: string) => {
@@ -203,14 +210,25 @@ export function ShiftTemplate({
           {/* Main Hero Content */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Left: Large Typography */}
-            <div>
-              <h1 className="text-6xl md:text-8xl lg:text-9xl font-black leading-none mb-8 tracking-tight" style={{ color: textColor }}>
+            <div className="w-full lg:col-span-1" style={{ overflow: 'visible', minWidth: 0 }}>
+              <h1 className="text-6xl md:text-8xl lg:text-9xl font-black leading-none mb-8 tracking-tight" style={{ color: textColor, width: '100%', overflow: 'visible' }}>
                 <InlineText
                   value={data.hero.tagline}
                   onChange={(val) => handleHeroChange('tagline', val)}
                   editMode={editMode}
-                  className="text-6xl md:text-8xl lg:text-9xl font-black leading-none"
-                  style={{ color: textColor }}
+                  className="text-6xl md:text-8xl lg:text-9xl font-black leading-none block"
+                  style={{ 
+                    color: textColor, 
+                    width: '100%', 
+                    maxWidth: 'none',
+                    minWidth: 0,
+                    boxSizing: 'border-box', 
+                    display: 'block', 
+                    wordBreak: 'normal', 
+                    overflowWrap: 'normal', 
+                    whiteSpace: 'normal',
+                    overflow: 'visible'
+                  }}
                   placeholder="CREATIVE DESIGNER"
                 />
               </h1>
@@ -234,16 +252,34 @@ export function ShiftTemplate({
               <div className="flex items-start gap-8 mt-12">
                 <ArrowDown className="w-12 h-12 flex-shrink-0" style={{ color: data.appearance.secondaryColor }} />
                 <div className="max-w-sm">
-                  <p className="text-lg font-medium uppercase tracking-wide" style={{ color: textColor }}>
+                  <div className="text-lg font-medium uppercase tracking-wide mb-6" style={{ color: textColor }}>
                     <InlineText
                       value={data.hero.bio}
                       onChange={(val) => handleHeroChange('bio', val)}
                       editMode={editMode}
-                      className="text-lg font-medium uppercase tracking-wide"
+                      className="text-lg font-medium uppercase tracking-wide block"
                       style={{ color: textColor }}
                       placeholder="I SUPPORT DESIGNERS AND AGENCIES WITH CREATIVE DEVELOPMENT"
                     />
-                  </p>
+                  </div>
+                  {data.modules.contact && (
+                    <Button
+                      className="h-12 px-6 text-base font-bold uppercase tracking-wide border-2"
+                      style={{
+                        backgroundColor: data.appearance.primaryColor,
+                        color: '#ffffff',
+                        borderColor: data.appearance.primaryColor
+                      }}
+                      data-cta="Get in Contact"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                    >
+                      Get in Contact
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -282,28 +318,28 @@ export function ShiftTemplate({
 
             <div className="grid md:grid-cols-2 gap-16">
               <div>
-                <p className="text-xl leading-relaxed" style={{ color: textColor, opacity: 0.9 }}>
+                <div className="text-xl leading-relaxed" style={{ color: textColor, opacity: 0.9 }}>
                   <InlineText
                     value={data.about.column1 || ""}
                     onChange={(val) => onDataChange({ about: { ...data.about, column1: val } })}
                     editMode={editMode}
-                    className="text-xl leading-relaxed"
+                    className="text-xl leading-relaxed block"
                     style={{ color: textColor }}
                     placeholder="Write about your background..."
                   />
-                </p>
+                </div>
               </div>
               <div>
-                <p className="text-xl leading-relaxed" style={{ color: textColor, opacity: 0.9 }}>
+                <div className="text-xl leading-relaxed" style={{ color: textColor, opacity: 0.9 }}>
                   <InlineText
                     value={data.about.column2 || ""}
                     onChange={(val) => onDataChange({ about: { ...data.about, column2: val } })}
                     editMode={editMode}
-                    className="text-xl leading-relaxed"
+                    className="text-xl leading-relaxed block"
                     style={{ color: textColor }}
                     placeholder="Continue your story..."
                   />
-                </p>
+                </div>
               </div>
             </div>
 
@@ -510,10 +546,10 @@ export function ShiftTemplate({
                           )}
                           {project.link && (
                             <a
-                              href={project.link}
+                              href={project.link || 'https://example.com'}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-6 py-3 border-2 font-bold uppercase text-sm hover:translate-x-1 transition-transform"
+                              className="inline-flex items-center gap-2 px-6 py-3 border-2 font-bold uppercase text-sm transition-transform hover:translate-x-1 cursor-pointer"
                               style={{ borderColor: textColor, color: textColor }}
                             >
                               View Project <ExternalLink className="w-4 h-4" />
@@ -545,10 +581,10 @@ export function ShiftTemplate({
                           )}
                           {project.link && (
                             <a
-                              href={project.link}
+                              href={project.link || 'https://example.com'}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-6 py-3 border-2 font-bold uppercase text-sm hover:translate-x-1 transition-transform"
+                              className="inline-flex items-center gap-2 px-6 py-3 border-2 font-bold uppercase text-sm transition-transform hover:translate-x-1 cursor-pointer"
                               style={{ borderColor: textColor, color: textColor }}
                             >
                               View Project <ExternalLink className="w-4 h-4" />
@@ -701,16 +737,16 @@ export function ShiftTemplate({
             <div className="grid md:grid-cols-2 gap-16">
               {/* Contact Info */}
               <div>
-                <p className="text-xl mb-12 leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
+                <div className="text-xl mb-12 leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
                   <InlineText
                     value={data.contact.note}
                     onChange={(val) => handleContactChange('note', val)}
                     editMode={editMode}
-                    className="text-xl leading-relaxed"
+                    className="text-xl leading-relaxed block"
                     style={{ color: textColor }}
                     placeholder="Get in touch for collaborations..."
                   />
-                </p>
+                </div>
 
                 <div className="space-y-6">
                   {data.contactItems.map((item) => {
@@ -724,12 +760,26 @@ export function ShiftTemplate({
                           <IconComponent className="w-6 h-6" style={{ color: data.appearance.primaryColor }} />
                         </div>
                         <div>
-                          <p className="text-sm font-bold uppercase tracking-wide mb-1" style={{ color: textColor, opacity: 0.6 }}>
-                            {item.label}
-                          </p>
-                          <p className="text-lg font-medium" style={{ color: textColor }}>
-                            {item.value}
-                          </p>
+                          <div className="text-sm font-bold uppercase tracking-wide mb-1" style={{ color: textColor, opacity: 0.6 }}>
+                            <InlineText
+                              value={item.label}
+                              onChange={(val) => handleContactItemChange(item.id, 'label', val)}
+                              editMode={editMode}
+                              className="text-sm font-bold uppercase tracking-wide"
+                              style={{ color: textColor, opacity: 0.6 }}
+                              placeholder="Label"
+                            />
+                          </div>
+                          <div className="text-lg font-medium" style={{ color: textColor }}>
+                            <InlineText
+                              value={item.value}
+                              onChange={(val) => handleContactItemChange(item.id, 'value', val)}
+                              editMode={editMode}
+                              className="text-lg font-medium"
+                              style={{ color: textColor }}
+                              placeholder="Value"
+                            />
+                          </div>
                         </div>
                       </div>
                     )
@@ -739,7 +789,7 @@ export function ShiftTemplate({
 
               {/* Contact Form */}
               <div>
-                <form onSubmit={handleContactSubmit} className="space-y-6">
+                <form id="contact-form" data-form-type="contact" onSubmit={handleContactSubmit} className="space-y-6">
                   <Input
                     placeholder="Your Name"
                     value={formData.name}
@@ -766,19 +816,37 @@ export function ShiftTemplate({
                     className="text-lg border-2 resize-none"
                     style={{ borderColor: textColor, backgroundColor: 'transparent', color: textColor }}
                   />
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full h-14 text-lg font-bold uppercase tracking-wide border-2 hover:translate-x-1 transition-transform"
-                    style={{
-                      backgroundColor: data.appearance.primaryColor,
-                      color: '#ffffff',
-                      borderColor: data.appearance.primaryColor
-                    }}
-                  >
-                    {isSubmitting ? "Sending..." : data.contact.ctaLabel || "Send Message"}
-                    <Send className="w-5 h-5 ml-2" />
-                  </Button>
+                  <div className="flex gap-4">
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="flex-1 h-14 text-lg font-bold uppercase tracking-wide border-2 hover:translate-x-1 transition-transform"
+                      style={{
+                        backgroundColor: data.appearance.primaryColor,
+                        color: '#ffffff',
+                        borderColor: data.appearance.primaryColor
+                      }}
+                    >
+                      {isSubmitting ? "Sending..." : data.contact.ctaLabel || "Send Message"}
+                      <Send className="w-5 h-5 ml-2" />
+                    </Button>
+                    {data.behavior.showBookMeetingButton !== false && (
+                      <Button
+                        type="button"
+                        className="flex-1 h-14 text-lg font-bold uppercase tracking-wide border-2 hover:translate-x-1 transition-transform"
+                        style={{
+                          backgroundColor: 'transparent',
+                          color: data.appearance.primaryColor,
+                          borderColor: data.appearance.primaryColor
+                        }}
+                        data-cta="Book Meeting"
+                        onClick={() => window.open('/book-meeting', '_blank')}
+                      >
+                        Book Meeting
+                        <Calendar className="w-5 h-5 ml-2" />
+                      </Button>
+                    )}
+                  </div>
                 </form>
               </div>
             </div>

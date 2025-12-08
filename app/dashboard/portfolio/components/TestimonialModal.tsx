@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Upload } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -26,7 +27,8 @@ export function TestimonialModal({ open, onClose, onSave, editingTestimonial }: 
   const [formData, setFormData] = useState({
     author: "",
     role: "",
-    quote: ""
+    quote: "",
+    avatar: ""
   })
 
   useEffect(() => {
@@ -34,16 +36,29 @@ export function TestimonialModal({ open, onClose, onSave, editingTestimonial }: 
       setFormData({
         author: editingTestimonial.author,
         role: editingTestimonial.role,
-        quote: editingTestimonial.quote
+        quote: editingTestimonial.quote,
+        avatar: (editingTestimonial as any).avatar || ""
       })
     } else {
       setFormData({
         author: "",
         role: "",
-        quote: ""
+        quote: "",
+        avatar: ""
       })
     }
   }, [editingTestimonial, open])
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setFormData({ ...formData, avatar: reader.result as string })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,7 +70,8 @@ export function TestimonialModal({ open, onClose, onSave, editingTestimonial }: 
     setFormData({
       author: "",
       role: "",
-      quote: ""
+      quote: "",
+      avatar: ""
     })
   }
 
@@ -102,6 +118,40 @@ export function TestimonialModal({ open, onClose, onSave, editingTestimonial }: 
               rows={4}
               required
             />
+          </div>
+
+          <div>
+            <Label htmlFor="avatar">Avatar (Optional)</Label>
+            {formData.avatar && (
+              <div className="mb-2">
+                <img src={formData.avatar} alt="Avatar" className="h-20 w-20 rounded-full object-cover" />
+              </div>
+            )}
+            <label>
+              <Button type="button" size="sm" variant="outline" className="cursor-pointer" asChild>
+                <span>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {formData.avatar ? "Change Avatar" : "Upload Avatar"}
+                </span>
+              </Button>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+            </label>
+            {formData.avatar && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="mt-2 text-red-600 hover:text-red-700"
+                onClick={() => setFormData({ ...formData, avatar: "" })}
+              >
+                Remove Avatar
+              </Button>
+            )}
           </div>
 
           <DialogFooter>

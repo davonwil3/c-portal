@@ -328,7 +328,7 @@ export function FormsSection() {
 
   const handleCreateForm = () => {
     if (newFormTemplate === "custom") {
-      router.push(`/dashboard/forms/builder?name=${encodeURIComponent(newFormName)}&type=${encodeURIComponent(newFormType)}`)
+      router.push(`/dashboard/forms/builder?name=${encodeURIComponent(newFormName)}&type=${encodeURIComponent(newFormType)}&return_to=leads&leads_url=${encodeURIComponent('/dashboard/lead-workflow?active=forms')}`)
     } else {
       toast.success(`Form "${newFormName}" created successfully!`)
       setNewFormModalOpen(false)
@@ -607,6 +607,7 @@ export function FormsSection() {
             </p>
           </div>
           <Button
+            data-help="btn-new-form"
             onClick={() => setNewFormModalOpen(true)}
             className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
           >
@@ -616,8 +617,9 @@ export function FormsSection() {
         </div>
 
         {/* Tabs */}
-        <div className="flex space-x-1 mt-6 bg-gray-100 p-1 rounded-lg w-fit">
+        <div data-help="forms-tabs" className="flex space-x-1 mt-6 bg-gray-100 p-1 rounded-lg w-fit">
           <button
+            data-help="tab-all-forms"
             onClick={() => setActiveTab("all")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === "all"
@@ -628,6 +630,7 @@ export function FormsSection() {
             All
           </button>
           <button
+            data-help="tab-lead-forms"
             onClick={() => setActiveTab("lead")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === "lead"
@@ -638,6 +641,7 @@ export function FormsSection() {
             Lead Forms
           </button>
           <button
+            data-help="tab-project-forms"
             onClick={() => setActiveTab("project")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === "project"
@@ -664,7 +668,7 @@ export function FormsSection() {
       </div>
 
       {/* Forms Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div data-help="forms-table" className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -841,6 +845,7 @@ export function FormsSection() {
               <Label htmlFor="form-name">Form Name</Label>
               <Input
                 id="form-name"
+                data-help="input-form-name"
                 placeholder="e.g., General Inquiry"
                 value={newFormName}
                 onChange={(e) => setNewFormName(e.target.value)}
@@ -877,7 +882,7 @@ export function FormsSection() {
             <div>
               <Label htmlFor="form-template">Template</Label>
               <Select value={newFormTemplate} onValueChange={setNewFormTemplate}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1" data-help="select-form-template">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -897,7 +902,7 @@ export function FormsSection() {
                       </span>
                     </div>
                   </SelectItem>
-                  <SelectItem value="custom">
+                  <SelectItem value="custom" data-help="option-template-custom">
                     <div className="flex flex-col">
                       <span className="font-medium">Custom</span>
                       <span className="text-xs text-gray-500">Start blank</span>
@@ -926,6 +931,7 @@ export function FormsSection() {
               </Button>
             )}
             <Button
+              data-help="btn-create-form-modal"
               onClick={handleCreateForm}
               className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
               disabled={!newFormName}

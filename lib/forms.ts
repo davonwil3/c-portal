@@ -290,7 +290,16 @@ export async function updateFormDraft(
   notifyOnSubmission?: boolean,
   submissionDeadline?: string | null,
   instructions?: string,
-  silent: boolean = false
+  silent: boolean = false,
+  brandColor?: string,
+  logoUrl?: string | null,
+  companyName?: string,
+  companyAddress?: string,
+  companyPhone?: string,
+  companyEmail?: string,
+  formDate?: string,
+  footerLine1?: string,
+  footerLine2?: string
 ) {
   try {
     // Validate that we have a proper title
@@ -314,7 +323,16 @@ export async function updateFormDraft(
       })),
       settings: {
         title: formTitle.trim(),
-      }
+      },
+      brand_color: brandColor,
+      logo_url: logoUrl,
+      company_name: companyName,
+      company_address: companyAddress,
+      company_phone: companyPhone,
+      company_email: companyEmail,
+      form_date: formDate,
+      footer_line1: footerLine1,
+      footer_line2: footerLine2
     }
 
     // Build update object - only include client_id and project_id if they are explicitly provided
@@ -389,7 +407,16 @@ export async function updateAndPublishForm(
     maxSubmissions: string
     notifyEmails: string[]
   },
-  fields: FormField[]
+  fields: FormField[],
+  brandColor?: string,
+  logoUrl?: string | null,
+  companyName?: string,
+  companyAddress?: string,
+  companyPhone?: string,
+  companyEmail?: string,
+  formDate?: string,
+  footerLine1?: string,
+  footerLine2?: string
 ) {
   try {
     const supabase = createClient()
@@ -407,34 +434,48 @@ export async function updateAndPublishForm(
       })),
       settings: {
         title: publishFormData.title,
-      }
+      },
+      brand_color: brandColor,
+      logo_url: logoUrl,
+      company_name: companyName,
+      company_address: companyAddress,
+      company_phone: companyPhone,
+      company_email: companyEmail,
+      form_date: formDate,
+      footer_line1: footerLine1,
+      footer_line2: footerLine2
     }
+
+    const updateData = {
+      title: publishFormData.title,
+      description: publishFormData.description,
+      instructions: publishFormData.instructions,
+      form_structure: formStructure,
+      status: 'published',
+      client_id: (publishFormData.clientId === "none" || !publishFormData.clientId || publishFormData.clientId === "") ? null : publishFormData.clientId,
+      project_id: (publishFormData.projectId === "none" || !publishFormData.projectId || publishFormData.projectId === "") ? null : publishFormData.projectId,
+      notify_on_submission: publishFormData.notifyEmails.length > 0,
+      submission_deadline: publishFormData.submissionDeadline?.toISOString() || null,
+      access_level: publishFormData.accessLevel,
+      max_submissions: publishFormData.maxSubmissions ? parseInt(publishFormData.maxSubmissions) : null,
+      notify_emails: publishFormData.notifyEmails,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    console.log('Updating form with data:', { formId, updateData })
 
     const { data, error } = await supabase
       .from('forms')
-      .update({
-        title: publishFormData.title,
-        description: publishFormData.description,
-        instructions: publishFormData.instructions,
-        form_structure: formStructure,
-        status: 'published',
-        client_id: publishFormData.clientId === "none" ? null : publishFormData.clientId,
-        project_id: publishFormData.projectId === "none" ? null : publishFormData.projectId,
-        notify_on_submission: publishFormData.notifyEmails.length > 0,
-        submission_deadline: publishFormData.submissionDeadline?.toISOString() || null,
-        access_level: publishFormData.accessLevel,
-        max_submissions: publishFormData.maxSubmissions ? parseInt(publishFormData.maxSubmissions) : null,
-        notify_emails: publishFormData.notifyEmails,
-        published_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', formId)
       .select()
       .single()
 
     if (error) {
       console.error("Error updating and publishing form:", error)
-      toast.error("Failed to update and publish form. Please try again.")
+      console.error("Error details:", JSON.stringify(error, null, 2))
+      toast.error(`Failed to update and publish form: ${error.message || 'Unknown error'}`)
       return { success: false, error }
     }
 
@@ -573,7 +614,16 @@ export async function saveFormDraft(
   notifyOnSubmission?: boolean,
   submissionDeadline?: string | null,
   instructions?: string,
-  silent: boolean = false
+  silent: boolean = false,
+  brandColor?: string,
+  logoUrl?: string | null,
+  companyName?: string,
+  companyAddress?: string,
+  companyPhone?: string,
+  companyEmail?: string,
+  formDate?: string,
+  footerLine1?: string,
+  footerLine2?: string
 ) {
   try {
     // Validate that we have a proper title
@@ -609,7 +659,16 @@ export async function saveFormDraft(
       })),
       settings: {
         title: formTitle.trim(),
-      }
+      },
+      brand_color: brandColor,
+      logo_url: logoUrl,
+      company_name: companyName,
+      company_address: companyAddress,
+      company_phone: companyPhone,
+      company_email: companyEmail,
+      form_date: formDate,
+      footer_line1: footerLine1,
+      footer_line2: footerLine2
     }
 
     const formData: FormBuilderData = {
@@ -618,8 +677,8 @@ export async function saveFormDraft(
       instructions: instructions || "",
       form_structure: formStructure,
       status: 'draft',
-      client_id: clientId,
-      project_id: projectId,
+      client_id: clientId || null,
+      project_id: projectId || null,
       notify_on_submission: notifyOnSubmission,
       submission_deadline: submissionDeadline,
       access_level: 'private',
@@ -749,7 +808,16 @@ export async function publishForm(
     maxSubmissions: string
     notifyEmails: string[]
   },
-  fields: FormField[]
+  fields: FormField[],
+  brandColor?: string,
+  logoUrl?: string | null,
+  companyName?: string,
+  companyAddress?: string,
+  companyPhone?: string,
+  companyEmail?: string,
+  formDate?: string,
+  footerLine1?: string,
+  footerLine2?: string
 ) {
   try {
     const supabase = createClient()
@@ -779,7 +847,16 @@ export async function publishForm(
       })),
       settings: {
         title: publishFormData.title,
-      }
+      },
+      brand_color: brandColor,
+      logo_url: logoUrl,
+      company_name: companyName,
+      company_address: companyAddress,
+      company_phone: companyPhone,
+      company_email: companyEmail,
+      form_date: formDate,
+      footer_line1: footerLine1,
+      footer_line2: footerLine2
     }
 
     const formData: FormBuilderData = {
@@ -788,8 +865,8 @@ export async function publishForm(
       instructions: publishFormData.instructions,
       form_structure: formStructure,
       status: 'published',
-      client_id: publishFormData.clientId === "none" ? null : publishFormData.clientId,
-      project_id: publishFormData.projectId === "none" ? null : publishFormData.projectId,
+      client_id: (publishFormData.clientId === "none" || !publishFormData.clientId || publishFormData.clientId === "") ? null : publishFormData.clientId,
+      project_id: (publishFormData.projectId === "none" || !publishFormData.projectId || publishFormData.projectId === "") ? null : publishFormData.projectId,
       notify_on_submission: publishFormData.notifyEmails.length > 0,
       submission_deadline: publishFormData.submissionDeadline?.toISOString() || null,
       access_level: publishFormData.accessLevel,

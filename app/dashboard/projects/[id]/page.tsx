@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -12,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ChevronRight,
   Edit,
@@ -51,6 +54,14 @@ import {
   FolderOpen,
   DollarSign,
   Activity,
+  CheckSquare,
+  Sparkles,
+  Lightbulb,
+  Package,
+  Video,
+  Music,
+  Image,
+  File,
 } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -79,20 +90,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getFiles, uploadFile, downloadFile, getFileUrl, approveFile, rejectFile, deleteFile, getFileComments, addFileComment, updateFile, type File } from "@/lib/files"
 import { getProjectForms, deleteForm, getFormTemplates, type Form } from "@/lib/forms"
 import { FormPreviewModal } from "@/components/forms/form-preview-modal"
+import { InvoicePreviewModal } from "@/components/invoices/invoice-preview-modal"
+import { ContractSignatureModal } from "@/components/contracts/contract-signature-modal"
 import { getContracts, type Contract } from "@/lib/contracts"
 import { getInvoicesByProject, updateInvoice, markInvoiceAsPaid, deleteInvoice, type Invoice } from "@/lib/invoices"
-import { getCurrentUser, getUserProfile } from "@/lib/auth"
+import { getCurrentUser, getUserProfile, getCurrentAccount, type Account } from "@/lib/auth"
 import { DashboardMessageChat } from "@/components/messages/dashboard-message-chat"
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { SignatureModal } from "@/components/ui/signature-modal"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { getProjectTimeEntries, calculateTotalDuration, calculateTotalBillable, formatDuration, type TimeEntry } from "@/lib/time-tracking"
+import { useTour } from "@/contexts/TourContext"
+import { dummyProjects, dummyClients as tourDummyClients } from "@/lib/tour-dummy-data"
 
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
   const projectId = params.id as string
+  const { isTourRunning, currentTour } = useTour()
+  const [activeTab, setActiveTab] = useState("tasks")
 
   // State for project data
   const [project, setProject] = useState<Project | null>(null)
@@ -107,6 +123,7 @@ export default function ProjectDetailPage() {
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [accountId, setAccountId] = useState<string>('')
+  const [account, setAccount] = useState<Account | null>(null)
 
   // State for modals and forms
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false)
@@ -118,6 +135,304 @@ export default function ProjectDetailPage() {
   const [editingNote, setEditingNote] = useState<string | null>(null)
   const [noteText, setNoteText] = useState("")
   const [editingMilestone, setEditingMilestone] = useState<any>(null)
+  
+  // Tasks view state
+  const [tasksView, setTasksView] = useState<'milestones' | 'list' | 'board' | 'timeline'>('milestones')
+  const [taskSearch, setTaskSearch] = useState('')
+  const [taskStatusFilter, setTaskStatusFilter] = useState('all')
+  const [taskMilestoneFilter, setTaskMilestoneFilter] = useState('all')
+  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [taskForm, setTaskForm] = useState<any>({ title: "", description: "", status: "todo", assignee_id: "", start_date: "", due_date: "", milestone_id: "" })
+  const [focusMode, setFocusMode] = useState(false)
+  const [quickAddInput, setQuickAddInput] = useState('')
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+  const [expandedMilestonesInView, setExpandedMilestonesInView] = useState<Set<string>>(new Set())
+  const [timelineViewMode, setTimelineViewMode] = useState<'week' | 'month' | 'full'>('week')
+
+  // Board DnD helpers
+  function getTaskStatus(task: any): 'todo' | 'in-progress' | 'review' | 'done' {
+    if (task?.status) return task.status
+    return task.completed ? 'done' : 'todo'
+  }
+
+  async function handleTaskStatusChange(taskId: string, newStatus: 'todo' | 'in-progress' | 'review' | 'done') {
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, completed: newStatus === 'done' } : t)))
+    try {
+      await updateTask(taskId, { status: newStatus })
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to update task status')
+    }
+  }
+
+  function onBoardDragStart(e: React.DragEvent, taskId: string) {
+    e.dataTransfer.setData('text/task-id', taskId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function onBoardDrop(e: React.DragEvent, columnKey: 'todo' | 'in-progress' | 'review' | 'done') {
+    e.preventDefault()
+    const id = e.dataTransfer.getData('text/task-id')
+    if (id) handleTaskStatusChange(id, columnKey)
+  }
+
+  function onBoardDragOver(e: React.DragEvent) {
+    e.preventDefault()
+  }
+
+  function openTaskDrawer(task: any) {
+    setSelectedTask(task)
+    setTaskForm({
+      title: task?.title || '',
+      description: task?.description || '',
+      status: task?.status || getTaskStatus(task),
+      assignee_id: task?.assignee_id || '',
+      start_date: task?.start_date || '',
+      due_date: task?.due_date || '',
+      milestone_id: task?.milestone_id || ''
+    })
+    setIsTaskDrawerOpen(true)
+  }
+
+  async function saveTaskEdits() {
+    if (!taskForm.title.trim() || !projectId) {
+      toast.error('Task title is required')
+      return
+    }
+    try {
+      const taskData: any = {
+        title: taskForm.title,
+        description: taskForm.description,
+        status: taskForm.status,
+        assignee_id: taskForm.assignee_id || null,
+        start_date: taskForm.start_date || null,
+        due_date: taskForm.due_date || null,
+        milestone_id: taskForm.milestone_id || null,
+      }
+      
+      if (selectedTask) {
+        // Update existing task
+        await updateTask(selectedTask.id, taskData)
+        setTasks((prev) => prev.map((t) => (t.id === selectedTask.id ? { ...t, ...taskData } : t)))
+        toast.success('Task updated')
+      } else {
+        // Create new task
+        const newTask = await createTask({
+          project_id: projectId,
+          ...taskData
+        })
+        setTasks((prev) => [...prev, newTask])
+        toast.success('Task created')
+      }
+      setIsTaskDrawerOpen(false)
+      setSelectedTask(null)
+      setTaskForm({
+        title: "",
+        description: "",
+        status: "todo",
+        assignee_id: "",
+        start_date: "",
+        due_date: "",
+        milestone_id: ""
+      })
+    } catch (e) {
+      console.error(e)
+      toast.error(selectedTask ? 'Failed to update task' : 'Failed to create task')
+    }
+  }
+
+  async function handleQuickAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!quickAddInput.trim() || !projectId) return
+    try {
+      const newTask = await createTask({
+        project_id: projectId,
+        title: quickAddInput.trim(),
+        description: '',
+      })
+      setTasks((prev) => [...prev, newTask])
+      setQuickAddInput('')
+      toast.success('Task added')
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to add task')
+    }
+  }
+
+  function toggleTaskExpand(taskId: string) {
+    setExpandedTasks((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }
+
+  // Filter tasks
+  const filteredTasks = tasks.filter((t) => {
+    const matchesSearch = !taskSearch || t.title?.toLowerCase().includes(taskSearch.toLowerCase())
+    const matchesStatus = taskStatusFilter === 'all' || getTaskStatus(t) === taskStatusFilter
+    const matchesMilestone = taskMilestoneFilter === 'all' || t.milestone_id === taskMilestoneFilter
+    return matchesSearch && matchesStatus && matchesMilestone
+  })
+
+  const taskStats = {
+    total: tasks.length,
+    dueSoon: tasks.filter((t) => {
+      if (!t.due_date) return false
+      if (getTaskStatus(t) === 'done') return false
+      const diff = new Date(t.due_date).getTime() - Date.now()
+      return diff > 0 && diff <= 3*24*60*60*1000
+    }).length,
+    overdue: tasks.filter((t) => {
+      if (!t.due_date) return false
+      if (getTaskStatus(t) === 'done') return false
+      return new Date(t.due_date) < new Date()
+    }).length
+  }
+
+  // Timeline (Gantt) basic interactions
+  const timelineGridRef = useRef<HTMLDivElement>(null)
+  const [draggingTimeline, setDraggingTimeline] = useState<null | { taskId: string; type: 'move' }>(null)
+
+  // Get week days (7 days centered on today)
+  function getWeekDays(): Date[] {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const days: Date[] = []
+    // Start 3 days before today, end 3 days after (total 7 days with today in middle)
+    for (let i = -3; i <= 3; i++) {
+      const d = new Date(today)
+      d.setDate(today.getDate() + i)
+      days.push(d)
+    }
+    return days
+  }
+
+  // Get month days (current month)
+  function getMonthDays(): Date[] {
+    const today = new Date()
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const days: Date[] = []
+    const current = new Date(firstDay)
+    current.setHours(0, 0, 0, 0)
+    while (current <= lastDay) {
+      days.push(new Date(current))
+      current.setDate(current.getDate() + 1)
+    }
+    return days
+  }
+
+  // Get all dates for full project view
+  function getAllDates(): Date[] {
+    const allDates = new Set<string>()
+    filteredTasks.forEach((task) => {
+      if (task.start_date) allDates.add(task.start_date)
+      if (task.due_date) allDates.add(task.due_date)
+    })
+    milestones.forEach((m) => {
+      if (m.due_date) allDates.add(m.due_date)
+    })
+    const sorted = Array.from(allDates).sort().map(d => new Date(d))
+    if (sorted.length === 0) return getWeekDays()
+    const minDate = sorted[0]
+    const maxDate = sorted[sorted.length - 1]
+    const days: Date[] = []
+    const current = new Date(minDate)
+    current.setHours(0, 0, 0, 0)
+    while (current <= maxDate) {
+      days.push(new Date(current))
+      current.setDate(current.getDate() + 1)
+    }
+    return days.length > 0 ? days : getWeekDays()
+  }
+
+  function getDaysForView(): Date[] {
+    if (timelineViewMode === 'week') return getWeekDays()
+    if (timelineViewMode === 'month') return getMonthDays()
+    return getAllDates()
+  }
+
+  function getTodayIndex(): number {
+    const days = getDaysForView()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    for (let i = 0; i < days.length; i++) {
+      if (days[i].toDateString() === today.toDateString()) return i
+    }
+    return Math.floor(days.length / 2) // Center if today not found
+  }
+
+  // Calculate task bar position and width
+  function getTaskBarPosition(task: any): { left: number; width: number } | null {
+    const days = getDaysForView()
+    if (days.length === 0) return null
+    
+    const startDate = task.start_date ? new Date(task.start_date) : (task.due_date ? new Date(task.due_date) : null)
+    const endDate = task.due_date ? new Date(task.due_date) : startDate
+    
+    if (!startDate || !endDate) return null
+
+    startDate.setHours(0, 0, 0, 0)
+    endDate.setHours(23, 59, 59, 999)
+
+    let startIdx = -1
+    let endIdx = -1
+
+    for (let i = 0; i < days.length; i++) {
+      const dayStart = new Date(days[i])
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(days[i])
+      dayEnd.setHours(23, 59, 59, 999)
+      
+      if (startIdx === -1 && startDate <= dayEnd) {
+        startIdx = i
+      }
+      if (endDate >= dayStart) {
+        endIdx = i
+      }
+    }
+
+    if (startIdx === -1 || endIdx === -1) return null
+
+    const dayWidth = 100 / days.length
+    return {
+      left: startIdx * dayWidth,
+      width: (endIdx - startIdx + 1) * dayWidth
+    }
+  }
+
+  function handleTimelinePointerDown(taskId: string, e: React.PointerEvent) {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId)
+    setDraggingTimeline({ taskId, type: 'move' })
+  }
+
+  function handleTimelinePointerMove(e: React.PointerEvent) {
+    if (!draggingTimeline || !timelineGridRef.current) return
+    // Timeline drag functionality can be enhanced later
+    // For now, the new timeline view uses click-to-edit
+  }
+
+  async function handleTimelinePointerUp(e: React.PointerEvent) {
+    if (!draggingTimeline) return
+    try {
+      const t = tasks.find((x) => x.id === draggingTimeline.taskId)
+      if (t?.due_date) {
+        await updateTask(t.id, { due_date: t.due_date })
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDraggingTimeline(null)
+    }
+  }
 
   // Edit project form state
   const [editProjectForm, setEditProjectForm] = useState({
@@ -235,99 +550,57 @@ export default function ProjectDetailPage() {
     return date.toLocaleDateString()
   }
 
-  // Helper function to get activity icon
+  // Helper function to get activity icon based on activity_type
   const getActivityIcon = (activityType: string, sourceTable: string) => {
-    switch (sourceTable) {
-      case 'project_activities':
-        switch (activityType) {
-          case 'milestone': return <Target className="h-4 w-4" />
-          case 'task': return <CheckCircle className="h-4 w-4" />
-          case 'file': return <FileText className="h-4 w-4" />
-          case 'message': return <MessageCircle className="h-4 w-4" />
-          case 'status_change': return <Edit className="h-4 w-4" />
-          default: return <Circle className="h-4 w-4" />
-        }
-      case 'contract_activities':
-        switch (activityType) {
-          case 'created': return <FileText className="h-4 w-4" />
-          case 'sent': return <ExternalLink className="h-4 w-4" />
-          case 'signed': return <CheckCircle className="h-4 w-4" />
-          case 'declined': return <XCircle className="h-4 w-4" />
-          default: return <FileText className="h-4 w-4" />
-        }
-      case 'invoice_activities':
-        switch (activityType) {
-          case 'created': return <FileText className="h-4 w-4" />
-          case 'sent': return <ExternalLink className="h-4 w-4" />
-          case 'paid': return <CheckCircle className="h-4 w-4" />
-          case 'overdue': return <Clock className="h-4 w-4" />
-          default: return <FileText className="h-4 w-4" />
-        }
-      case 'file_activities':
-        switch (activityType) {
-          case 'upload': return <Upload className="h-4 w-4" />
-          case 'download': return <Download className="h-4 w-4" />
-          case 'approve': return <CheckCircle className="h-4 w-4" />
-          case 'reject': return <XCircle className="h-4 w-4" />
-          default: return <FileText className="h-4 w-4" />
-        }
-      case 'form_activities':
-        switch (activityType) {
-          case 'created': return <FileText className="h-4 w-4" />
-          case 'submitted': return <CheckCircle className="h-4 w-4" />
-          case 'viewed': return <Eye className="h-4 w-4" />
-          default: return <FileText className="h-4 w-4" />
-        }
+    const type = activityType?.toLowerCase() || ''
+    
+    // Use activity_type from project_activities table
+    switch (type) {
+      case 'invoice':
+        return <DollarSign className="h-4 w-4" />
+      case 'contract':
+        return <FileSignature className="h-4 w-4" />
+      case 'file':
+        return <FileText className="h-4 w-4" />
+      case 'milestone':
+        return <Target className="h-4 w-4" />
+      case 'task':
+        return <CheckCircle className="h-4 w-4" />
+      case 'message':
+        return <MessageCircle className="h-4 w-4" />
+      case 'status_change':
+        return <Edit className="h-4 w-4" />
+      case 'form':
+        return <FileText className="h-4 w-4" />
       default:
-        return <Circle className="h-4 w-4" />
+        return <Package className="h-4 w-4" />
     }
   }
 
-  // Helper function to get activity color
+  // Helper function to get activity color based on activity_type
   const getActivityColor = (activityType: string, sourceTable: string) => {
-    switch (sourceTable) {
-      case 'project_activities':
-        switch (activityType) {
-          case 'milestone': return 'text-blue-600 bg-blue-100'
-          case 'task': return 'text-green-600 bg-green-100'
-          case 'file': return 'text-purple-600 bg-purple-100'
-          case 'message': return 'text-orange-600 bg-orange-100'
-          case 'status_change': return 'text-gray-600 bg-gray-100'
-          default: return 'text-gray-600 bg-gray-100'
-        }
-      case 'contract_activities':
-        switch (activityType) {
-          case 'created': return 'text-blue-600 bg-blue-100'
-          case 'sent': return 'text-yellow-600 bg-yellow-100'
-          case 'signed': return 'text-green-600 bg-green-100'
-          case 'declined': return 'text-red-600 bg-red-100'
-          default: return 'text-gray-600 bg-gray-100'
-        }
-      case 'invoice_activities':
-        switch (activityType) {
-          case 'created': return 'text-blue-600 bg-blue-100'
-          case 'sent': return 'text-yellow-600 bg-yellow-100'
-          case 'paid': return 'text-green-600 bg-green-100'
-          case 'overdue': return 'text-red-600 bg-red-100'
-          default: return 'text-gray-600 bg-gray-100'
-        }
-      case 'file_activities':
-        switch (activityType) {
-          case 'upload': return 'text-blue-600 bg-blue-100'
-          case 'download': return 'text-purple-600 bg-purple-100'
-          case 'approve': return 'text-green-600 bg-green-100'
-          case 'reject': return 'text-red-600 bg-red-100'
-          default: return 'text-gray-600 bg-gray-100'
-        }
-      case 'form_activities':
-        switch (activityType) {
-          case 'created': return 'text-blue-600 bg-blue-100'
-          case 'submitted': return 'text-green-600 bg-green-100'
-          case 'viewed': return 'text-purple-600 bg-purple-100'
-          default: return 'text-gray-600 bg-gray-100'
-        }
+    const type = activityType?.toLowerCase() || ''
+    
+    // Use activity_type from project_activities table
+    switch (type) {
+      case 'invoice':
+        return 'bg-green-100 text-green-600'
+      case 'contract':
+        return 'bg-blue-100 text-blue-600'
+      case 'file':
+        return 'bg-purple-100 text-purple-600'
+      case 'milestone':
+        return 'bg-blue-100 text-blue-600'
+      case 'task':
+        return 'bg-green-100 text-green-600'
+      case 'message':
+        return 'bg-orange-100 text-orange-600'
+      case 'status_change':
+        return 'bg-gray-100 text-gray-600'
+      case 'form':
+        return 'bg-yellow-100 text-yellow-600'
       default:
-        return 'text-gray-600 bg-gray-100'
+        return 'bg-gray-100 text-gray-600'
     }
   }
 
@@ -818,6 +1091,148 @@ export default function ProjectDetailPage() {
       setLoading(true)
       const projectId = params.id as string
 
+      // Check if this is a tour dummy project
+      const isDummyProject = (isTourRunning || currentTour?.id === "projects" || currentTour?.id === "contracts" || currentTour?.id === "tasks") && dummyProjects.some(dp => dp.id === projectId)
+      
+      if (isDummyProject) {
+        // Load dummy data for tour
+        const dummyProject = dummyProjects.find(dp => dp.id === projectId)!
+        const dummyClient = tourDummyClients.find(dc => dc.name === dummyProject.client)!
+        
+        const tourProject: Project = {
+          id: dummyProject.id,
+          name: dummyProject.name,
+          client_id: dummyClient.id,
+          description: `${dummyProject.name} for ${dummyProject.client}`,
+          status: dummyProject.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
+          due_date: dummyProject.dueDate,
+          start_date: '2024-01-01',
+          completed_date: dummyProject.status === 'completed' ? '2024-01-15' : null,
+          portal_id: null,
+          created_at: '2024-01-01',
+          updated_at: '2024-01-15',
+          account_id: 'tour-account',
+          progress: dummyProject.progress,
+          total_messages: 12,
+          total_files: 8,
+          total_invoices: 2,
+          last_activity_at: '2024-01-15',
+          total_milestones: 3,
+          completed_milestones: dummyProject.status === 'completed' ? 3 : 1
+        }
+        
+        const tourClient = {
+          id: dummyClient.id,
+          first_name: dummyClient.name.split(' ')[0],
+          last_name: dummyClient.name.split(' ').slice(1).join(' '),
+          company: dummyClient.company,
+        }
+        
+        setProject(tourProject)
+        setClient(tourClient)
+        setTags([])
+        setExpandedMilestones(new Set())
+        
+        // Set dummy milestones
+        setMilestones([
+          {
+            id: 'milestone-1',
+            project_id: projectId,
+            title: 'Phase 1: Planning & Design',
+            description: 'Initial project setup and design phase',
+            due_date: '2024-02-15',
+            status: 'completed',
+            order: 1,
+          },
+          {
+            id: 'milestone-2',
+            project_id: projectId,
+            title: 'Phase 2: Development',
+            description: 'Core development and implementation',
+            due_date: '2024-03-30',
+            status: 'in_progress',
+            order: 2,
+          },
+          {
+            id: 'milestone-3',
+            project_id: projectId,
+            title: 'Phase 3: Launch',
+            description: 'Final testing and launch',
+            due_date: dummyProject.dueDate,
+            status: 'pending',
+            order: 3,
+          },
+        ])
+        
+        // Set dummy tasks (reuse the existing mock tasks logic below)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        
+        const mockTasks = [
+          {
+            id: 'mock-1',
+            project_id: projectId,
+            title: 'Design homepage mockups',
+            description: 'Create wireframes and initial designs',
+            status: 'in-progress',
+            start_date: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            due_date: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            milestone_id: 'milestone-1',
+            completed: false,
+          },
+          {
+            id: 'mock-2',
+            project_id: projectId,
+            title: 'Review client feedback',
+            description: 'Gather and organize feedback',
+            status: 'todo',
+            start_date: new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            due_date: new Date(today.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            milestone_id: 'milestone-2',
+            completed: false,
+          },
+          {
+            id: 'mock-3',
+            project_id: projectId,
+            title: 'Implement responsive layout',
+            description: 'Build mobile and tablet views',
+            status: 'todo',
+            start_date: new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            due_date: new Date(today.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            milestone_id: 'milestone-2',
+            completed: false,
+          },
+          {
+            id: 'mock-4',
+            project_id: projectId,
+            title: 'Write project documentation',
+            description: 'Document API and components',
+            status: 'review',
+            start_date: new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            due_date: new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            milestone_id: 'milestone-2',
+            completed: false,
+          },
+          {
+            id: 'mock-5',
+            project_id: projectId,
+            title: 'Set up staging environment',
+            description: 'Deploy to staging server',
+            status: 'done',
+            start_date: new Date(today.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            due_date: new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            milestone_id: 'milestone-1',
+            completed: true,
+          },
+        ]
+        
+        setTasks(mockTasks)
+        setProjectFiles([])
+        setProjectForms([])
+        setLoading(false)
+        return
+      }
+
       const [projectData, milestonesData, tasksData, filesData, formsData] = await Promise.all([
         getProjectWithClient(projectId),
         getProjectMilestones(projectId),
@@ -838,6 +1253,7 @@ export default function ProjectDetailPage() {
       }
 
       if (tasksData) {
+        // Only use real tasks from database (no mock data in regular mode)
         setTasks(tasksData)
       }
 
@@ -880,7 +1296,11 @@ export default function ProjectDetailPage() {
 
     } catch (error) {
       console.error('Error loading project data:', error)
-      toast.error('Failed to load project data')
+      // Only show error toast if this is not a tour dummy project
+      const isDummyProject = dummyProjects.some(dp => dp.id === projectId)
+      if (!isDummyProject) {
+        toast.error('Failed to load project data')
+      }
     } finally {
       setLoading(false)
     }
@@ -932,7 +1352,12 @@ export default function ProjectDetailPage() {
 
   // Contract action functions
   const handleViewContract = (contract: Contract) => {
-    router.push(`/dashboard/contracts/${contract.contract_number}`)
+    router.push(`/dashboard/contracts/new?view=${contract.id}&project=${params.id}`)
+  }
+  
+  // Check if contract is fully signed
+  const isContractFullySigned = (contract: Contract) => {
+    return contract.status === 'signed' && contract.signature_status === 'signed'
   }
 
   const handleSendContract = (contract: Contract) => {
@@ -1180,46 +1605,10 @@ export default function ProjectDetailPage() {
       
       toast.success('Invoice marked as paid successfully')
       
-      // Log invoice payment activity
-      try {
-        const invoice = projectInvoices.find(i => i.id === invoiceId)
-        console.log('Logging invoice payment activity:', {
-          type: 'invoice',
-          action: 'marked invoice as paid',
-          projectId: projectId,
-          metadata: { 
-            invoice_number: invoice?.invoice_number,
-            invoice_id: invoiceId,
-            amount: invoice?.total_amount
-          }
-        })
-        
-        const activityResponse = await fetch('/api/log-activity', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'invoice',
-            action: 'marked invoice as paid',
-            projectId: projectId,
-            metadata: { 
-              invoice_number: invoice?.invoice_number,
-              invoice_id: invoiceId,
-              amount: invoice?.total_amount
-            }
-          })
-        })
-        
-        if (activityResponse.ok) {
-          const activityData = await activityResponse.json()
-          console.log('Activity logged successfully:', activityData)
-        } else {
-          console.error('Failed to log activity:', await activityResponse.text())
-        }
-      } catch (error) {
-        console.error('Failed to log invoice payment activity:', error)
-      }
+      // Activity is automatically logged by database trigger (log_invoice_status_change)
+      // No need to manually log here to avoid duplicates
       
-      // Refresh activities after logging
+      // Refresh activities
       loadProjectActivities()
     } catch (error) {
       console.error('Error marking invoice as paid:', error)
@@ -1342,24 +1731,8 @@ export default function ProjectDetailPage() {
         toast.success('Contract deleted successfully')
         
         // Log contract deletion activity
-        try {
-          const contract = projectContracts.find(c => c.id === contractId)
-          await fetch('/api/log-activity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'contract',
-              action: 'deleted contract',
-              projectId: projectId,
-              metadata: { 
-                contract_name: contract?.name,
-                contract_id: contractId
-              }
-            })
-          })
-        } catch (error) {
-          console.error('Failed to log contract deletion activity:', error)
-        }
+        // Activity logging for contract deletion is handled by database triggers
+        // No need to manually log here to avoid duplicates
         loadProjectActivities()
       } catch (error) {
         console.error('Error deleting contract:', error)
@@ -1376,66 +1749,235 @@ export default function ProjectDetailPage() {
     setIsSignatureModalOpen(true)
   }
 
-  const handleSignatureSave = async (signatureData: string) => {
-    if (!contractToSign) return
-
-    try {
-      const response = await fetch('/api/contracts/sign', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contractId: contractToSign.id,
-          signatureData,
-          clientId: null, // No clientId means this is a user signature
-          projectId: project?.id
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        // Update the contract in local state
-        setProjectContracts(prev => 
-          prev.map(contract => {
-            if (contract.id === contractToSign.id) {
-              const updatedContract = { 
-                ...contract, 
-                user_signature_data: signatureData, 
-                user_signature_status: 'signed',
-                user_signed_at: new Date().toISOString()
-              }
-              
-              // Determine the new status based on existing client signature
-              if (contract.client_signature_status === 'signed') {
-                updatedContract.status = 'signed'
-                updatedContract.signature_status = 'signed'
-                updatedContract.signed_at = new Date().toISOString()
-              } else {
-                updatedContract.status = 'partially_signed'
-                updatedContract.signature_status = 'signed'
-                updatedContract.signed_at = new Date().toISOString()
-              }
-              
-              return updatedContract
-            }
-            return contract
-          })
-        )
-        
-        // Close modal
-        setIsSignatureModalOpen(false)
-        
-        // Show success message
-        toast.success('Contract signed successfully!')
-      } else {
-        throw new Error(result.error || 'Failed to sign contract')
+  // Generate contract HTML exactly as shown in preview
+  const generateContractHTML = (contract: Contract) => {
+    const content = contract.contract_content || {}
+    const branding = content.branding || {}
+    const company = content.company || {}
+    const client = content.client || {}
+    const terms = content.terms || {}
+    const paymentPlan = content.paymentPlan || {}
+    const scope = content.scope || {}
+    
+    // Helper to get payment schedule
+    const getPaymentSchedule = () => {
+      if (paymentPlan.schedule && Array.isArray(paymentPlan.schedule)) {
+        return paymentPlan.schedule
       }
-    } catch (error) {
-      console.error('Error signing contract:', error)
-      toast.error('Failed to sign contract. Please try again.')
+      const total = parseFloat(terms.projectTotal || "0") || 0
+      return [total]
     }
+    
+    const paymentSchedule = getPaymentSchedule()
+    const totalPayment = paymentSchedule.reduce((sum: number, amount: number) => sum + amount, 0)
+    
+    return `
+      <div style="background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; padding: 64px; font-family: Georgia, serif;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px;">
+          ${branding.showLogo && branding.logoUrl ? `
+            <div style="width: 128px; height: 128px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 2px solid #d1d5db; background: #f9fafb;">
+              <img src="${branding.logoUrl}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
+            </div>
+          ` : '<div style="width: 128px;"></div>'}
+          <div style="text-align: right; font-size: 14px; font-family: Inter, sans-serif;">
+            <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">${company.name || "{your_company_name}"}</div>
+            <div style="color: #4b5563;">${company.email || "{your_email}"}</div>
+            ${branding.showAddress && company.address ? `<div style="color: #4b5563; font-size: 12px; margin-top: 4px;">${company.address}</div>` : ''}
+          </div>
+        </div>
+
+        <div style="text-align: center; border-bottom: 1px solid ${branding.accentColor || '#6366F1'}; padding-bottom: 24px; margin-bottom: 32px;">
+          <h1 style="font-size: 24px; font-weight: 400; color: #111827; margin-bottom: 8px;">Freelance Service Agreement</h1>
+          <p style="font-size: 14px; color: #4b5563; font-family: Inter, sans-serif; margin-bottom: 8px;">
+            This Agreement is between <strong>${company.name || "{your_company_name}"}</strong> ("Freelancer") and <strong>${client.name || "{client_name}"}</strong> ("Client") for the project described below.
+          </p>
+          <p style="font-size: 14px; color: #4b5563; font-family: Inter, sans-serif; margin-top: 8px;">
+            Both parties agree to the following terms.
+          </p>
+        </div>
+
+        <div style="font-size: 14px; font-family: Inter, sans-serif; line-height: 1.75;">
+          <!-- 1. Project Summary -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              1️⃣ Project Summary
+            </h2>
+            <p style="color: #374151; line-height: 1.75; margin-bottom: 12px;">
+              Freelancer agrees to perform the following services for Client:
+            </p>
+            <div style="margin-left: 16px; margin-bottom: 12px;">
+              <p style="color: #374151; margin-bottom: 4px;"><strong>Project:</strong> ${content.projectName || "{project_name}"}</p>
+              <p style="color: #374151; margin-bottom: 4px;"><strong>Deliverables:</strong></p>
+              ${scope.deliverables ? `
+                <div style="white-space: pre-wrap; margin-left: 16px; color: #374151;">${scope.deliverables}</div>
+              ` : `
+                <p style="color: #6b7280; font-style: italic; margin-left: 16px;">Custom website design (10 pages)&#10;Mobile-responsive development&#10;CMS integration&#10;SEO optimization&#10;30 days post-launch support</p>
+              `}
+              <p style="color: #374151; margin-top: 8px; margin-bottom: 4px;"><strong>Start Date:</strong> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              <p style="color: #374151; margin-bottom: 4px;"><strong>Estimated Completion:</strong> ${terms.estimatedCompletionDate ? new Date(terms.estimatedCompletionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}</p>
+            </div>
+            <p style="color: #374151; line-height: 1.75; margin-top: 12px;">
+              Any additional work outside this scope will require a new written agreement or change order.
+            </p>
+          </div>
+
+          <!-- 2. Payment Terms -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              2️⃣ Payment Terms
+            </h2>
+            <div style="color: #374151; line-height: 1.75;">
+              <p style="margin-bottom: 12px;"><strong>Total Project Fee:</strong> $${totalPayment.toLocaleString()} USD</p>
+              ${paymentPlan.enabled ? `
+                ${paymentPlan.type === "milestone" ? `
+                  <p style="margin-bottom: 8px;"><strong>Payment Schedule:</strong> Milestone-based billing. You will be invoiced at each milestone; no full upfront payment is required.</p>
+                  <ul style="margin-left: 16px; list-style-type: disc; margin-bottom: 12px;">
+                    ${(paymentPlan.milestones || []).slice(0, paymentPlan.milestonesCount || 4).map((m: any, i: number) => 
+                      `<li style="margin-bottom: 4px;">${m.name || `Milestone ${i+1}`}: $${Number(m.amount || 0).toLocaleString()} USD</li>`
+                    ).join('')}
+                  </ul>
+                ` : `
+                  <p style="margin-bottom: 8px;"><strong>Payment Schedule:</strong> The total fee will be paid in ${paymentSchedule.length} payment(s) as follows:</p>
+                  <ul style="margin-left: 16px; list-style-type: disc; margin-bottom: 12px;">
+                    ${paymentSchedule.map((amt: number, idx: number) => 
+                      `<li style="margin-bottom: 4px;">Payment ${idx + 1}: $${amt.toLocaleString()} USD</li>`
+                    ).join('')}
+                  </ul>
+                `}
+              ` : `
+                <p style="margin-bottom: 12px;"><strong>Payment Schedule:</strong> Full payment due upon project completion.</p>
+              `}
+              <p style="margin-bottom: 8px;">Client agrees to pay invoices by the due date shown on each invoice.</p>
+              ${terms.includeLateFee ? `
+                <p style="margin-bottom: 8px;">Late payments may incur a ${terms.lateFee}% fee after ${terms.lateDays || 15} days overdue.</p>
+              ` : ''}
+              <p>Ownership of deliverables transfers to Client only after full payment has been received.</p>
+            </div>
+          </div>
+
+          <!-- 3. Revisions & Changes -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              3️⃣ Revisions & Changes
+            </h2>
+            <div style="color: #374151; line-height: 1.75;">
+              <p style="margin-bottom: 8px;">This agreement includes ${terms.revisionCount || 2} revision(s) per deliverable.</p>
+              ${terms.includeHourlyClause ? `
+                <p>Additional revisions or changes in scope will be billed at $${terms.hourlyRate || 150} USD per hour or a mutually agreed rate.</p>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- 4. Intellectual Property -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              4️⃣ Intellectual Property
+            </h2>
+            <p style="color: #374151; line-height: 1.75; margin-bottom: 8px;">After full payment:</p>
+            <ul style="margin-left: 16px; list-style-type: disc; color: #374151;">
+              <li style="margin-bottom: 8px;">Client owns final approved deliverables.</li>
+              <li>Freelancer retains the right to display completed work for portfolio and marketing purposes, unless Client requests otherwise in writing.</li>
+            </ul>
+          </div>
+
+          <!-- 5. Confidentiality -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              5️⃣ Confidentiality
+            </h2>
+            <ul style="margin-left: 16px; list-style-type: disc; color: #374151;">
+              <li style="margin-bottom: 8px;">Freelancer will not share or disclose Client's confidential information without written consent.</li>
+              <li>Client will not share Freelancer's proprietary methods or materials without consent.</li>
+            </ul>
+          </div>
+
+          <!-- 6. Termination -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              6️⃣ Termination
+            </h2>
+            <ul style="margin-left: 16px; list-style-type: disc; color: #374151;">
+              <li style="margin-bottom: 8px;">Either party may end this Agreement with written notice.</li>
+              <li style="margin-bottom: 8px;">Client agrees to pay for all work completed up to the termination date.</li>
+              <li>Deposits and completed milestone payments are non-refundable once work has begun.</li>
+            </ul>
+          </div>
+
+          <!-- 7. Liability -->
+          <div style="margin-bottom: 32px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 12px; font-family: Georgia, serif;">
+              7️⃣ Liability
+            </h2>
+            <ul style="margin-left: 16px; list-style-type: disc; color: #374151;">
+              <li style="margin-bottom: 8px;">Freelancer provides services in good faith but cannot guarantee specific results or outcomes.</li>
+              <li>Freelancer's total liability is limited to the amount Client has paid under this Agreement.</li>
+            </ul>
+          </div>
+
+          <!-- 8. Acceptance & Signatures -->
+          <div style="border-top: 1px solid ${branding.accentColor || '#6366F1'}; padding-top: 48px; margin-top: 48px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 16px; font-family: Georgia, serif;">
+              8️⃣ Acceptance & Signatures
+            </h2>
+            <p style="color: #374151; line-height: 1.75; margin-bottom: 24px;">
+              By signing below, both parties agree to the terms of this Agreement.<br />
+              Typing your full legal name acts as your electronic signature.
+            </p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 32px;">
+              <!-- Service Provider Signature -->
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 16px;">Service Provider</div>
+                <div style="margin-bottom: 12px;">
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Name:</div>
+                  <div style="font-size: 14px; color: #111827;">${terms.yourName || "Your Name"}</div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Date:</div>
+                  <div style="font-size: 14px; color: #111827;">
+                    ${terms.yourSignatureDate ? new Date(terms.yourSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Signature:</div>
+                  <div style="font-size: 24px; color: #111827; font-family: 'Dancing Script', cursive;">
+                    ${terms.yourName || "Your Name"}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Client Signature -->
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 16px;">Client</div>
+                <div style="margin-bottom: 12px;">
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Name:</div>
+                  <div style="font-size: 14px; color: #111827;">${client.name || "Client Name"}</div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Date:</div>
+                  <div style="font-size: 14px; color: #111827;">
+                    ${terms.clientSignatureDate ? new Date(terms.clientSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">Signature:</div>
+                  ${(contract.client_signature_status === 'signed' || (terms.clientSignatureName && terms.clientSignatureName.trim() !== '')) ? `
+                    <div style="font-size: 24px; color: #111827; font-family: 'Dancing Script', cursive;">
+                      ${terms.clientSignatureName || ''}
+                    </div>
+                  ` : `
+                    <div style="font-size: 24px; color: #111827; border-bottom: 2px solid #9ca3af; padding-bottom: 4px; min-height: 32px;">
+                      &nbsp;
+                    </div>
+                  `}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `
   }
 
   // Handle contract PDF download
@@ -1449,47 +1991,11 @@ export default function ProjectDetailPage() {
       tempDiv.style.left = '-9999px'
       tempDiv.style.top = '-9999px'
       tempDiv.style.width = '800px'
-      tempDiv.style.padding = '40px'
-      tempDiv.style.backgroundColor = 'white'
-      tempDiv.style.fontFamily = 'Arial, sans-serif'
+      tempDiv.style.backgroundColor = '#f8fafc'
+      tempDiv.style.fontFamily = 'Georgia, serif'
       
-      // Generate contract HTML content
-      const contractContent = contract.contract_content || {}
-      const htmlContent = `
-        <div style="max-width: 800px; margin: 0 auto; padding: 40px; font-family: Arial, sans-serif; line-height: 1.6;">
-          <div style="text-align: center; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px;">
-            <h1 style="color: #333; margin: 0; font-size: 28px;">${contract.name}</h1>
-            <p style="color: #666; margin: 10px 0 0 0; font-size: 16px;">Contract Agreement</p>
-          </div>
-          
-          <div style="margin-bottom: 30px;">
-            <h2 style="color: #333; font-size: 20px; margin-bottom: 15px;">Contract Details</h2>
-            <p><strong>Client:</strong> ${contractContent.clientName || 'N/A'}</p>
-            <p><strong>Project:</strong> ${contractContent.projectName || 'N/A'}</p>
-            <p><strong>Start Date:</strong> ${contractContent.startDate || 'N/A'}</p>
-            <p><strong>End Date:</strong> ${contractContent.endDate || 'N/A'}</p>
-            <p><strong>Amount:</strong> $${contractContent.totalAmount || '0'}</p>
-          </div>
-          
-          <div style="margin-bottom: 30px;">
-            <h2 style="color: #333; font-size: 20px; margin-bottom: 15px;">Terms and Conditions</h2>
-            <p>${contractContent.terms || 'Standard terms and conditions apply.'}</p>
-          </div>
-          
-          <div style="margin-top: 50px; border-top: 1px solid #ccc; padding-top: 20px;">
-            <div style="display: flex; justify-content: space-between;">
-              <div style="width: 45%;">
-                <p style="border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px;">Client Signature</p>
-                <p style="margin-top: 40px;">Date: _______________</p>
-              </div>
-              <div style="width: 45%;">
-                <p style="border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px;">Company Signature</p>
-                <p style="margin-top: 40px;">Date: _______________</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      `
+      // Generate contract HTML exactly as shown in preview
+      const htmlContent = generateContractHTML(contract)
       
       tempDiv.innerHTML = htmlContent
       document.body.appendChild(tempDiv)
@@ -1498,7 +2004,8 @@ export default function ProjectDetailPage() {
       const canvas = await html2canvas(tempDiv, {
         scale: 2,
         useCORS: true,
-        allowTaint: true
+        allowTaint: true,
+        backgroundColor: '#f8fafc'
       })
       
       const imgData = canvas.toDataURL('image/png')
@@ -1535,12 +2042,67 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Auto-switch to contracts tab when contracts tour is running
+  useEffect(() => {
+    if (isTourRunning && currentTour?.id === "contracts" && activeTab !== "contracts") {
+      // Use setInterval to wait for tour hint indicating contracts tab
+      let hasSwitched = false
+      
+      const checkForTabSwitch = () => {
+        if (hasSwitched) return
+        
+        const allElements = document.querySelectorAll('*')
+        for (const el of allElements) {
+          const text = el.textContent || ''
+          // If we see hints about Contracts tab, switch to contracts tab
+          if (text.includes("Contracts") && text.includes("tab") && text.includes("agreements")) {
+            setActiveTab("contracts")
+            hasSwitched = true
+            break
+          }
+        }
+      }
+      
+      const interval = setInterval(checkForTabSwitch, 300)
+      return () => clearInterval(interval)
+    }
+  }, [isTourRunning, currentTour?.id, activeTab])
+
+  // Auto-switch to tasks tab when tasks tour is running
+  useEffect(() => {
+    if (isTourRunning && currentTour?.id === "tasks" && activeTab !== "tasks") {
+      // Use setInterval to wait for tour hint indicating tasks tab
+      let hasSwitched = false
+      
+      const checkForTabSwitch = () => {
+        if (hasSwitched) return
+        
+        const allElements = document.querySelectorAll('*')
+        for (const el of allElements) {
+          const text = el.textContent || ''
+          // If we see hints about Tasks tab, switch to tasks tab
+          if (text.includes("Tasks") && text.includes("tab") && text.includes("Track")) {
+            setActiveTab("tasks")
+            hasSwitched = true
+            break
+          }
+        }
+      }
+      
+      const interval = setInterval(checkForTabSwitch, 300)
+      return () => clearInterval(interval)
+    }
+  }, [isTourRunning, currentTour?.id, activeTab])
+
   useEffect(() => {
     if (projectId) {
       loadProjectData()
-      loadProjectActivities()
+      if (!dummyProjects.some(dp => dp.id === projectId)) {
+        // Only load activities for real projects
+        loadProjectActivities()
+      }
     }
-  }, [projectId])
+  }, [projectId, isTourRunning, currentTour?.id])
 
   // Load user and account data
   useEffect(() => {
@@ -1553,6 +2115,12 @@ export default function ProjectDetailPage() {
           if (profile) {
             setUserProfile(profile)
             setAccountId(profile.account_id)
+          }
+          
+          // Load account information
+          const userAccount = await getCurrentAccount()
+          if (userAccount) {
+            setAccount(userAccount)
           }
         }
       } catch (error) {
@@ -2001,7 +2569,7 @@ export default function ProjectDetailPage() {
       })
 
       for (const file of selectedFilesForUpload) {
-        await uploadFile(
+        const uploadedFile = await uploadFile(
           file,
           undefined, // No client
           project?.id, // Link to this project
@@ -2009,6 +2577,12 @@ export default function ProjectDetailPage() {
           uploadForm.tags,
           fileTagColors
         )
+        
+        // Update approval status based on checkbox
+        if (uploadedFile) {
+          const approvalStatus = uploadForm.requireApproval ? 'pending' : 'approved'
+          await updateFile(uploadedFile.id, { approval_status: approvalStatus })
+        }
       }
 
       toast.success(`${selectedFilesForUpload.length} file(s) uploaded successfully`)
@@ -2017,30 +2591,14 @@ export default function ProjectDetailPage() {
       setUploadForm({
         description: "",
         tags: [],
+        requireApproval: false,
       })
 
       // Reload project data to get updated files
       await loadProjectData()
       
-      // Log file upload activity (only once per upload session)
-      try {
-        await fetch('/api/log-activity', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'file',
-            action: `uploaded ${selectedFilesForUpload.length} file${selectedFilesForUpload.length > 1 ? 's' : ''}`,
-            projectId: projectId,
-            metadata: {
-              file_count: selectedFilesForUpload.length,
-              file_names: selectedFilesForUpload.map(f => f.name),
-              upload_session: Date.now() // Unique identifier for this upload session
-            }
-          })
-        })
-      } catch (error) {
-        console.error('Failed to log file upload activity:', error)
-      }
+      // File upload activities are automatically logged by database trigger (log_file_upload)
+      // No need to manually log here to avoid duplicates
       
       // Refresh activities immediately
       loadProjectActivities()
@@ -2086,29 +2644,55 @@ export default function ProjectDetailPage() {
   }
 
   const getFileIcon = (type: string) => {
-    switch (type.toLowerCase()) {
-      case "pdf":
-        return "📄"
-      case "zip":
-      case "rar":
-      case "7z":
-        return "📦"
-      case "png":
-      case "jpg":
-      case "jpeg":
-      case "gif":
-      case "svg":
-        return "🖼️"
-      case "doc":
-      case "docx":
-        return "📝"
-      case "ai":
-      case "psd":
-      case "fig":
-        return "🎨"
-      default:
-        return "📄"
+    const fileType = type.toLowerCase()
+    
+    // Video files - Purple
+    if (['mp4', 'mov', 'avi', 'mkv', 'wmv', 'flv', 'webm'].includes(fileType)) {
+      return <Video className="h-5 w-5 text-purple-500" />
     }
+    
+    // Audio files - Pink
+    if (['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a'].includes(fileType)) {
+      return <Music className="h-5 w-5 text-pink-500" />
+    }
+    
+    // Image files - Green
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'ai', 'psd', 'fig'].includes(fileType)) {
+      return <Image className="h-5 w-5 text-green-500" />
+    }
+    
+    // PDF - Red
+    if (fileType === 'pdf') {
+      return <FileText className="h-5 w-5 text-red-500" />
+    }
+    
+    // Document files - Blue
+    if (['doc', 'docx', 'txt', 'rtf', 'odt'].includes(fileType)) {
+      return <FileText className="h-5 w-5 text-blue-500" />
+    }
+    
+    // Spreadsheet files - Emerald
+    if (['xls', 'xlsx', 'csv', 'ods'].includes(fileType)) {
+      return <FileText className="h-5 w-5 text-emerald-500" />
+    }
+    
+    // Presentation files - Orange
+    if (['ppt', 'pptx', 'odp'].includes(fileType)) {
+      return <FileText className="h-5 w-5 text-orange-500" />
+    }
+    
+    // Archive files - Amber
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(fileType)) {
+      return <Archive className="h-5 w-5 text-amber-500" />
+    }
+    
+    // Code files - Cyan
+    if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'py', 'java', 'cpp', 'c', 'php', 'rb', 'go', 'rs', 'swift'].includes(fileType)) {
+      return <FileText className="h-5 w-5 text-cyan-500" />
+    }
+    
+    // Default - Gray
+    return <File className="h-5 w-5 text-gray-500" />
   }
 
   const formatFileSize = (bytes: number) => {
@@ -2136,21 +2720,8 @@ export default function ProjectDetailPage() {
           toast.success('File approved successfully')
           await loadProjectData()
           
-          // Log file approval activity
-          try {
-            await fetch('/api/log-activity', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'file',
-                action: 'approved file',
-                projectId: projectId,
-                metadata: { file_name: file.name, file_id: file.id }
-              })
-            })
-          } catch (error) {
-            console.error('Failed to log file approval activity:', error)
-          }
+          // Activity is automatically logged by database trigger (log_file_approval_change)
+          // No need to manually log here to avoid duplicates
           loadProjectActivities()
           break
         case "reject":
@@ -2158,21 +2729,8 @@ export default function ProjectDetailPage() {
           toast.success('File rejected successfully')
           await loadProjectData()
           
-          // Log file rejection activity
-          try {
-            await fetch('/api/log-activity', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'file',
-                action: 'rejected file',
-                projectId: projectId,
-                metadata: { file_name: file.name, file_id: file.id }
-              })
-            })
-          } catch (error) {
-            console.error('Failed to log file rejection activity:', error)
-          }
+          // Activity is automatically logged by database trigger (log_file_approval_change)
+          // No need to manually log here to avoid duplicates
           loadProjectActivities()
           break
         case "pending":
@@ -2180,21 +2738,8 @@ export default function ProjectDetailPage() {
           toast.success('File marked as pending')
           await loadProjectData()
           
-          // Log file status change activity
-          try {
-            await fetch('/api/log-activity', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'file',
-                action: 'marked file as pending',
-                projectId: projectId,
-                metadata: { file_name: file.name, file_id: file.id }
-              })
-            })
-          } catch (error) {
-            console.error('Failed to log file status change activity:', error)
-          }
+          // Activity is automatically logged by database trigger (log_file_approval_change)
+          // No need to manually log here to avoid duplicates
           loadProjectActivities()
           break
         case "delete":
@@ -2203,21 +2748,8 @@ export default function ProjectDetailPage() {
             toast.success('File deleted successfully')
             await loadProjectData()
             
-            // Log file deletion activity
-            try {
-              await fetch('/api/log-activity', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  type: 'file',
-                  action: 'deleted file',
-                  projectId: projectId,
-                  metadata: { file_name: file.name, file_id: file.id }
-                })
-              })
-            } catch (error) {
-              console.error('Failed to log file deletion activity:', error)
-            }
+            // Activity logging for file deletion is handled by database triggers
+            // No need to manually log here to avoid duplicates
             loadProjectActivities()
           }
           break
@@ -2321,7 +2853,7 @@ export default function ProjectDetailPage() {
     }
     
     const encodedData = encodeURIComponent(JSON.stringify(formData))
-    router.push(`/dashboard/forms/builder?edit=${encodedData}`)
+    router.push(`/dashboard/forms/builder?edit=${encodedData}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)
   }
 
   const handleDeleteForm = async (formId: string) => {
@@ -2372,7 +2904,7 @@ export default function ProjectDetailPage() {
     }
     
     const encodedData = encodeURIComponent(JSON.stringify(templateData))
-    router.push(`/dashboard/forms/builder?template=${encodedData}`)
+    router.push(`/dashboard/forms/builder?template=${encodedData}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)
   }
 
   const closeFormPreview = () => {
@@ -2409,15 +2941,9 @@ export default function ProjectDetailPage() {
   return (
     <DashboardLayout>
       {/* Enhanced Header with Stats */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] mt-6 mb-8">
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] mt-6 mb-8" data-help="project-details-header">
         <div className="absolute inset-0 bg-black/10"></div>
         <div className="relative z-10 p-6">
-          {/* Project Context Indicator */}
-          <div className="flex items-center space-x-2 mb-4">
-            <div className="w-2 h-2 bg-white/60 rounded-full"></div>
-            <span className="text-sm text-white/80 font-medium">PROJECT DETAILS</span>
-          </div>
-          
           {/* Top Row: Back Button + Actions */}
           <div className="flex items-center justify-between mb-4">
             <Button 
@@ -2448,22 +2974,11 @@ export default function ProjectDetailPage() {
             </div>
           </div>
 
-          {/* Project Title & Client Info */}
+          {/* Project Title */}
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-white mb-3">{project.name}</h1>
               <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Avatar className="h-8 w-8 border-2 border-white/30 shadow-sm">
-                    <AvatarFallback className="bg-white/20 text-white text-sm font-semibold">
-                      {client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm font-medium text-white/90">
-                    {client ? `${client.first_name} ${client.last_name}` : 'Unknown Client'}
-                    {client?.company && <span className="text-white/70 ml-1">• {client.company}</span>}
-                  </span>
-                </div>
                 <Badge 
                   variant="outline" 
                   className="bg-white/20 text-white border-white/30 font-medium px-3 py-1"
@@ -2679,818 +3194,51 @@ export default function ProjectDetailPage() {
       </Dialog>
 
         {/* Main Content */}
-        <Tabs defaultValue="timeline" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8 mb-12 mt-4 h-auto p-2 bg-white border border-gray-200 rounded-xl shadow-sm">
-            <TabsTrigger value="timeline" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
-              <CalendarDays className="h-5 w-5 mb-1" />
-              <span className="font-medium">Timeline</span>
-              <span className="text-xs opacity-75">{milestones.length} milestones</span>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="flex w-full mb-12 mt-4 h-auto p-2 bg-white border border-gray-200 rounded-xl shadow-sm" data-help="project-details-tabs">
+           
+            <TabsTrigger value="tasks" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1" data-help="tasks-tab">
+              <CheckSquare className="h-5 w-5 mb-1" />
+              <span className="font-medium">Tasks</span>
+              <span className="text-xs opacity-75">{tasks.length} tasks</span>
             </TabsTrigger>
-            <TabsTrigger value="messages" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="messages" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <MessageCircle className="h-5 w-5 mb-1" />
               <span className="font-medium">Messages</span>
               <span className="text-xs opacity-75">Chat</span>
             </TabsTrigger>
-            <TabsTrigger value="files" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="files" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <FolderOpen className="h-5 w-5 mb-1" />
               <span className="font-medium">Files</span>
               <span className="text-xs opacity-75">{projectFiles.length} files</span>
             </TabsTrigger>
-            <TabsTrigger value="forms" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="forms" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <Clipboard className="h-5 w-5 mb-1" />
               <span className="font-medium">Forms</span>
               <span className="text-xs opacity-75">{projectForms.length} forms</span>
             </TabsTrigger>
-            <TabsTrigger value="contracts" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="contracts" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1" data-help="contracts-tab">
               <FileSignature className="h-5 w-5 mb-1" />
               <span className="font-medium">Contracts</span>
               <span className="text-xs opacity-75">{projectContracts.length} contracts</span>
             </TabsTrigger>
-            <TabsTrigger value="invoices" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="invoices" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <DollarSign className="h-5 w-5 mb-1" />
               <span className="font-medium">Invoices</span>
               <span className="text-xs opacity-75">{projectInvoices.length} invoices</span>
             </TabsTrigger>
-            <TabsTrigger value="time" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="time" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <Clock className="h-5 w-5 mb-1" />
               <span className="font-medium">Time Tracked</span>
               <span className="text-xs opacity-75">{timeEntries.length} entries</span>
             </TabsTrigger>
-            <TabsTrigger value="activity" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
+            <TabsTrigger value="activity" className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3C3CFF] data-[state=active]:to-[#5252FF] data-[state=active]:text-white rounded-lg py-3 px-4 transition-all duration-200 flex flex-col items-center gap-1">
               <Activity className="h-5 w-5 mb-1" />
               <span className="font-medium">Activity</span>
               <span className="text-xs opacity-75">Log</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="timeline" className="space-y-6 mt-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Project Timeline</h2>
-                <p className="text-gray-600 mt-1">Track milestones and project progress</p>
-              </div>
-              <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Milestone
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Add New Milestone</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="milestoneTitle">Milestone Title *</Label>
-                      <Input
-                        id="milestoneTitle"
-                        value={newMilestone.title}
-                        onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
-                        placeholder="Enter milestone title"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="milestoneDueDate">Due Date</Label>
-                      <Input
-                        id="milestoneDueDate"
-                        type="date"
-                        value={newMilestone.due_date}
-                        onChange={(e) => setNewMilestone({ ...newMilestone, due_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="milestoneDescription">Description</Label>
-                      <Textarea
-                        id="milestoneDescription"
-                        value={newMilestone.description}
-                        onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
-                        placeholder="Optional milestone description"
-                        rows={3}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="milestoneClientNote">Note to Client</Label>
-                      <Textarea
-                        id="milestoneClientNote"
-                        value={newMilestone.client_note}
-                        onChange={(e) => setNewMilestone({ ...newMilestone, client_note: e.target.value })}
-                        placeholder="Optional note that will be visible to the client"
-                        rows={3}
-                      />
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                      <Button variant="outline" onClick={() => setIsAddMilestoneOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleAddMilestone} className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-                        Add Milestone
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* Edit Milestone Modal */}
-            <Dialog open={isEditMilestoneOpen} onOpenChange={setIsEditMilestoneOpen}>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Edit Milestone</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="editMilestoneTitle">Milestone Title *</Label>
-                    <Input
-                      id="editMilestoneTitle"
-                      value={newMilestone.title}
-                      onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
-                      placeholder="Enter milestone title"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editMilestoneDueDate">Due Date</Label>
-                    <Input
-                      id="editMilestoneDueDate"
-                      type="date"
-                      value={newMilestone.due_date}
-                      onChange={(e) => setNewMilestone({ ...newMilestone, due_date: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editMilestoneDescription">Description</Label>
-                    <Textarea
-                      id="editMilestoneDescription"
-                      value={newMilestone.description}
-                      onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
-                      placeholder="Optional milestone description"
-                      rows={3}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editMilestoneClientNote">Note to Client</Label>
-                    <Textarea
-                      id="editMilestoneClientNote"
-                      value={newMilestone.client_note}
-                      onChange={(e) => setNewMilestone({ ...newMilestone, client_note: e.target.value })}
-                      placeholder="Optional note that will be visible to the client"
-                      rows={3}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4">
-                    <Button variant="outline" onClick={() => {
-                      setIsEditMilestoneOpen(false)
-                      setEditingMilestone(null)
-                      setNewMilestone({ title: "", description: "", due_date: "", client_note: "" })
-                    }}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleUpdateMilestone} disabled={saving} className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                      Update Milestone
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            <div className="space-y-4">
-              {milestoneTasks.map((milestone, index) => {
-                const progress = calculateStepProgress(milestone.tasks || [])
-                const isExpanded = expandedMilestones.has(milestone.id)
-
-                return (
-                  <div key={milestone.id} className="relative">
-                    {index < milestoneTasks.length - 1 && (
-                      <div className="absolute left-6 top-16 w-0.5 h-20 bg-gray-200"></div>
-                    )}
-                    <Card className="bg-white border-0 shadow-sm rounded-2xl hover:shadow-md transition-all duration-200">
-                      <CardContent className="p-6">
-                        <div className="flex items-start space-x-4">
-                          <div className="flex-shrink-0 mt-1">{getMilestoneIcon(milestone.status)}</div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <h4 className="font-semibold text-gray-900 mb-1">{milestone.title}</h4>
-                                {milestone.description && (
-                                  <p className="text-sm text-gray-600 mb-2">{milestone.description}</p>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                {milestone.status === "completed" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleUpdateMilestoneStatus(milestone.id, "pending")}
-                                    className="text-yellow-600 border-yellow-200 hover:bg-yellow-50"
-                                    disabled={saving}
-                                  >
-                                    <Clock className="h-4 w-4 mr-1" />
-                                    Mark as Pending
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleUpdateMilestoneStatus(milestone.id, "completed")}
-                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                    disabled={saving}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Mark Complete
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleEditMilestone(milestone)}
-                                  className="text-gray-600 hover:text-gray-800"
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteMilestone(milestone.id)}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  disabled={saving}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-
-
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center space-x-4">
-                                {milestone.due_date && (
-                                  <div className="flex items-center space-x-1 text-sm text-gray-500">
-                                    <CalendarDays className="h-4 w-4" />
-                                    <span>Due {formatDate(milestone.due_date)}</span>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs ${milestone.status === "completed"
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : milestone.status === "in-progress"
-                                      ? "bg-blue-50 text-blue-700 border-blue-200"
-                                      : "bg-gray-50 text-gray-700 border-gray-200"
-                                    }`}
-                                >
-                                  {milestone.status.replace("-", " ")}
-                                </Badge>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => toggleMilestoneExpansion(milestone.id)}
-                                  className="text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
-                                >
-                                  {isExpanded ? (
-                                    <>
-                                      <ChevronUp className="h-4 w-4 mr-1" />
-                                      Hide Tasks
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ChevronDown className="h-4 w-4 mr-1" />
-                                      Show Tasks
-                                    </>
-                                  )}
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Expandable Kanban Section */}
-                            {isExpanded && milestone.tasks && (
-                              <div className="mt-6 pt-6 border-t border-gray-100 bg-[#F9FAFB] rounded-xl p-4 transition-all duration-300">
-                                <div className="flex items-center justify-between mb-4">
-                                  <h5 className="font-medium text-gray-900">Tasks</h5>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedMilestoneId(milestone.id)
-                                      setIsAddTaskOpen(true)
-                                    }}
-                                    className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                                  >
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    Add Task
-                                  </Button>
-                                </div>
-
-                                {/* Mini Kanban Board */}
-                                <div
-                                  className="grid grid-cols-1 md:grid-cols-3 gap-4"
-                                  onDragOver={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                  }}
-                                  onDrop={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                  }}
-                                >
-                                  {/* To Do Column */}
-                                  <div
-                                    className="space-y-3 min-h-[200px] p-3 rounded-lg border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors"
-                                    onDragOver={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                    }}
-                                    onDrop={async (e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      const taskId = e.dataTransfer.getData('taskId')
-                                      if (taskId) {
-                                        try {
-                                          await handleUpdateTaskStatus(taskId, "todo")
-                                        } catch (error) {
-                                          console.error("Error updating task status:", error)
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-2">
-                                      <div className="w-3 h-3 rounded-full bg-gray-400"></div>
-                                      <h6 className="text-sm font-medium text-gray-700">To Do</h6>
-                                      <Badge variant="outline" className="text-xs">
-                                        {milestone.tasks.filter((task: any) => task.status === "todo").length}
-                                      </Badge>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {milestone.tasks
-                                        .filter((task: any) => task.status === "todo")
-                                        .map((task: any) => (
-                                          <Card
-                                            key={task.id}
-                                            className="bg-white border border-gray-200 rounded-lg shadow-sm cursor-move hover:shadow-md transition-all duration-200"
-                                            draggable
-                                            onDragStart={(e) => {
-                                              e.stopPropagation()
-                                              e.dataTransfer.setData('taskId', task.id)
-                                              e.dataTransfer.effectAllowed = 'move'
-                                            }}
-                                            onDragEnd={(e) => {
-                                              e.preventDefault()
-                                              e.stopPropagation()
-                                            }}
-                                          >
-                                            <CardContent className="p-3">
-                                              <div className="space-y-2">
-                                                <div className="flex items-start justify-between">
-                                                  <h6 className="text-sm font-medium text-gray-900 leading-tight">
-                                                    {task.title}
-                                                  </h6>
-                                                  <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      >
-                                                        <MoreHorizontal className="h-3 w-3" />
-                                                      </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-40">
-                                                      <DropdownMenuItem
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          handleUpdateTaskStatus(task.id, "in-progress")
-                                                        }}
-                                                      >
-                                                        Start Task
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          handleUpdateTaskStatus(task.id, "done")
-                                                        }}
-                                                      >
-                                                        Mark Complete
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                                        <Edit className="h-3 w-3 mr-2" />
-                                                        Edit Task
-                                                      </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                  </DropdownMenu>
-                                                </div>
-                                                {task.description && (
-                                                  <p className="text-xs text-gray-600 leading-relaxed">
-                                                    {task.description}
-                                                  </p>
-                                                )}
-                                                <div className="flex items-center justify-between">
-                                                  <Badge
-                                                    variant="outline"
-                                                    className={`text-xs ${getTaskStatusColor(task.status)}`}
-                                                  >
-                                                    To Do
-                                                  </Badge>
-                                                  {task.assignee && (
-                                                    <Avatar className="h-5 w-5">
-                                                      <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-xs font-medium">
-                                                        {task.assignee.first_name?.[0]}{task.assignee.last_name?.[0]}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                  )}
-                                                </div>
-                                                {task.due_date && (
-                                                  <div className="flex items-center space-x-1 text-xs text-gray-500">
-                                                    <CalendarDays className="h-3 w-3" />
-                                                    <span>Due {formatDate(task.due_date)}</span>
-                                                  </div>
-                                                )}
-                                                <div className="flex justify-end">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      handleDeleteTask(task.id)
-                                                    }}
-                                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                    disabled={saving}
-                                                  >
-                                                    <Trash2 className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            </CardContent>
-                                          </Card>
-                                        ))}
-                                      {milestone.tasks.filter((task: any) => task.status === "todo").length === 0 && (
-                                        <div className="text-center py-6">
-                                          <Target className="h-8 w-8 mx-auto text-gray-300 mb-2" />
-                                          <p className="text-xs text-gray-500">No tasks yet</p>
-                                          <p className="text-xs text-gray-400 mt-1">Add a task to get started</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* In Progress Column */}
-                                  <div
-                                    className="space-y-3 min-h-[200px] p-3 rounded-lg border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors"
-                                    onDragOver={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                    }}
-                                    onDrop={async (e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      const taskId = e.dataTransfer.getData('taskId')
-                                      if (taskId) {
-                                        try {
-                                          await handleUpdateTaskStatus(taskId, "in-progress")
-                                        } catch (error) {
-                                          console.error("Error updating task status:", error)
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-2">
-                                      <div className="w-3 h-3 rounded-full bg-[#3C3CFF]"></div>
-                                      <h6 className="text-sm font-medium text-gray-700">In Progress</h6>
-                                      <Badge variant="outline" className="text-xs">
-                                        {milestone.tasks.filter((task: any) => task.status === "in-progress").length}
-                                      </Badge>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {milestone.tasks
-                                        .filter((task: any) => task.status === "in-progress")
-                                        .map((task: any) => (
-                                          <Card
-                                            key={task.id}
-                                            className="bg-white border border-gray-200 rounded-lg shadow-sm cursor-move hover:shadow-md transition-all duration-200"
-                                            draggable
-                                            onDragStart={(e) => {
-                                              e.stopPropagation()
-                                              e.dataTransfer.setData('taskId', task.id)
-                                              e.dataTransfer.effectAllowed = 'move'
-                                            }}
-                                            onDragEnd={(e) => {
-                                              e.preventDefault()
-                                              e.stopPropagation()
-                                            }}
-                                          >
-                                            <CardContent className="p-3">
-                                              <div className="space-y-2">
-                                                <div className="flex items-start justify-between">
-                                                  <h6 className="text-sm font-medium text-gray-900 leading-tight">
-                                                    {task.title}
-                                                  </h6>
-                                                  <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      >
-                                                        <MoreHorizontal className="h-3 w-3" />
-                                                      </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-40">
-                                                      <DropdownMenuItem
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          handleUpdateTaskStatus(task.id, "todo")
-                                                        }}
-                                                      >
-                                                        Move to To Do
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          handleUpdateTaskStatus(task.id, "done")
-                                                        }}
-                                                      >
-                                                        Mark Complete
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                                        <Edit className="h-3 w-3 mr-2" />
-                                                        Edit Task
-                                                      </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                  </DropdownMenu>
-                                                </div>
-                                                {task.description && (
-                                                  <p className="text-xs text-gray-600 leading-relaxed">
-                                                    {task.description}
-                                                  </p>
-                                                )}
-                                                <div className="flex items-center justify-between">
-                                                  <Badge
-                                                    variant="outline"
-                                                    className={`text-xs ${getTaskStatusColor(task.status)}`}
-                                                  >
-                                                    In Progress
-                                                  </Badge>
-                                                  {task.assignee && (
-                                                    <Avatar className="h-5 w-5">
-                                                      <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-xs font-medium">
-                                                        {task.assignee.first_name?.[0]}{task.assignee.last_name?.[0]}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                  )}
-                                                </div>
-                                                {task.due_date && (
-                                                  <div className="flex items-center space-x-1 text-xs text-gray-500">
-                                                    <CalendarDays className="h-3 w-3" />
-                                                    <span>Due {formatDate(task.due_date)}</span>
-                                                  </div>
-                                                )}
-                                                <div className="flex justify-end">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      handleDeleteTask(task.id)
-                                                    }}
-                                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                    disabled={saving}
-                                                  >
-                                                    <Trash2 className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            </CardContent>
-                                          </Card>
-                                        ))}
-                                      {milestone.tasks.filter((task: any) => task.status === "in-progress").length === 0 && (
-                                        <div className="text-center py-6">
-                                          <Clock className="h-8 w-8 mx-auto text-gray-300 mb-2" />
-                                          <p className="text-xs text-gray-500">No tasks in progress</p>
-                                          <p className="text-xs text-gray-400 mt-1">Move tasks here to start working</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Done Column */}
-                                  <div
-                                    className="space-y-3 min-h-[200px] p-3 rounded-lg border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors"
-                                    onDragOver={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                    }}
-                                    onDrop={async (e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      const taskId = e.dataTransfer.getData('taskId')
-                                      if (taskId) {
-                                        try {
-                                          await handleUpdateTaskStatus(taskId, "done")
-                                        } catch (error) {
-                                          console.error("Error updating task status:", error)
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-2">
-                                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                      <h6 className="text-sm font-medium text-gray-700">Done</h6>
-                                      <Badge variant="outline" className="text-xs">
-                                        {milestone.tasks.filter((task: any) => task.status === "done").length}
-                                      </Badge>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {milestone.tasks
-                                        .filter((task: any) => task.status === "done")
-                                        .map((task: any) => (
-                                          <Card
-                                            key={task.id}
-                                            className="bg-white border border-gray-200 rounded-lg shadow-sm opacity-75 cursor-move hover:shadow-md transition-all duration-200"
-                                            draggable
-                                            onDragStart={(e) => {
-                                              e.stopPropagation()
-                                              e.dataTransfer.setData('taskId', task.id)
-                                              e.dataTransfer.effectAllowed = 'move'
-                                            }}
-                                            onDragEnd={(e) => {
-                                              e.preventDefault()
-                                              e.stopPropagation()
-                                            }}
-                                          >
-                                            <CardContent className="p-3">
-                                              <div className="space-y-2">
-                                                <div className="flex items-start justify-between">
-                                                  <h6 className="text-sm font-medium text-gray-900 leading-tight line-through">
-                                                    {task.title}
-                                                  </h6>
-                                                  <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                                                </div>
-                                                {task.description && (
-                                                  <p className="text-xs text-gray-600 leading-relaxed line-through">
-                                                    {task.description}
-                                                  </p>
-                                                )}
-                                                <div className="flex items-center justify-between">
-                                                  <Badge
-                                                    variant="outline"
-                                                    className={`text-xs ${getTaskStatusColor(task.status)}`}
-                                                  >
-                                                    Done
-                                                  </Badge>
-                                                  {task.assignee && (
-                                                    <Avatar className="h-5 w-5">
-                                                      <AvatarFallback className="bg-[#F0F2FF] text-[#3C3CFF] text-xs font-medium">
-                                                        {task.assignee.first_name?.[0]}{task.assignee.last_name?.[0]}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                  )}
-                                                </div>
-                                                {task.due_date && (
-                                                  <div className="flex items-center space-x-1 text-xs text-gray-500">
-                                                    <CalendarDays className="h-3 w-3" />
-                                                    <span>Due {formatDate(task.due_date)}</span>
-                                                  </div>
-                                                )}
-                                                <div className="flex justify-end">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      handleDeleteTask(task.id)
-                                                    }}
-                                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                    disabled={saving}
-                                                  >
-                                                    <Trash2 className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            </CardContent>
-                                          </Card>
-                                        ))}
-                                      {milestone.tasks.filter((task: any) => task.status === "done").length === 0 && (
-                                        <div className="text-center py-6">
-                                          <CheckCircle className="h-8 w-8 mx-auto text-gray-300 mb-2" />
-                                          <p className="text-xs text-gray-500">No completed tasks</p>
-                                          <p className="text-xs text-gray-400 mt-1">Complete tasks to see them here</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Add Task Modal */}
-                                <Dialog open={isAddTaskOpen && selectedMilestoneId === milestone.id} onOpenChange={setIsAddTaskOpen}>
-                                  <DialogContent className="sm:max-w-md">
-                                    <DialogHeader>
-                                      <DialogTitle>Add New Task</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <div className="space-y-2">
-                                        <Label htmlFor="taskTitle">Task Title *</Label>
-                                        <Input
-                                          id="taskTitle"
-                                          value={newTask.title}
-                                          onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                                          placeholder="Enter task title"
-                                        />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="taskDescription">Description</Label>
-                                        <Textarea
-                                          id="taskDescription"
-                                          value={newTask.description}
-                                          onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                                          placeholder="Optional task description"
-                                          rows={3}
-                                        />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="taskDueDate">Due Date</Label>
-                                        <Input
-                                          id="taskDueDate"
-                                          type="date"
-                                          value={newTask.due_date}
-                                          onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-                                        />
-                                      </div>
-                                      <div className="flex justify-end gap-3 pt-4">
-                                        <Button variant="outline" onClick={() => {
-                                          setIsAddTaskOpen(false)
-                                          setSelectedMilestoneId(null)
-                                          setNewTask({ title: "", description: "", due_date: "", priority: "medium" })
-                                        }}>
-                                          Cancel
-                                        </Button>
-                                        <Button
-                                          onClick={handleAddTask}
-                                          disabled={saving || !newTask.title.trim()}
-                                          className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                                        >
-                                          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                          Add Task
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                            )}
-
-                            {/* Client Note Section */}
-                            <div className="space-y-3 mt-4">
-                              <div className="flex items-center justify-between">
-                                <h5 className="text-sm font-medium text-gray-900">Note to Client</h5>
-                              </div>
-
-                              <div className="space-y-3">
-                                <Textarea
-                                  value={milestone.client_note || ""}
-                                  onChange={(e) => {
-                                    // Update local state immediately for instant feedback
-                                    setMilestones(prevMilestones =>
-                                      prevMilestones.map(m =>
-                                        m.id === milestone.id
-                                          ? { ...m, client_note: e.target.value }
-                                          : m
-                                      )
-                                    )
-                                  }}
-                                  onBlur={async (e) => {
-                                    // Save to database when user finishes editing
-                                    try {
-                                      await updateMilestone(milestone.id, { client_note: e.target.value })
-                                    } catch (error) {
-                                      console.error('Error saving note:', error)
-                                      toast.error('Failed to save note')
-                                    }
-                                  }}
-                                  placeholder="Enter a note for the client..."
-                                  className="min-h-[100px] border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
-                                />
-                                <div className="text-xs text-gray-500">
-                                  Note will be automatically saved when you finish typing
-                                </div>
-                              </div>
-                            </div>
-
-                            {milestone.completed_date && (
-                              <div className="mt-2 text-xs text-green-600">
-                                Completed on {formatDate(milestone.completed_date)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )
-              })}
-            </div>
-          </TabsContent>
 
           <TabsContent value="messages" className="mt-0 flex flex-col h-full">
             {accountId && project ? (
@@ -3600,6 +3348,21 @@ export default function ProjectDetailPage() {
                           onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
                           rows={3}
                         />
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="requireApproval"
+                            checked={uploadForm.requireApproval}
+                            onChange={(e) => setUploadForm(prev => ({ ...prev, requireApproval: e.target.checked }))}
+                            className="w-4 h-4 text-[#3C3CFF] border-gray-300 rounded focus:ring-[#3C3CFF]"
+                          />
+                          <Label htmlFor="requireApproval" className="cursor-pointer font-medium text-sm">
+                            Require client approval before file is accessible
+                          </Label>
+                        </div>
                       </div>
 
                       <div>
@@ -3892,11 +3655,17 @@ export default function ProjectDetailPage() {
                   onClick={handleOpenTemplateModal}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Choose from Templates
+                  Choose from your templates
                 </Button>
                 <Button 
                   className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                  onClick={() => router.push('/dashboard/forms/builder')}
+                  onClick={() => {
+                    if (project?.client_id && projectId) {
+                      router.push(`/dashboard/forms/builder?client_id=${project.client_id}&project_id=${projectId}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)
+                    } else {
+                      router.push('/dashboard/forms/builder')
+                    }
+                  }}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create Form
@@ -3925,7 +3694,13 @@ export default function ProjectDetailPage() {
                       </p>
                       <Button 
                         className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                        onClick={() => router.push('/dashboard/forms/builder')}
+                        onClick={() => {
+                    if (project?.client_id && projectId) {
+                      router.push(`/dashboard/forms/builder?client_id=${project.client_id}&project_id=${projectId}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)
+                    } else {
+                      router.push('/dashboard/forms/builder')
+                    }
+                  }}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Create Your First Form
@@ -4008,7 +3783,7 @@ export default function ProjectDetailPage() {
                             client_id: form.client_id,
                             project_id: form.project_id,
                             instructions: form.instructions
-                          }))}`)}
+                          }))}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)}
                         >
                           <Edit className="h-4 w-4 mr-1" />
                           Edit
@@ -4140,8 +3915,8 @@ export default function ProjectDetailPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="contracts" className="space-y-6">
-            <div className="flex items-center justify-between">
+          <TabsContent value="contracts" className="space-y-6" data-help="contracts-tab-content">
+            <div className="flex items-center justify-between" data-help="contracts-header">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Project Contracts</h2>
                 <p className="text-gray-600 mt-1">Manage contracts associated with this project</p>
@@ -4149,6 +3924,7 @@ export default function ProjectDetailPage() {
               <Button 
                 className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
                 onClick={() => router.push(`/dashboard/contracts/new?project=${projectId}`)}
+                data-help="btn-new-contract"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 New Contract
@@ -4283,7 +4059,20 @@ export default function ProjectDetailPage() {
                                 <div className="flex items-center space-x-2">
                                   <span className="text-sm text-gray-500">Value:</span>
                                   <span className="text-sm text-gray-900">
-                                    {contract.total_value ? `$${contract.total_value.toLocaleString()}` : 'Not specified'}
+                                    {(() => {
+                                      // Calculate total from payment_terms
+                                      if (contract.payment_terms) {
+                                        const amounts = contract.payment_terms.match(/\$[\d,]+\.?\d*/g)
+                                        if (amounts && amounts.length > 0) {
+                                          const total = amounts.reduce((sum: number, amount: string) => {
+                                            return sum + parseFloat(amount.replace(/[$,]/g, ''))
+                                          }, 0)
+                                          return `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        }
+                                      }
+                                      // Fallback to total_value if payment_terms doesn't have amounts
+                                      return contract.total_value ? `$${contract.total_value.toLocaleString()}` : 'Not specified'
+                                    })()}
                                   </span>
                                 </div>
 
@@ -4318,10 +4107,10 @@ export default function ProjectDetailPage() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleViewContract(contract)}>
                                   <Eye className="h-4 w-4 mr-2" />
-                                  View
+                                  {isContractFullySigned(contract) ? "View Signed Contract" : "View"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                  <Link href={`/dashboard/contracts/new?edit=${contract.id}`}>
+                                  <Link href={`/dashboard/contracts/new?edit=${contract.id}&project=${params.id}`}>
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit
                                   </Link>
@@ -4390,12 +4179,13 @@ export default function ProjectDetailPage() {
                   <h3 className="text-xl font-semibold text-gray-900">Project Invoices</h3>
                   <p className=" text-gray-600">Manage and track all invoices for this project</p>
                 </div>
-                <Link href="/dashboard/invoicing/create">
-                  <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Invoice
-                  </Button>
-                </Link>
+                <Button 
+                  className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white"
+                  onClick={() => router.push(`/dashboard/billing/create?project_id=${projectId}${project?.client_id ? `&client_id=${project.client_id}` : ''}`)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Invoice
+                </Button>
               </div>
 
               {/* Loading State */}
@@ -4413,12 +4203,13 @@ export default function ProjectDetailPage() {
                       <CreditCard className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                       <h3 className="text-lg font-medium mb-2">No invoices yet</h3>
                       <p className="mb-4">Create your first invoice for this project to get started</p>
-                      <Link href="/dashboard/invoicing/create">
-                        <Button className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white">
-                          <Plus className="mr-2 h-4 w-4" />
-                          Create Invoice
-                        </Button>
-                      </Link>
+                      <Button 
+                        className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90 text-white"
+                        onClick={() => router.push(`/dashboard/billing/create?project_id=${projectId}${project?.client_id ? `&client_id=${project.client_id}` : ''}`)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Invoice
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -4555,7 +4346,7 @@ export default function ProjectDetailPage() {
                                 <Eye className="mr-2 h-4 w-4" />
                                 View Invoice
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => router.push(`/dashboard/invoicing/create?edit=${invoice.id}`)}>
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard/billing/create?edit=${invoice.id}`)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit Invoice
                               </DropdownMenuItem>
@@ -4707,21 +4498,32 @@ export default function ProjectDetailPage() {
                     </Card>
                   </div>
 
-                  {/* Time Entries List */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Time Entries Table */}
+                  <Card>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead>Duration</TableHead>
+                            <TableHead>Note</TableHead>
+                            <TableHead>Rate</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                     {timeEntries.map((entry) => {
                       const startDate = new Date(entry.start_time)
                       const isToday = startDate.toDateString() === new Date().toDateString()
                       const isYesterday = startDate.toDateString() === new Date(Date.now() - 86400000).toDateString()
                       
                       return (
-                        <Card key={entry.id} className="hover:shadow-md transition-shadow">
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                              <TableRow key={entry.id} className="hover:bg-gray-50">
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4 text-blue-600" />
-                                  <span className="text-sm font-medium text-gray-900">
+                                    <span>
                                     {isToday ? 'Today' : isYesterday ? 'Yesterday' : startDate.toLocaleDateString('en-US', { 
                                       month: 'short', 
                                       day: 'numeric',
@@ -4729,7 +4531,9 @@ export default function ProjectDetailPage() {
                                     })}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
                                   <span>{startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
                                   <span>→</span>
                                   <span>
@@ -4738,42 +4542,1132 @@ export default function ProjectDetailPage() {
                                       : 'Running...'}
                                   </span>
                                 </div>
-                              </div>
+                                </TableCell>
+                                <TableCell>
                               <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
                                 {entry.duration_seconds ? formatDuration(entry.duration_seconds) : '-'}
                               </Badge>
-                            </div>
-
-                            {entry.note && (
-                              <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                                </TableCell>
+                                <TableCell>
+                                  {entry.note ? (
+                                    <p className="text-sm text-gray-600 max-w-xs truncate" title={entry.note}>
                                 {entry.note}
                               </p>
-                            )}
-
-                            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                              <div className="flex items-center gap-1 text-xs text-gray-500">
-                                {entry.hourly_rate && (
-                                  <>
+                                  ) : (
+                                    <span className="text-sm text-gray-400">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {entry.hourly_rate ? (
+                                    <div className="flex items-center gap-1 text-sm text-gray-600">
                                     <DollarSign className="h-3 w-3" />
-                                    <span>{entry.hourly_rate}/hr</span>
-                                  </>
-                                )}
+                                      <span>${entry.hourly_rate}/hr</span>
                               </div>
-                              {entry.billable_amount && (
+                                  ) : (
+                                    <span className="text-sm text-gray-400">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {entry.billable_amount ? (
                                 <div className="text-sm font-semibold text-green-600">
                                   ${entry.billable_amount.toFixed(2)}
                                 </div>
+                                  ) : (
+                                    <span className="text-sm text-gray-400">—</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
+          </TabsContent>
+
+
+          {/* Task Drawer */}
+          <Sheet open={isTaskDrawerOpen} onOpenChange={setIsTaskDrawerOpen}>
+            <SheetContent className="sm:max-w-md">
+              <SheetHeader>
+                <SheetTitle>{selectedTask ? 'Edit Task' : 'New Task'}</SheetTitle>
+              </SheetHeader>
+              <div className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="task-title">Title</Label>
+                  <Input id="task-title" value={taskForm.title} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="task-desc">Description</Label>
+                  <Textarea id="task-desc" rows={4} value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={taskForm.status} onValueChange={(v) => setTaskForm({ ...taskForm, status: v })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todo">To Do</SelectItem>
+                        <SelectItem value="in-progress">In Progress</SelectItem>
+                        <SelectItem value="review">Needs Review</SelectItem>
+                        <SelectItem value="done">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Due date</Label>
+                    <Input type="date" value={taskForm.due_date ? new Date(taskForm.due_date).toISOString().slice(0,10) : ""} onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Assignee</Label>
+                    <Input placeholder="Assign user ID"
+                      value={taskForm.assignee_id || ""}
+                      onChange={(e) => setTaskForm({ ...taskForm, assignee_id: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Milestone</Label>
+                    <Select value={taskForm.milestone_id || "none"} onValueChange={(v) => setTaskForm({ ...taskForm, milestone_id: v === 'none' ? null : v })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select milestone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {milestones.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Subtasks</Label>
+                  <Input placeholder="Add a subtask (coming soon)" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Attachments</Label>
+                  <Button variant="outline" className="w-full">Upload file</Button>
+                </div>
+              </div>
+              <SheetFooter className="mt-6">
+                <Button variant="outline" onClick={() => setIsTaskDrawerOpen(false)}>Cancel</Button>
+                <Button onClick={saveTaskEdits} className="bg-[#4647E0] hover:bg-[#3637C0]">Save</Button>
+                {selectedTask && (
+                  <Button variant="destructive" onClick={() => selectedTask && deleteTask(selectedTask.id).then(() => { setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id)); setIsTaskDrawerOpen(false) })}>Delete</Button>
+                )}
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+          <TabsContent value="tasks" className="space-y-6 transition-all duration-200" data-help="tasks-tab-content">
+            {/* Header */}
+            <div className="flex items-center justify-between" data-help="tasks-header">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Tasks for {project?.name}</h2>
+                <p className="text-gray-600 mt-1">Track everything you need to deliver this project — all in one view.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={() => {
+                    setNewMilestone({
+                      title: "",
+                      description: "",
+                      due_date: "",
+                      client_note: "",
+                    })
+                    setIsAddMilestoneOpen(true)
+                  }}
+                  variant="outline"
+                  className="border-[#4647E0] text-[#4647E0] hover:bg-[#4647E0]/10"
+                >
+                  <Target className="h-4 w-4 mr-2" />
+                  Add Milestone
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedTask(null)
+                    setTaskForm({
+                      title: "",
+                      description: "",
+                      status: "todo",
+                      assignee_id: "",
+                      start_date: "",
+                      due_date: "",
+                      milestone_id: ""
+                    })
+                    setIsTaskDrawerOpen(true)
+                  }}
+                  className="bg-[#4647E0] hover:bg-[#3637C0]"
+                  data-help="btn-add-task"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Task
+                </Button>
+              </div>
+            </div>
+
+            {/* View Toggle & Filters */}
+            <div className="flex items-center justify-between gap-4">
+              {/* View Toggle */}
+              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1">
+                <button
+                  onClick={() => setTasksView('milestones')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    tasksView === 'milestones'
+                      ? 'bg-[#4647E0] text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  Milestones
+                </button>
+                <button
+                  onClick={() => setTasksView('list')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    tasksView === 'list'
+                      ? 'bg-[#4647E0] text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  List
+                </button>
+                <button
+                  onClick={() => setTasksView('board')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    tasksView === 'board'
+                      ? 'bg-[#4647E0] text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  Board
+                </button>
+                <button
+                  onClick={() => setTasksView('timeline')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    tasksView === 'timeline'
+                      ? 'bg-[#4647E0] text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  Timeline
+                </button>
+              </div>
+
+              {/* Filter Bar & Stats */}
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                  <span className="font-medium">{taskStats.total} tasks</span>
+                  {taskStats.dueSoon > 0 && <span className="text-yellow-600"> · {taskStats.dueSoon} due soon</span>}
+                  {taskStats.overdue > 0 && <span className="text-red-600"> · {taskStats.overdue} overdue</span>}
+                </div>
+                <Input
+                  placeholder="Search tasks…"
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  className="w-48"
+                />
+                <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={taskMilestoneFilter} onValueChange={setTaskMilestoneFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Milestone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Milestones</SelectItem>
+                    {milestones.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Milestones View - Accordion Style */}
+            {tasksView === 'milestones' && (
+              <div className="space-y-4">
+                {milestones.length === 0 ? (
+                  <Card className="border-2 border-dashed border-gray-200">
+                    <CardContent className="p-12 text-center">
+                      <Target className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-gray-900 font-medium mb-2">No milestones yet</p>
+                      <p className="text-gray-500 text-sm mb-4">Create your first milestone to organize tasks</p>
+                      <Button
+                        onClick={() => setIsAddMilestoneOpen(true)}
+                        className="bg-[#4647E0] hover:bg-[#3637C0]"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Milestone
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  milestones.map((milestone) => {
+                    const isExpanded = expandedMilestonesInView.has(milestone.id)
+                    const milestoneTasks = tasks.filter(t => t.milestone_id === milestone.id)
+                    const completedTasks = milestoneTasks.filter(t => getTaskStatus(t) === 'done').length
+                    const progressPercent = milestoneTasks.length > 0 ? Math.round((completedTasks / milestoneTasks.length) * 100) : 0
+                    
+                    return (
+                      <Card key={milestone.id} className="border border-gray-200 overflow-hidden">
+                        <div 
+                          className="bg-gray-50 border-b border-gray-200 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => {
+                            const newExpanded = new Set(expandedMilestonesInView)
+                            if (isExpanded) {
+                              newExpanded.delete(milestone.id)
+                            } else {
+                              newExpanded.add(milestone.id)
+                            }
+                            setExpandedMilestonesInView(newExpanded)
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                <ChevronRight className="h-5 w-5 text-gray-500" />
+                              </div>
+                              <Target className={`h-5 w-5 ${milestone.status === 'completed' ? 'text-green-600' : 'text-[#4647E0]'}`} />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3">
+                                  <h3 className="font-semibold text-gray-900">{milestone.title}</h3>
+                                  <Badge variant={
+                                    milestone.status === 'completed' ? 'default' :
+                                    milestone.status === 'in-progress' ? 'secondary' :
+                                    'outline'
+                                  } className={
+                                    milestone.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    milestone.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }>
+                                    {milestone.status === 'completed' ? 'Completed' :
+                                     milestone.status === 'in-progress' ? 'In Progress' :
+                                     milestone.status === 'cancelled' ? 'Cancelled' :
+                                     'Pending'}
+                                  </Badge>
+                                </div>
+                                {milestone.description && (
+                                  <p className="text-sm text-gray-600 mt-1">{milestone.description}</p>
+                                )}
+                                <div className="flex items-center gap-4 mt-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-gray-200 rounded-full h-2 w-32">
+                                      <div 
+                                        className={`h-2 rounded-full transition-all ${
+                                          progressPercent === 100 ? 'bg-green-600' : 'bg-[#4647E0]'
+                                        }`}
+                                        style={{ width: `${progressPercent}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-600 font-medium">{progressPercent}%</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500">
+                                    {completedTasks}/{milestoneTasks.length} tasks
+                                  </span>
+                                  {milestone.due_date && (
+                                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                                      <CalendarDays className="h-3 w-3" />
+                                      {new Date(milestone.due_date).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingMilestone(milestone)
+                                setIsEditMilestoneOpen(true)
+                              }}
+                              className="opacity-0 group-hover:opacity-100"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {isExpanded && (
+                          <CardContent className="p-4 space-y-2">
+                            {milestoneTasks.length === 0 ? (
+                              <div className="text-center py-8 text-gray-500 text-sm">
+                                <CheckSquare className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                                <p>No tasks in this milestone yet</p>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-3"
+                                  onClick={() => {
+                                    setTaskForm({
+                                      title: "",
+                                      description: "",
+                                      status: "todo",
+                                      assignee_id: "",
+                                      start_date: "",
+                                      due_date: "",
+                                      milestone_id: milestone.id
+                                    })
+                                    setIsTaskDrawerOpen(true)
+                                  }}
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Add Task
+                                </Button>
+                              </div>
+                            ) : (
+                              milestoneTasks.map((task) => {
+                                const isDone = getTaskStatus(task) === 'done'
+                                const due = task.due_date ? new Date(task.due_date) : null
+                                const overdue = !!(due && !isDone && due < new Date())
+                                const dueSoon = !!(due && !isDone && !overdue && (due.getTime() - Date.now()) / (1000*60*60*24) <= 2)
+                                
+                                return (
+                                  <div 
+                                    key={task.id}
+                                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 border border-gray-100 group"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isDone}
+                                      onChange={() => handleTaskStatusChange(task.id, isDone ? 'todo' : 'done')}
+                                      className="w-4 h-4 rounded border-gray-300 text-[#4647E0] focus:ring-[#4647E0] cursor-pointer"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-sm font-medium ${isDone ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                          {task.title}
+                                        </span>
+                                        {overdue && !isDone && (
+                                          <Badge variant="destructive" className="text-xs">Overdue</Badge>
+                                        )}
+                                        {dueSoon && !isDone && (
+                                          <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700">Due Soon</Badge>
+                                        )}
+                                      </div>
+                                      {task.description && (
+                                        <p className="text-xs text-gray-500 mt-1">{task.description}</p>
+                                      )}
+                                      {due && (
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                                          <CalendarDays className="h-3 w-3" />
+                                          {due.toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => openTaskDrawer(task)}
+                                      className="opacity-0 group-hover:opacity-100 h-7"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </CardContent>
+                        )}
+                      </Card>
+                    )
+                  })
+                )}
+              </div>
+            )}
+
+            {/* List View - Simple Checklist */}
+            {tasksView === 'list' && (
+              <div className="space-y-2">
+                {filteredTasks.length === 0 ? (
+                  <Card className="border-2 border-dashed border-gray-200">
+                    <CardContent className="p-12 text-center">
+                      <CheckSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-gray-900 font-medium mb-2">No tasks yet. Let's get started!</p>
+                      <p className="text-gray-500 text-sm">Add your first task above or let Jolix generate a plan for you.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  filteredTasks.map((task) => {
+                    const isExpanded = expandedTasks.has(task.id)
+                    const isDone = getTaskStatus(task) === 'done'
+                    const due = task.due_date ? new Date(task.due_date) : null
+                    const overdue = !!(due && !isDone && due < new Date())
+                    const dueSoon = !!(due && !isDone && !overdue && (due.getTime() - Date.now()) / (1000*60*60*24) <= 2)
+                    return (
+                      <Card
+                        key={task.id}
+                        className="border border-gray-200 hover:shadow-md hover:border-[#4647E0]/30 transition-all duration-200 ease-in-out cursor-pointer"
+                        onClick={() => openTaskDrawer(task)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={getTaskStatus(task) === 'done'}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                handleTaskStatusChange(task.id, getTaskStatus(task) === 'done' ? 'todo' : 'done')
+                              }}
+                              className="w-5 h-5 rounded border-gray-300 text-[#4647E0] focus:ring-[#4647E0] cursor-pointer"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`font-medium text-gray-900 ${getTaskStatus(task) === 'done' ? 'line-through text-gray-500' : ''}`}>
+                                  {task.title}
+                                </span>
+                                {due && (
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs ${
+                                      overdue
+                                        ? 'bg-red-50 text-red-700 border-red-200'
+                                        : dueSoon
+                                          ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                                    }`}
+                                  >
+                                    <CalendarDays className="h-3 w-3 mr-1" />
+                                    {due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </Badge>
+                                )}
+                                {task.milestone_id && (
+                                  <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                    {milestones.find(m => m.id === task.milestone_id)?.title}
+                                  </Badge>
+                                )}
+                              </div>
+                              {isExpanded && task.description && (
+                                <p className="text-sm text-gray-600 mt-2">{task.description}</p>
                               )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {task.assignee && (
+                                <Avatar className="h-7 w-7">
+                                  <AvatarFallback className="bg-[#4647E0]/10 text-[#4647E0] text-xs">
+                                    {task.assignee?.first_name?.[0]}{task.assignee?.last_name?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleTaskExpand(task.id)
+                                }}
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openTaskDrawer(task)
+                                }}
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation()
+                                    openTaskDrawer(task)
+                                  }}>
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem>
+                                    <Sparkles className="h-4 w-4 mr-2" />
+                                    Suggest next step
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem>
+                                    <MessageCircle className="h-4 w-4 mr-2" />
+                                    Comment
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-red-600" onClick={() => { deleteTask(task.id); setTasks(prev => prev.filter(t => t.id !== task.id)) }}>
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Board View - 3 Columns */}
+            {tasksView === 'board' && (
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {[
+                  { key: 'todo', label: 'To Do', color: 'gray' },
+                  { key: 'in-progress', label: 'Doing', color: 'blue' },
+                  { key: 'done', label: 'Done', color: 'green' },
+                ].map((col) => {
+                  const colTasks = filteredTasks.filter((t) => getTaskStatus(t) === col.key)
+                  return (
+                    <div key={col.key} className="flex-shrink-0 w-80" onDragOver={onBoardDragOver} onDrop={(e) => onBoardDrop(e, col.key as any)}>
+                      <Card className="bg-gray-50/50 border-gray-200">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                                {col.label}
+                                <span className="text-xs font-normal text-gray-500 bg-white px-2 py-0.5 rounded-full">{colTasks.length}</span>
+                              </h4>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 mb-3 min-h-[100px]">
+                            {colTasks.map((task) => {
+                              const isDone = getTaskStatus(task) === 'done'
+                              const due = task.due_date ? new Date(task.due_date) : null
+                              const overdue = !!(due && !isDone && due < new Date())
+                              const dueSoon = !!(due && !isDone && !overdue && (due.getTime() - Date.now()) / (1000*60*60*24) <= 2)
+                              return (
+                                <Card
+                                  key={task.id}
+                                  className="bg-white hover:shadow-lg transition-all duration-200 ease-in-out cursor-move border border-gray-200 hover:border-[#4647E0]/50"
+                                  draggable
+                                  onDragStart={(e) => onBoardDragStart(e, task.id)}
+                                  onClick={() => openTaskDrawer(task)}
+                                >
+                                  <CardContent className="p-3">
+                                    <h5 className="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{task.title}</h5>
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5">
+                                        {due && (
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-xs ${
+                                              overdue
+                                                ? 'bg-red-50 text-red-700 border-red-200'
+                                                : dueSoon
+                                                  ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                                  : 'bg-gray-50 text-gray-600 border-gray-200'
+                                            }`}
+                                          >
+                                            {due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <Avatar className="h-6 w-6">
+                                        <AvatarFallback className="bg-[#4647E0]/10 text-[#4647E0] text-xs">
+                                          {task.assignee?.first_name?.[0] || 'U'}{task.assignee?.last_name?.[0] || ''}
+                                        </AvatarFallback>
+                                      </Avatar>
                             </div>
                           </CardContent>
                         </Card>
                       )
                     })}
                   </div>
-                </>
-              )}
+
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-white"
+                            size="sm"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add task
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Timeline View */}
+            {tasksView === 'timeline' && (() => {
+              const days = getDaysForView()
+              const todayIndex = getTodayIndex()
+              const tasksWithDates = filteredTasks.filter(t => t.due_date || t.start_date)
+              const tasksWithoutDates = filteredTasks.filter(t => !t.due_date && !t.start_date)
+              
+              // Get range label for timeline
+              const getWeekLabel = () => {
+                if (days.length === 0) return ''
+                const firstDay = days[0]
+                const lastDay = days[days.length - 1]
+                if (timelineViewMode === 'week') {
+                  return `${firstDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${lastDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                }
+                if (timelineViewMode === 'month') {
+                  return firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                }
+                return `${firstDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${lastDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+              }
+              
+              // Check if day is weekend
+              const isWeekend = (day: Date) => {
+                const dayOfWeek = day.getDay()
+                return dayOfWeek === 0 || dayOfWeek === 6
+              }
+              
+              // Get task bar color and style based on status
+              const getTaskBarStyle = (task: any) => {
+                const isDone = getTaskStatus(task) === 'done'
+                if (isDone) return 'bg-gray-300 opacity-60'
+                
+                const due = task.due_date ? new Date(task.due_date) : null
+                const overdue = !!(due && !isDone && due < new Date())
+                const dueSoon = !!(due && !isDone && !overdue && (due.getTime() - Date.now()) / (1000*60*60*24) <= 3)
+                
+                if (overdue) return 'bg-[#4647E0] border-2 border-red-500'
+                if (dueSoon) return 'bg-yellow-400 border border-yellow-600'
+                return 'bg-[#4647E0]'
+              }
+              
+              return (
+                <div className="space-y-4 transition-all duration-300 ease-in-out">
+                  <Card>
+                    <CardContent className="p-6">
+                      {/* Header Controls */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <Button
+                            variant={timelineViewMode === 'week' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setTimelineViewMode('week')}
+                            className={`transition-all duration-200 ${timelineViewMode === 'week' ? 'bg-[#4647E0] hover:bg-[#3637C0]' : ''}`}
+                          >
+                            This Week
+                          </Button>
+                          <Button
+                            variant={timelineViewMode === 'month' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setTimelineViewMode('month')}
+                            className={`transition-all duration-200 ${timelineViewMode === 'month' ? 'bg-[#4647E0] hover:bg-[#3637C0]' : ''}`}
+                          >
+                            This Month
+                          </Button>
+                          <Button
+                            variant={timelineViewMode === 'full' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setTimelineViewMode('full')}
+                            className={`transition-all duration-200 ${timelineViewMode === 'full' ? 'bg-[#4647E0] hover:bg-[#3637C0]' : ''}`}
+                          >
+                            Full Project
+                          </Button>
+                          <span className="text-xs text-gray-500 ml-2">{getWeekLabel()}</span>
             </div>
+                      </div>
+
+                      {/* Horizontal Timeline Grid */}
+                      {tasksWithDates.length > 0 && (
+                        <div className="space-y-6">
+                          {/* Date Header Row */}
+                          <div className="relative">
+                            <div className="flex border-b-2 border-gray-300">
+                              {days.map((day, idx) => {
+                                const isToday = idx === todayIndex
+                                const isWeekendDay = isWeekend(day)
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`flex-1 min-w-[60px] text-center py-2 border-r border-gray-200 ${
+                                      isWeekendDay ? 'bg-gray-50/50' : 'bg-white'
+                                    } ${isToday ? 'bg-red-50/80' : ''}`}
+                                  >
+                                    <div className={`text-[10px] uppercase tracking-wide ${isToday ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                      {day.toLocaleDateString('en-US', { weekday: 'short' })}
+                                    </div>
+                                    <div className={`text-xs font-medium mt-0.5 ${isToday ? 'text-red-600' : 'text-gray-900'}`}>
+                                      {day.getDate()}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Milestone Rows with Task Bars */}
+                          {milestones.map((milestone, milestoneIdx) => {
+                            const milestoneTasks = tasksWithDates.filter(t => t.milestone_id === milestone.id)
+                            if (milestoneTasks.length === 0) return null
+                            
+                            return (
+                              <div key={milestone.id} className={`${milestoneIdx % 2 === 0 ? 'bg-white' : 'bg-purple-50/20'} rounded-lg overflow-hidden`}>
+                                {/* Milestone Section */}
+                                <div className="flex">
+                                  {/* Milestone Label (Left Column) */}
+                                  <div className="w-48 flex-shrink-0 p-4 border-r border-gray-200 bg-white">
+                                    <h4 className="font-semibold text-sm text-gray-900">{milestone.title}</h4>
+                                    <p className="text-xs text-gray-500 mt-1">{milestoneTasks.length} {milestoneTasks.length === 1 ? 'task' : 'tasks'}</p>
+                                  </div>
+                                  
+                                  {/* Timeline Grid for this Milestone */}
+                                  <div className="flex-1 relative min-h-[120px]">
+                                    {/* Vertical Grid Lines */}
+                                    <div className="absolute inset-0 flex pointer-events-none">
+                                      {days.map((day, idx) => {
+                                        const isWeekendDay = isWeekend(day)
+                                        return (
+                                          <div
+                                            key={idx}
+                                            className={`flex-1 min-w-[60px] border-r border-gray-200 ${
+                                              isWeekendDay ? 'bg-gray-50/30' : ''
+                                            }`}
+                                          />
+                                        )
+                                      })}
+                                    </div>
+                                    
+                                    {/* Today Line */}
+                                    {todayIndex >= 0 && todayIndex < days.length && (
+                                      <div
+                                        className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                                        style={{
+                                          left: `${((todayIndex + 0.5) / days.length) * 100}%`
+                                        }}
+                                      />
+                                    )}
+                                    
+                                    {/* Task Bars */}
+                                    <div className="relative p-4 space-y-2">
+                                      {milestoneTasks.map((task, taskIdx) => {
+                                        const pos = getTaskBarPosition(task)
+                                        if (!pos) return null
+                                        
+                                        const barStyle = getTaskBarStyle(task)
+                                        const isDone = getTaskStatus(task) === 'done'
+                                        
+                                        return (
+                                          <TooltipProvider key={task.id}>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <div
+                                                  className={`absolute h-8 rounded-md shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 ${barStyle} z-10`}
+                                                  style={{
+                                                    left: `${pos.left}%`,
+                                                    width: `${pos.width}%`,
+                                                    top: `${16 + taskIdx * 36}px`
+                                                  }}
+                                                  onClick={() => openTaskDrawer(task)}
+                                                >
+                                                  <div className="h-full flex items-center px-2">
+                                                    <span className={`text-xs font-medium truncate ${isDone ? 'text-gray-600' : 'text-white'}`}>
+                                                      {task.title}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="top" className="max-w-xs">
+                                                <div className="space-y-1">
+                                                  <div className="font-semibold">{task.title}</div>
+                                                  <div className="text-xs text-gray-400">
+                                                    <div>Milestone: {milestone.title}</div>
+                                                    {task.start_date && task.due_date && (
+                                                      <div>
+                                                        {new Date(task.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} → {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                      </div>
+                                                    )}
+                                                    {task.due_date && !task.start_date && (
+                                                      <div>Due: {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+
+                          {/* Unassigned Tasks */}
+                          {tasksWithDates.filter(t => !t.milestone_id).length > 0 && (
+                            <div className="bg-gray-50/30 rounded-lg overflow-hidden">
+                              <div className="flex">
+                                {/* Unassigned Label (Left Column) */}
+                                <div className="w-48 flex-shrink-0 p-4 border-r border-gray-200 bg-white">
+                                  <h4 className="font-semibold text-sm text-gray-700">Unassigned</h4>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {tasksWithDates.filter(t => !t.milestone_id).length} {tasksWithDates.filter(t => !t.milestone_id).length === 1 ? 'task' : 'tasks'}
+                                  </p>
+                                </div>
+                                
+                                {/* Timeline Grid for Unassigned */}
+                                <div className="flex-1 relative min-h-[120px]">
+                                  {/* Vertical Grid Lines */}
+                                  <div className="absolute inset-0 flex pointer-events-none">
+                                    {days.map((day, idx) => {
+                                      const isWeekendDay = isWeekend(day)
+                                      return (
+                                        <div
+                                          key={idx}
+                                          className={`flex-1 min-w-[60px] border-r border-gray-200 ${
+                                            isWeekendDay ? 'bg-gray-50/30' : ''
+                                          }`}
+                                        />
+                                      )
+                                    })}
+                                  </div>
+                                  
+                                  {/* Today Line */}
+                                  {todayIndex >= 0 && todayIndex < days.length && (
+                                    <div
+                                      className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                                      style={{
+                                        left: `${((todayIndex + 0.5) / days.length) * 100}%`
+                                      }}
+                                    />
+                                  )}
+                                  
+                                  {/* Task Bars */}
+                                  <div className="relative p-4 space-y-2">
+                                    {tasksWithDates.filter(t => !t.milestone_id).map((task, taskIdx) => {
+                                      const pos = getTaskBarPosition(task)
+                                      if (!pos) return null
+                                      
+                                      const barStyle = getTaskBarStyle(task)
+                                      const isDone = getTaskStatus(task) === 'done'
+                                      
+                                      return (
+                                        <TooltipProvider key={task.id}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <div
+                                                className={`absolute h-8 rounded-md shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 ${barStyle} z-10`}
+                                                style={{
+                                                  left: `${pos.left}%`,
+                                                  width: `${pos.width}%`,
+                                                  top: `${16 + taskIdx * 36}px`
+                                                }}
+                                                onClick={() => openTaskDrawer(task)}
+                                              >
+                                                <div className="h-full flex items-center px-2">
+                                                  <span className={`text-xs font-medium truncate ${isDone ? 'text-gray-600' : 'text-white'}`}>
+                                                    {task.title}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" className="max-w-xs">
+                                              <div className="space-y-1">
+                                                <div className="font-semibold">{task.title}</div>
+                                                <div className="text-xs text-gray-400">
+                                                  <div>No milestone assigned</div>
+                                                  {task.start_date && task.due_date && (
+                                                    <div>
+                                                      {new Date(task.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} → {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                    </div>
+                                                  )}
+                                                  {task.due_date && !task.start_date && (
+                                                    <div>Due: {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Empty State */}
+                      {tasksWithDates.length === 0 && (
+                        <div className="text-center py-12">
+                          <CalendarDays className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p className="text-gray-900 font-medium mb-2">No tasks with dates yet</p>
+                          <p className="text-gray-500 text-sm mb-4">Add dates to visualize your project timeline.</p>
+                          <Button
+                            variant="outline"
+                            onClick={() => setIsAddTaskOpen(true)}
+                            className="border-[#4647E0] text-[#4647E0] hover:bg-[#4647E0]/10"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Dates to Tasks
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )
+            })()}
+
+            {/* Add Milestone Drawer */}
+            <Sheet open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
+              <SheetContent className="sm:max-w-md">
+                <SheetHeader>
+                  <SheetTitle>Add Milestone</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="milestone-title">Title *</Label>
+                    <Input 
+                      id="milestone-title" 
+                      placeholder="e.g., Initial Design Phase"
+                      value={newMilestone.title} 
+                      onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="milestone-desc">Description</Label>
+                    <Textarea 
+                      id="milestone-desc" 
+                      rows={4}
+                      placeholder="Describe what this milestone includes..."
+                      value={newMilestone.description} 
+                      onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="milestone-due">Due Date</Label>
+                    <Input 
+                      id="milestone-due" 
+                      type="date"
+                      value={newMilestone.due_date} 
+                      onChange={(e) => setNewMilestone({ ...newMilestone, due_date: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="milestone-client-note">Client Note</Label>
+                    <Textarea 
+                      id="milestone-client-note" 
+                      rows={3}
+                      placeholder="Note visible to the client..."
+                      value={newMilestone.client_note} 
+                      onChange={(e) => setNewMilestone({ ...newMilestone, client_note: e.target.value })} 
+                    />
+                    <p className="text-xs text-gray-500">This note will be visible to the client in their portal</p>
+                  </div>
+                </div>
+                <SheetFooter className="mt-6">
+                  <Button variant="outline" onClick={() => setIsAddMilestoneOpen(false)}>Cancel</Button>
+                  <Button 
+                    onClick={handleAddMilestone} 
+                    className="bg-[#4647E0] hover:bg-[#3637C0]"
+                    disabled={!newMilestone.title.trim()}
+                  >
+                    <Target className="h-4 w-4 mr-2" />
+                    Add Milestone
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+
+            {/* Task Drawer */}
+            <Sheet open={isTaskDrawerOpen} onOpenChange={setIsTaskDrawerOpen}>
+              <SheetContent className="sm:max-w-md">
+                <SheetHeader>
+                  <SheetTitle>{selectedTask ? 'Edit Task' : 'New Task'}</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="task-title">Title</Label>
+                    <Input id="task-title" value={taskForm.title} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="task-desc">Description</Label>
+                    <Textarea id="task-desc" rows={4} value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select value={taskForm.status} onValueChange={(v) => setTaskForm({ ...taskForm, status: v })}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todo">To Do</SelectItem>
+                          <SelectItem value="in-progress">In Progress</SelectItem>
+                          <SelectItem value="review">Needs Review</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Start date</Label>
+                      <Input type="date" value={taskForm.start_date ? new Date(taskForm.start_date).toISOString().slice(0,10) : ''} onChange={(e) => setTaskForm({ ...taskForm, start_date: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Due date</Label>
+                      <Input type="date" value={taskForm.due_date ? new Date(taskForm.due_date).toISOString().slice(0,10) : ''} onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Assignee</Label>
+                      <Input placeholder="Assign user ID"
+                        value={taskForm.assignee_id || ''}
+                        onChange={(e) => setTaskForm({ ...taskForm, assignee_id: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Milestone</Label>
+                      <Select value={taskForm.milestone_id || 'none'} onValueChange={(v) => setTaskForm({ ...taskForm, milestone_id: v === 'none' ? null : v })}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select milestone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {milestones.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subtasks</Label>
+                    <Input placeholder="Add a subtask (coming soon)" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Attachments</Label>
+                    <Button variant="outline" className="w-full">Upload file</Button>
+                  </div>
+                </div>
+                <SheetFooter className="mt-6">
+                  <Button variant="outline" onClick={() => setIsTaskDrawerOpen(false)}>Cancel</Button>
+                  <Button onClick={saveTaskEdits} className="bg-[#4647E0] hover:bg-[#3637C0]">Save</Button>
+                  <Button variant="destructive" onClick={() => selectedTask && deleteTask(selectedTask.id).then(() => { setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id)); setIsTaskDrawerOpen(false) })}>Delete</Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
           </TabsContent>
+
 
           <TabsContent value="activity" className="space-y-6">
         <div className="flex items-center justify-between">
@@ -5163,6 +6057,7 @@ export default function ProjectDetailPage() {
         open={showFormPreview}
         onOpenChange={setShowFormPreview}
         form={previewForm}
+        account={account}
       />
 
       {/* Status Change Modal */}
@@ -5228,184 +6123,73 @@ export default function ProjectDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Preview Modal */}
-      <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Invoice Preview</DialogTitle>
-          </DialogHeader>
-          {previewInvoice && (
-            <div className="bg-white p-8 border border-gray-200 rounded-lg">
-              <div className="space-y-6">
-                {/* Invoice Header */}
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{previewInvoice.title || 'Untitled Invoice'}</h2>
-                    <p className="text-gray-600">Invoice #{previewInvoice.invoice_number}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600">Invoice Date</p>
-                    <p className="font-medium">{formatDate(previewInvoice.issue_date)}</p>
-                    <p className="text-sm text-gray-600 mt-2">Due Date</p>
-                    <p className="font-medium">{previewInvoice.due_date ? formatDate(previewInvoice.due_date) : 'No due date'}</p>
-                  </div>
-                </div>
-
-                {/* Client Info */}
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Bill To:</h3>
-                  <p className="text-gray-900">{previewInvoice.client_name || "Unknown Client"}</p>
-                  {previewInvoice.project_name && (
-                    <p className="text-gray-600">Project: {previewInvoice.project_name}</p>
-                  )}
-                </div>
-
-                {/* Line Items */}
-                <div>
-                  <table className="w-full">
-                    <thead className="border-b border-gray-200">
-                      <tr>
-                        <th className="text-left py-2">Item</th>
-                        <th className="text-right py-2">Qty</th>
-                        <th className="text-right py-2">Rate</th>
-                        <th className="text-right py-2">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewInvoice.line_items && previewInvoice.line_items.length > 0 ? (
-                        previewInvoice.line_items.map((item) => (
-                          <tr key={item.id} className="border-b border-gray-100">
-                            <td className="py-3">
-                              <div>
-                                <p className="font-medium">{item.name || "Untitled Item"}</p>
-                                {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
-                              </div>
-                            </td>
-                            <td className="text-right py-3">{item.quantity}</td>
-                            <td className="text-right py-3">{formatCurrency(item.unit_rate)}</td>
-                            <td className="text-right py-3">{formatCurrency(item.total_amount)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={4} className="text-center py-4 text-gray-500">No line items found</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Totals */}
-                <div className="flex justify-end">
-                  <div className="w-64 space-y-2">
-                    <div className="flex justify-between">
-                      <span>Subtotal:</span>
-                      <span>{formatCurrency(previewInvoice.subtotal)}</span>
-                    </div>
-                    {previewInvoice.tax_rate > 0 && (
-                      <div className="flex justify-between">
-                        <span>Tax ({previewInvoice.tax_rate}%):</span>
-                        <span>{formatCurrency(previewInvoice.tax_amount)}</span>
-                      </div>
-                    )}
-                    {previewInvoice.discount_amount > 0 && (
-                      <div className="flex justify-between">
-                        <span>Discount:</span>
-                        <span>-{formatCurrency(previewInvoice.discount_value)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-bold text-lg border-t pt-2">
-                      <span>Total:</span>
-                      <span>{formatCurrency(previewInvoice.total_amount)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Notes */}
-                {previewInvoice.notes && (
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Notes:</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap">{previewInvoice.notes}</p>
-                  </div>
-                )}
-
-                {/* Additional Info */}
-                <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-                  <div>
-                    <span className="font-medium">Status:</span>
-                    <Badge className={`ml-2 ${getInvoiceStatusColor(previewInvoice.status)}`}>
-                      {getInvoiceStatusLabel(previewInvoice.status)}
-                    </Badge>
-                  </div>
-                  <div>
-                    <span className="font-medium">Payment Terms:</span>
-                    <span className="ml-2">{previewInvoice.payment_terms || 'Not specified'}</span>
-                  </div>
-                  {previewInvoice.po_number && (
-                    <div>
-                      <span className="font-medium">PO Number:</span>
-                      <span className="ml-2">{previewInvoice.po_number}</span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="font-medium">Currency:</span>
-                    <span className="ml-2">{previewInvoice.currency || 'USD'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Invoice Preview Modal */}
+      <InvoicePreviewModal
+        open={previewModalOpen}
+        onOpenChange={setPreviewModalOpen}
+        invoice={previewInvoice}
+        account={account}
+        projects={[]}
+      />
 
       {/* Form Template Selection Modal */}
       <Dialog open={showTemplateModal} onOpenChange={setShowTemplateModal}>
-        <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+          <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-[#3C3CFF]/5 to-[#5252FF]/5">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Choose a Form Template</DialogTitle>
-            <p className="text-gray-600 mt-2">
-              Start with a pre-built template and customize it for your project
+              <DialogTitle className="text-2xl font-bold text-gray-900">Choose from your saved templates</DialogTitle>
+              <p className="text-gray-600 mt-2 text-sm">
+                Select a template to quickly create a new form for this project
             </p>
           </DialogHeader>
+          </div>
           
-          <div className="flex-1 overflow-y-auto pr-2">
+          <div className="flex-1 overflow-y-auto px-6 py-6">
             {loadingTemplates ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
                   <Loader2 className="h-10 w-10 animate-spin text-[#3C3CFF] mx-auto mb-4" />
-                  <p className="text-gray-600">Loading templates...</p>
+                  <p className="text-gray-600">Loading your templates...</p>
                 </div>
               </div>
             ) : formTemplates.length === 0 ? (
-              <div className="text-center py-20">
-                <div className="text-6xl mb-4">📋</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
-                <p className="text-gray-600 mb-6">
-                  You haven't saved any form templates yet. Create and save forms to use them as templates.
+              <div className="text-center py-16">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#3C3CFF]/10 to-[#5252FF]/10 flex items-center justify-center">
+                  <Clipboard className="h-10 w-10 text-[#3C3CFF]" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No saved templates yet</h3>
+                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                  Create and save forms to use them as templates for future projects.
                 </p>
                 <Button 
                   onClick={() => {
                     setShowTemplateModal(false)
-                    router.push('/dashboard/forms/builder')
+                    if (project?.client_id && projectId) {
+                      router.push(`/dashboard/forms/builder?client_id=${project.client_id}&project_id=${projectId}&return_to=project&project_url=${encodeURIComponent(`/dashboard/projects/${projectId}`)}`)
+                    } else {
+                      router.push('/dashboard/forms/builder')
+                    }
                   }}
                   className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Create New Form
+                  Create Your First Form
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {formTemplates.map((template) => (
                   <Card 
                     key={template.id}
-                    className="border-2 border-gray-200 hover:border-[#3C3CFF] hover:shadow-lg transition-all duration-200 cursor-pointer group"
+                    className="border border-gray-200 hover:border-[#3C3CFF] hover:shadow-xl transition-all duration-300 cursor-pointer group bg-white overflow-hidden"
                     onClick={() => handleSelectTemplate(template)}
                   >
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-gray-900 group-hover:text-[#3C3CFF] mb-2">
+                    <CardContent className="p-0">
+                      {/* Header with icon */}
+                      <div className="px-5 pt-5 pb-4 bg-gradient-to-br from-[#3C3CFF]/5 to-[#5252FF]/5">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-base font-semibold text-gray-900 group-hover:text-[#3C3CFF] transition-colors mb-1 truncate">
                             {template.name}
                           </h3>
                           {template.description && (
@@ -5414,25 +6198,27 @@ export default function ProjectDetailPage() {
                             </p>
                           )}
                         </div>
-                        <div className="ml-4 h-12 w-12 rounded-xl bg-gradient-to-br from-[#3C3CFF] to-[#5252FF] flex items-center justify-center flex-shrink-0">
-                          <Clipboard className="h-6 w-6 text-white" />
+                          <div className="ml-3 h-10 w-10 rounded-lg bg-gradient-to-br from-[#3C3CFF] to-[#5252FF] flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <Clipboard className="h-5 w-5 text-white" />
+                          </div>
                         </div>
                       </div>
 
+                      {/* Content */}
+                      <div className="px-5 py-4 space-y-4">
                       {/* Template Stats */}
-                      <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-                        <div className="flex items-center">
-                          <FileText className="h-4 w-4 mr-1.5" />
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <div className="flex items-center gap-1.5">
+                            <FileText className="h-3.5 w-3.5" />
                           <span>{template.template_data?.fields?.length || 0} fields</span>
                         </div>
                         {template.created_at && (
-                          <div className="flex items-center">
-                            <CalendarDays className="h-4 w-4 mr-1.5" />
+                            <div className="flex items-center gap-1.5">
+                              <CalendarDays className="h-3.5 w-3.5" />
                             <span>
                               {new Date(template.created_at).toLocaleDateString('en-US', {
                                 month: 'short',
-                                day: 'numeric',
-                                year: 'numeric'
+                                  day: 'numeric'
                               })}
                             </span>
                           </div>
@@ -5441,21 +6227,21 @@ export default function ProjectDetailPage() {
 
                       {/* Field Preview */}
                       {template.template_data?.fields && template.template_data.fields.length > 0 && (
-                        <div className="border-t pt-4">
-                          <p className="text-xs font-medium text-gray-500 mb-2">INCLUDES:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {template.template_data.fields.slice(0, 3).map((field: any, idx: number) => (
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Includes</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {template.template_data.fields.slice(0, 4).map((field: any, idx: number) => (
                               <Badge 
                                 key={idx} 
                                 variant="outline" 
-                                className="text-xs bg-[#F0F2FF] text-[#3C3CFF] border-[#3C3CFF]/20"
+                                  className="text-[10px] px-2 py-0.5 bg-[#F0F2FF] text-[#3C3CFF] border-[#3C3CFF]/30 font-medium"
                               >
                                 {field.label || field.type}
                               </Badge>
                             ))}
-                            {template.template_data.fields.length > 3 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{template.template_data.fields.length - 3} more
+                              {template.template_data.fields.length > 4 && (
+                                <Badge variant="outline" className="text-[10px] px-2 py-0.5 text-gray-600 border-gray-300">
+                                  +{template.template_data.fields.length - 4}
                               </Badge>
                             )}
                           </div>
@@ -5463,15 +6249,14 @@ export default function ProjectDetailPage() {
                       )}
 
                       {/* Use Button */}
-                      <div className="mt-4 pt-4 border-t">
                         <Button 
-                          className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] group-hover:shadow-md transition-shadow"
+                          className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white shadow-sm hover:shadow-md transition-all duration-200"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleSelectTemplate(template)
                           }}
                         >
-                          Use This Template
+                          Use Template
                           <ChevronRight className="h-4 w-4 ml-2" />
                         </Button>
                       </div>
@@ -5485,11 +6270,65 @@ export default function ProjectDetailPage() {
       </Dialog>
 
       {/* Signature Modal */}
-      <SignatureModal
-        isOpen={isSignatureModalOpen}
-        onClose={() => setIsSignatureModalOpen(false)}
-        onSignatureSave={handleSignatureSave}
-        contractTitle={contractToSign?.name || 'Contract'}
+      <ContractSignatureModal
+        open={isSignatureModalOpen}
+        onOpenChange={setIsSignatureModalOpen}
+        contract={contractToSign}
+        brandColor="#3C3CFF"
+        isClient={false}
+        onSign={async (signatureName: string, signatureDate: string) => {
+          if (!contractToSign) return
+
+          // Update contract content with signature
+          const content = contractToSign.contract_content || {}
+          const terms = content.terms || {}
+          const updatedContent = {
+            ...content,
+            terms: {
+              ...terms,
+              yourName: signatureName,
+              yourSignatureDate: signatureDate
+            }
+          }
+
+          // Don't pass status - let API calculate it based on actual signature statuses
+          const response = await fetch('/api/contracts/sign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contractId: contractToSign.id,
+              signatureData: JSON.stringify({ name: signatureName, type: 'typed', date: signatureDate }),
+              projectId: projectId,
+              contractContent: updatedContent
+            })
+          })
+
+          if (response.ok) {
+            const result = await response.json()
+            
+            // Update the contract in local state
+            setProjectContracts(prev => 
+              prev.map(contract => {
+                if (contract.id === contractToSign.id) {
+                  return {
+                    ...contract,
+                    ...result.data
+                  }
+                }
+                return contract
+              })
+            )
+            
+            // Refresh contracts to get latest data from database
+            await loadProjectContracts()
+            
+            toast.success('Contract signed successfully!')
+          } else {
+            const error = await response.json()
+            toast.error(error.error || 'Failed to sign contract')
+            throw new Error(error.error || 'Failed to sign contract')
+          }
+        }}
       />
     </DashboardLayout>
   )

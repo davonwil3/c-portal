@@ -125,7 +125,7 @@ export default function AddMembersModal({
             Add Members to {clientName}
           </DialogTitle>
           <p className="text-sm text-gray-600 mt-2">
-            Add team members who can access the client portal using magic links
+            Add team members who can access the client portal
           </p>
         </DialogHeader>
 

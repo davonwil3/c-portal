@@ -65,6 +65,7 @@ function StepNavigation({ activeStep, onStepChange }: { activeStep: string, onSt
             return (
               <div key={step.id} className="flex items-center space-x-4">
                 <button
+                  data-help={step.id === "find-leads" ? "tab-find-leads" : step.id === "forms" ? "tab-forms" : step.id === "manage-leads" ? "tab-manage-leads" : step.id === "proposals" ? "tab-proposals" : undefined}
                   onClick={() => onStepChange(step.id)}
                   className={`flex items-center space-x-3 p-3 rounded-xl transition-all duration-200 ${
                     isActive 

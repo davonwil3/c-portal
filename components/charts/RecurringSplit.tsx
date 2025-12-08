@@ -31,9 +31,8 @@ const COLORS = ['hsl(239, 84%, 67%)', 'hsl(243, 75%, 59%)']
 export function RecurringSplit({ data }: RecurringSplitProps) {
   console.log('RecurringSplit received data:', data)
   
-  // Add fallback test data
-  const testData = { returningCount: 15, newCount: 8 }
-  const safeData = data || testData
+  // Use actual data, show empty state if no data
+  const safeData = data || { returningCount: 0, newCount: 0 }
   
   const chartData = [
     { name: 'Returning Clients', value: safeData.returningCount, fill: COLORS[0] },
@@ -43,6 +42,22 @@ export function RecurringSplit({ data }: RecurringSplitProps) {
   console.log('RecurringSplit chartData:', chartData)
 
   const total = safeData.returningCount + safeData.newCount
+  
+  if (total === 0) {
+    return (
+      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900">Client Types</CardTitle>
+          <CardDescription>Breakdown of returning vs new clients</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No client type data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="bg-white border-0 shadow-sm rounded-2xl">

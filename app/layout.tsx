@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { Toaster } from 'sonner'
+import { TourProvider } from '@/contexts/TourContext'
 
 export const metadata: Metadata = {
   title: 'Jolix',
@@ -44,7 +45,9 @@ html {
         `}</style>
       </head>
       <body>
-        {children}
+        <TourProvider>
+          {children}
+        </TourProvider>
         <Toaster 
           position="top-right"
           richColors

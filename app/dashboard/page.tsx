@@ -38,6 +38,8 @@ import { getCurrentUser, getUserProfile, getAccount, signOut } from "@/lib/auth"
 import { User } from "@supabase/supabase-js"
 import { Profile, Account } from "@/lib/auth"
 import { fetchRealInvoices, groupByMonth } from "@/lib/analytics"
+import { useTour } from "@/contexts/TourContext"
+import { dummyClients, dummyProjects, dummyAnalytics } from "@/lib/tour-dummy-data"
 
 // Enhanced mock data
 const revenueData = [
@@ -262,6 +264,7 @@ function ActivityItem({ activity }: { activity: typeof recentActivity[0] }) {
 }
 
 export default function DashboardPage() {
+  const { isTourRunning } = useTour()
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [account, setAccount] = useState<Account | null>(null)
@@ -270,6 +273,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function loadUserData() {
+      // Skip loading real data during tours
+      if (isTourRunning) {
+        setLoading(false)
+        return
+      }
+
       try {
         const currentUser = await getCurrentUser()
         if (currentUser) {
@@ -302,7 +311,7 @@ export default function DashboardPage() {
     }
 
     loadUserData()
-  }, [])
+  }, [isTourRunning])
 
   // Calculate revenue trend data
   const revenueChartData = useMemo(() => {
@@ -317,6 +326,55 @@ export default function DashboardPage() {
       console.error('Error signing out:', error)
     }
   }
+
+  // Use dummy data for KPIs during tours
+  const displayKpiData = useMemo(() => {
+    if (isTourRunning) {
+      return [
+        { 
+          title: "Monthly Revenue", 
+          value: `$${dummyAnalytics.revenue.monthly.toLocaleString()}`, 
+          change: `+${dummyAnalytics.revenue.growth}% this month`, 
+          trend: "up" as const,
+          icon: DollarSign,
+          color: "text-green-600",
+          bgColor: "bg-green-50",
+          iconColor: "text-green-600"
+        },
+        { 
+          title: "Active Clients", 
+          value: dummyAnalytics.clients.active.toString(), 
+          change: `+${dummyAnalytics.clients.new} this month`, 
+          trend: "up" as const,
+          icon: Users,
+          color: "text-blue-600",
+          bgColor: "bg-blue-50",
+          iconColor: "text-blue-600"
+        },
+        { 
+          title: "Active Projects", 
+          value: dummyAnalytics.projects.active.toString(), 
+          change: `${dummyAnalytics.projects.total} total projects`, 
+          trend: "up" as const,
+          icon: Briefcase,
+          color: "text-purple-600",
+          bgColor: "bg-purple-50",
+          iconColor: "text-purple-600"
+        },
+        { 
+          title: "Outstanding", 
+          value: `$${dummyAnalytics.invoices.outstanding.toLocaleString()}`, 
+          change: `$${dummyAnalytics.invoices.overdue.toLocaleString()} overdue`, 
+          trend: "down" as const,
+          icon: CreditCard,
+          color: "text-orange-600",
+          bgColor: "bg-orange-50",
+          iconColor: "text-orange-600"
+        }
+      ]
+    }
+    return kpiData
+  }, [isTourRunning])
 
   if (loading) {
     return (
@@ -346,7 +404,7 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen -m-6 p-6">
+      <div className="p-8 space-y-8">
         {/* Hero Section */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white">
           <div className="absolute inset-0 bg-black/10"></div>
@@ -362,7 +420,9 @@ export default function DashboardPage() {
               </div>
               <div className="hidden md:flex items-center space-x-4">
                 <div className="text-right">
-                  <div className="text-2xl font-bold">$28,450</div>
+                  <div className="text-2xl font-bold">
+                    {isTourRunning ? `$${dummyAnalytics.revenue.monthly.toLocaleString()}` : "$28,450"}
+                  </div>
                   <div className="text-blue-100 text-sm">This month's revenue</div>
                 </div>
                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
@@ -378,7 +438,7 @@ export default function DashboardPage() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {kpiData.map((kpi, index) => (
+          {displayKpiData.map((kpi, index) => (
             <KPICard key={index} data={kpi} />
           ))}
         </div>

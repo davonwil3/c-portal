@@ -1,0 +1,2164 @@
+[
+  {
+    "id": "find-leads",
+    "title": "Find Leads",
+    "keywords": [
+      "leads",
+      "find leads",
+      "discover",
+      "opportunities",
+      "generate",
+      "credits",
+      "preferences",
+      "filters"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-lead-workflow']",
+        "content": "We're navigating to the Lead Workflow section to explore lead discovery tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=find-leads"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='tab-find-leads']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='credits-badge']",
+        "content": "Your credits balance shows how many leads you can view. Each lead view costs 1 credit.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-generate-leads']",
+        "content": "The 'Generate More Leads' button allows you to discover new opportunities that match your preferences. New batches are available every 3 hours.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='context-bar']",
+        "content": "This shows your current lead preferences - the services you offer and the type of clients you're looking for.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-refine-preferences']",
+        "content": "The 'Refine Preferences' button lets you update your services, target niche, budget range, and location preferences to get better-matched leads.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='filters-bar']",
+        "content": "These quick filters allow you to narrow down leads by budget availability, posting recency, and saved status.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='leads-list']",
+        "content": "Here are your personalized leads! Each card shows the opportunity title, location, budget, and posting time.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-view-lead']",
+        "content": "The 'View' button opens full lead details. Viewing a lead uses 1 credit if the lead hasn't been saved yet.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-save-lead']",
+        "content": "The 'Save' button bookmarks a lead for later. Saved leads can be viewed without using credits.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "forms",
+    "title": "Forms",
+    "keywords": [
+      "forms",
+      "create form",
+      "form builder",
+      "lead capture",
+      "submissions",
+      "templates",
+      "form types",
+      "project forms"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-lead-workflow']",
+        "content": "We're navigating to the Lead Workflow section to explore forms and lead management tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=forms"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='tab-forms']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='forms-tabs']",
+        "content": "These tabs allow you to filter forms by type: All forms, Lead forms (for capturing new leads), or Project forms (for collecting project-specific information).",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='forms-table']",
+        "content": "This table shows all your forms with key information: form name, type, linked project, submission count, and status. You can click any form row to view details.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-form']",
+        "content": "The 'New Form' button creates a form for capturing leads or collecting project details. Forms can be embedded on your website or shared via link.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-new-form']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='btn-create-form-modal']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "fill",
+        "target": "[data-help='input-form-name']",
+        "value": "Sample Form",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='select-form-template']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='option-template-custom']",
+        "timeout": 1000,
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='option-template-custom']",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-create-form-modal']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/forms/builder"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='field-library']",
+        "timeout": 5000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='field-library']",
+        "content": "This is the field library. You can drag and drop field types from here onto the form canvas to build your form. Available field types include text fields, dropdowns, checkboxes, file uploads, signatures, and more.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='field-types-list']",
+        "content": "Available field types include Short Text, Email, Phone, Dropdown, Multiple Choice, Date Picker, File Upload, Signature, and more. Each field type serves a specific purpose.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='form-canvas']",
+        "content": "This is your form canvas. You can drag fields from the library here to build your form. Fields can be reordered by dragging them, and you can click any field to edit its properties. The form auto-saves as you work.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-preview-form']",
+        "content": "The 'Preview' button shows how your form will look to users. This helps you test the form before publishing.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-publish-form']",
+        "content": "The 'Publish' button makes your form live. You'll configure settings like access level, notifications, and submission limits before publishing.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=forms"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='forms-table']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='forms-table']",
+        "content": "Once published, your forms will appear here. You can view submissions, copy the embed link, edit, or manage form settings. Forms automatically capture leads when submitted!",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "manage-leads",
+    "title": "Manage Leads",
+    "keywords": [
+      "manage leads",
+      "lead management",
+      "track leads",
+      "pipeline",
+      "kanban",
+      "lead status",
+      "convert leads",
+      "lead table"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-lead-workflow']",
+        "content": "We're navigating to the Lead Workflow section to explore lead management tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=manage-leads"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='tab-manage-leads']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-lead']",
+        "content": "The 'New Lead' button allows you to manually add a lead to your system. You can enter contact information, lead value, source, and notes.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='input-search-leads']",
+        "content": "The search bar allows you to quickly find leads by name, company, or status. This helps you locate specific leads in your database.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-filter']",
+        "content": "The 'Filter' button allows you to narrow down leads by status, source, or sort order. This helps you focus on specific segments of your pipeline.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='segment-tabs']",
+        "content": "These segment tabs allow you to quickly view All leads, Active leads (excluding won/lost), Won leads, or Lost leads. This helps you focus on different stages of your sales process.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='leads-table']",
+        "content": "This table shows all your leads with key information: contact details, status, value, source, and actions. You can click any lead row to view full details and manage the lead.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-pipeline-view']",
+        "content": "The 'Pipeline View' shows your leads in a visual kanban board format. This makes it easy to see where each lead is in your sales process and drag leads between stages.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-pipeline-view']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/pipeline"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='pipeline-kanban-board']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='pipeline-kanban-board']",
+        "content": "This is the pipeline kanban board! Each column represents a stage in your sales process. You can drag and drop lead cards between columns to update their status.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='pipeline-column-new']",
+        "content": "The 'New' column shows leads that have just entered your pipeline. These are fresh opportunities waiting to be contacted.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='pipeline-column-contacted']",
+        "content": "The 'Contacted' column shows leads you've reached out to. Keep track of follow-ups and responses here.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='pipeline-column-won']",
+        "content": "The 'Won' column shows successful conversions! These are leads that became paying clients. Celebrate your wins here.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-pipeline-settings']",
+        "content": "The 'Settings' button allows you to customize your pipeline stages, set follow-up intervals, and configure automation rules. This lets you tailor the pipeline to match your sales process.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=manage-leads"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='leads-table']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='leads-table']",
+        "content": "You're back on the Manage Leads page! Use this table view for detailed lead management, or switch to Pipeline View anytime for a visual overview. Both views help you track and convert leads effectively.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "proposals",
+    "title": "Proposals",
+    "keywords": [
+      "proposals",
+      "create proposal",
+      "proposal builder",
+      "contract",
+      "invoice",
+      "send proposal",
+      "document suite",
+      "client proposals"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-lead-workflow']",
+        "content": "We're navigating to the Lead Workflow section to explore proposals and document creation tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=proposals"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='tab-proposals']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='input-search-proposals']",
+        "content": "The search bar allows you to quickly find proposals by title, recipient name, or proposal ID. This helps you locate specific proposals in your database.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='proposals-status-tabs']",
+        "content": "These status tabs allow you to filter proposals: All, Draft, Sent, Viewed, Accepted, or Declined. This helps you track proposals at different stages.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='proposals-table']",
+        "content": "This table shows all your proposals with key information: title, recipient, value, status, and date sent. You can click any proposal row to view full details and manage it.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-proposal']",
+        "content": "The 'New Proposal' button creates a professional proposal. You'll select a lead or enter custom client details, then build your proposal with our document suite.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-new-proposal']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='lead-picker-modal']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='leads-selection-table']",
+        "content": "This table shows available leads with their contact information and lead value. You can select a lead from this table to create a proposal for them. The search function helps filter leads to find the right one.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='radio-lead-0']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='radio-lead-0']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='btn-continue-lead-picker']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-continue-lead-picker']",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/proposals/create",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/proposals/create",
+        "timeout": 5000
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='document-tabs-container']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='proposal-preview']",
+        "content": "This is the Proposal document. Here you can customize the proposal content, pricing, and branding. The proposal is the first document in your document suite.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='tab-contract']",
+        "content": "The 'Contract' tab shows the contract document. Contracts include terms, payment schedules, and signature requirements.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='tab-contract']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='contract-preview']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contract-preview']",
+        "content": "This is the Contract document. It includes project terms, deliverables, payment schedules, and signature fields. Contracts are legally binding documents.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='tab-invoice']",
+        "content": "The 'Invoice' tab shows the invoice document. Invoices include line items, payment terms, and due dates.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='tab-invoice']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='invoice-preview']",
+        "timeout": 2000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoice-preview']",
+        "content": "This is the Invoice document. It shows line items, subtotals, taxes, and payment terms. Invoices can be sent separately or included with proposals and contracts.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-back-proposals']",
+        "content": "The 'Back' button returns you to the proposals list. All your changes are automatically saved as you work.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-back-proposals']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/lead-workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='proposals-table']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='proposals-table']",
+        "content": "You're back on the Proposals page! Here you can manage all your proposals, track their status, send them to clients, and monitor acceptance rates. The document suite makes it easy to create professional proposals, contracts, and invoices all in one place.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "create-invoice",
+    "title": "Create Invoice",
+    "keywords": [
+      "invoice",
+      "create invoice",
+      "billing",
+      "invoice builder",
+      "send invoice",
+      "invoice creation",
+      "bill client"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-billing']",
+        "content": "We're navigating to the Billing section to explore invoices and billing tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/billing"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/billing"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='invoices-table']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoices-tab']",
+        "content": "The 'Invoices' tab is automatically selected during tours. Here you can view all your invoices with their status, amounts, and due dates.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoices-table']",
+        "content": "Here's your invoices table! You can see all your invoices with their status, amounts, and due dates.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-create-invoice']",
+        "content": "The 'Create Invoice' button takes you to the invoice builder where you can add line items, set payment terms, and customize your invoice.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-create-invoice']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/billing/create"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='invoice-client-selector']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoice-client-selector']",
+        "content": "The client selector allows you to choose the client you're billing. You can select from your existing clients - their contact information will automatically populate.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoice-project-selector']",
+        "content": "Optionally, you can link this invoice to a specific project. This helps with project-based billing and tracking.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoice-line-items']",
+        "content": "Add line items to your invoice here. Each line item can include a description, quantity, rate, and amount. You can add multiple items to build a complete invoice.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-save-draft']",
+        "content": "The 'Save Draft' button saves your invoice without sending it. This is useful when you're still working on the invoice details.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-send-invoice']",
+        "content": "When your invoice is ready, the 'Send Invoice' button sends it directly to your client. The invoice will be marked as 'Sent' and your client will receive a notification.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-back-invoices']",
+        "content": "The 'Back to Invoices' button returns you to your invoices list. All your saved invoices will be displayed there.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-back-invoices']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/billing"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='invoices-table']",
+        "timeout": 3000,
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='invoices-table']",
+        "content": "You're back on the invoices page! Here you can view all your invoices, track their status, send reminders, and manage your billing. The invoice you just created would appear in this list once saved.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "create-service",
+    "title": "Create Service",
+    "keywords": [
+      "service",
+      "create service",
+      "add service",
+      "services",
+      "billing",
+      "service catalog",
+      "rate",
+      "pricing"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-billing']",
+        "content": "We're navigating to the Billing section to explore services and billing tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/billing"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/billing"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='services-tab']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "click",
+        "target": "[data-help='services-tab']",
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='services-grid']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='services-tab']",
+        "content": "The 'Services' tab shows your service catalog. This is where you manage all the services you offer to clients.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='services-grid']",
+        "content": "Here's your services catalog! You can see services with their rates, descriptions, and pricing types.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-add-service']",
+        "content": "The 'Add Service' button opens a modal where you can create a new service and enter all the service details.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-add-service']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='service-modal']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='service-modal']",
+        "content": "The 'Add New Service' modal allows you to create a new service for your catalog. You can fill in the service name, description, rate, and select a rate type (Hourly, Fixed, Monthly, or Yearly). Once complete, click 'Add Service' to save it to your catalog, or 'Cancel' to close without saving.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "time-tracking",
+    "title": "Time Tracking",
+    "keywords": [
+      "time tracking",
+      "time tracker",
+      "track time",
+      "timesheets",
+      "time entries",
+      "timer",
+      "hours",
+      "billable hours"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-time-tracking']",
+        "content": "We're navigating to the Time Tracker section to explore time tracking and timesheet management.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/time-tracking"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/time-tracking"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='time-tracking-tab']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='time-tracking-tab']",
+        "content": "The 'Time Tracking' tab is where you can start and stop timers for your projects.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='timer-card']",
+        "content": "This is your active timer card. Here you can select a project, start/pause the timer, and track your work hours. The timer will automatically calculate billable amounts based on your hourly rate.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-selector']",
+        "content": "The project selector dropdown allows you to choose a project to track time for.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-start-pause-timer']",
+        "content": "The 'Start' button begins tracking time for the selected project. Once started, you can pause or resume the timer. The timer will continue running until you stop it.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='timesheets-tab']",
+        "content": "We're now switching to the 'Timesheets' tab to view all your time entries. This tab shows your detailed time tracking data.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='timesheets-tab']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "click",
+        "target": "[data-help='timesheets-tab']",
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='timesheets-table']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='timesheets-tab']",
+        "content": "The 'Timesheets' tab shows all your time entries in a detailed table format. You can filter by project, date range, and search for specific entries.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='timesheets-table']",
+        "content": "Here's your timesheets table! You can see all your time entries with project names, dates, durations, hourly rates, and billable amounts. You can filter entries by project or date range, and export your timesheets for reporting.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='timer-widget']",
+        "content": "Don't forget about the timer widget in the header! You can quickly start, pause, or stop timers from anywhere in the app without navigating to the time tracking page. It's always accessible at the top of your screen.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "portfolio",
+    "title": "Portfolio Builder",
+    "keywords": [
+      "portfolio",
+      "create portfolio",
+      "portfolio builder",
+      "template",
+      "customize portfolio",
+      "portfolio page",
+      "view portfolio",
+      "edit portfolio"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-portfolio']",
+        "content": "We're navigating to the Portfolio section to explore portfolio builder and management tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/portfolio"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/portfolio"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portfolio-overview-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-overview-header']",
+        "content": "Welcome to your Portfolio overview page! Here you can see your portfolio statistics, manage settings, and access the builder. This is your central hub for all portfolio-related activities.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-stats']",
+        "content": "These stat cards show your portfolio performance metrics including views, leads collected, and conversion rates. Track how your portfolio is performing over time.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-settings-card']",
+        "content": "Portfolio Settings allows you to customize your portfolio link, title, and meta description. You can change your portfolio handle (the URL), update the title that appears in search results, and add a description for SEO purposes. Changes are saved when you click the 'Save Changes' button.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='custom-domain-card']",
+        "content": "Custom Domain lets you connect your own domain name instead of using the default Jolix subdomain. Simply enter your domain, follow the DNS setup instructions, and verify the connection. Once connected, your portfolio will be accessible at your custom domain with automatic SSL.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='share-portfolio-card']",
+        "content": "Share Your Portfolio provides quick sharing options to promote your portfolio. Copy the link to share anywhere, or share directly on X (Twitter) and LinkedIn. This makes it easy to showcase your work across social media and professional networks.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-create-portfolio']",
+        "content": "The 'Make a Portfolio' button takes you to the template selection page where you can choose from professionally designed templates.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-create-portfolio']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/portfolio/select-template"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='template-selector-grid']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='template-selector-grid']",
+        "content": "Here are the available portfolio templates! Each template has a unique design style. You can browse through them and select the one that best fits your brand and style. Everything can be customized after selection.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='template-first']",
+        "content": "We're selecting the first template to begin building your portfolio. You can choose any template card to get started.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='template-first']",
+        "optional": true
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/portfolio/customize"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portfolio-builder-workspace']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-builder-workspace']",
+        "content": "Welcome to the Portfolio Builder! This is where you'll customize your portfolio. On the left, you'll see a live preview of your portfolio. On the right, you'll find the control panel with all customization options.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='view-edit-toggle']",
+        "content": "This is the View and Edit toggle! You can switch between 'View' mode to see your portfolio as visitors will see it, and 'Edit' mode to make changes. In Edit mode, you can click on text and images to modify them directly.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-preview']",
+        "content": "This is your live portfolio preview. It shows exactly how your portfolio will look to visitors. In Edit mode, you can click on any text or image to edit it directly.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-control-panel']",
+        "content": "The control panel on the right gives you access to all customization options. You can modify appearance settings, add services, projects, testimonials, and more. Everything you need to build your perfect portfolio is here.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/portfolio"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/portfolio"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portfolio-overview-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portfolio-overview-header']",
+        "content": "Perfect! You're back on the main portfolio page. From here, you can always return to customize your portfolio, view analytics, manage settings, and track your portfolio's performance. Your portfolio journey starts here!",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "automations",
+    "title": "Automations",
+    "keywords": [
+      "automations",
+      "automation",
+      "create automation",
+      "automation builder",
+      "workflow",
+      "triggers",
+      "actions",
+      "templates",
+      "run log"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-automations']",
+        "content": "We're navigating to the Automations section to explore workflow automation tools.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/automations"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/automations"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='automations-tab-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automations-tab']",
+        "content": "The 'My Automations' tab shows all your active automations. This is where you manage your workflow automations.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automations-filters']",
+        "content": "These filters allow you to narrow down automations by scope (Global, Client, or Project), search by name, and filter by status (All, Enabled, or Disabled).",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automations-grid']",
+        "content": "This grid displays all your automations. Each card shows the automation name, description, trigger conditions, actions, and performance metrics like success rate and total runs.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-automation']",
+        "content": "The 'New Automation' button opens the automation builder where you can create custom workflows.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-new-automation']",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='automation-builder-modal']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-builder-modal']",
+        "content": "The automation builder modal has opened! This is where you create new automations by defining triggers, filters, and actions.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-builder-sections']",
+        "content": "The automation builder uses a simple sentence structure: 'When' something happens, optionally 'And' certain conditions are met, 'Then' perform these actions.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-when-section']",
+        "content": "The 'When' section defines the trigger event that starts the automation. You can choose from various trigger groups like Leads & Proposals, Contracts, Invoices & Payments, Forms & Files, Messages, Tasks & Milestones, Appointments, and Portal events.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-and-section']",
+        "content": "The 'And' section allows you to add optional filters to narrow when the automation runs. Filters are completely optional and help you target specific conditions like amounts, dates, or other criteria.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-then-section']",
+        "content": "The 'Then' section defines what actions the automation performs. You can add multiple actions like sending emails, creating portal notices, creating tasks, or scheduling reminders. Actions execute in sequence.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='automation-scope-section']",
+        "content": "The 'Scope' section determines where the automation applies. Global automations run for all clients, Client automations run for specific clients, and Project automations run for specific projects only.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='templates-tab']",
+        "content": "The 'Templates' tab provides pre-built automation templates to help you get started quickly.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='templates-tab-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='templates-grid']",
+        "content": "This grid shows available automation templates. Each template includes a description, benefit explanation, and a 'Use Template' button to quickly set up common automation workflows.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='runlog-tab']",
+        "content": "The 'Run Log' tab shows a detailed history of all automation executions.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='runlog-tab-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='runlog-table']",
+        "content": "This table displays all automation runs with timestamps, automation names, target clients or projects, execution results (success or failed), duration, and detailed logs. This helps you monitor automation performance and troubleshoot any issues.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "calendar",
+    "title": "Calendar & Scheduler",
+    "keywords": [
+      "calendar",
+      "scheduler",
+      "schedule",
+      "appointments",
+      "bookings",
+      "meetings",
+      "availability"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-scheduler']",
+        "content": "We're navigating to the Scheduler to manage appointments, meetings, and bookings.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/schedule"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/schedule"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='schedule-header']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-header']",
+        "content": "The Scheduler page provides a centralized view of all your appointments, meetings, and bookings. The header displays the total number of bookings for quick reference.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-mini-calendar']",
+        "content": "The mini calendar in the sidebar allows you to quickly jump to any date. Clicking a date updates the main calendar view to show bookings for that day.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-filters']",
+        "content": "The filters section lets you narrow down bookings by service type, staff member, status, and location. This helps you focus on specific types of appointments.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-connect-calendar']",
+        "content": "The 'Connect Calendar' button allows you to sync with external calendars like Google Calendar or Outlook, ensuring all your appointments are in one place.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-availability']",
+        "content": "The 'Availability' button lets you set your working hours and availability preferences, which clients can see when booking appointments.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-share-schedule']",
+        "content": "The 'Share' button provides your public booking link that clients can use to schedule appointments directly without back-and-forth emails.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-booking']",
+        "content": "The 'New Booking' button opens a form to manually create appointments. You can specify the client, service, date, time, location, and add notes.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-view-tabs']",
+        "content": "The view tabs let you switch between different calendar perspectives: Week view shows a 7-day time grid, Day view shows detailed schedule for one day, Month view provides a monthly overview, and List view shows all bookings in a sortable, filterable list.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-legend']",
+        "content": "The legend in the sidebar shows color coding for different service types, making it easy to identify booking types at a glance in the calendar views.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "messages",
+    "title": "Messages",
+    "keywords": [
+      "messages",
+      "portal messages",
+      "email",
+      "emails",
+      "communication",
+      "client communication",
+      "threads",
+      "composer"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-messages']",
+        "content": "We're navigating to the Messages page to view and manage all client communication.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/messages"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/messages"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='messages-header']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='messages-header']",
+        "content": "The Messages page centralizes all client communication in one place, including portal messages and email threads.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-connect-email']",
+        "content": "The 'Connect Email' button allows you to sync your email account (Gmail, Outlook, etc.) to automatically import and manage email threads within the platform.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-message']",
+        "content": "The 'New Message' button opens the email composer to create and send new emails to clients.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-messages-tab']",
+        "content": "The 'Portal Messages' tab shows all communication that happens within client portals. These are secure, project-specific conversations that clients can access through their portal.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portal-messages-content']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-projects-sidebar']",
+        "content": "The projects sidebar lists all your active projects. Each project shows the client name, last message preview, unread count, and timestamp. Click any project to view its message thread.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-thread-view']",
+        "content": "The thread view displays the conversation history for the selected project. Messages are organized by date with clear visual distinction between your messages and client messages.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-composer']",
+        "content": "The portal message composer allows you to send messages directly to clients within their portal. You can attach files, use AI assistance, and send messages that clients will see in their portal interface.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='emails-tab']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='emails-tab']",
+        "content": "The 'Emails' tab shows all your email communication with clients. This includes emails synced from your connected email account and emails sent directly through the platform.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portal-messages-tab']",
+        "timeout": 2000,
+        "optional": false
+      },
+      {
+        "type": "click",
+        "target": "[data-help='emails-tab']",
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='emails-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='email-threads-sidebar']",
+        "content": "The email threads sidebar shows all your email conversations. You can filter by client, project, status (all, unread, starred), and search for specific emails. Each thread displays the subject, sender, snippet, and timestamp.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='email-composer']",
+        "content": "The email composer appears when creating a new email or replying to a thread. It includes fields for recipients (To, CC), subject line, and message body.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "clients",
+    "title": "Clients",
+    "keywords": [
+      "clients",
+      "client workflow",
+      "add client",
+      "new client",
+      "client management",
+      "client list"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-client-workflow']",
+        "content": "We're navigating to the Client Workflow page to manage clients, projects, and portals.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='workflow-header']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='workflow-header']",
+        "content": "The Client Workflow page provides a unified interface to manage your clients, projects, and portals. The header displays the total number of clients for quick reference.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='workflow-step-navigation']",
+        "content": "The step navigation shows the three main stages of the client workflow: Clients, Projects, and Portals. You can click any step to navigate between sections.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='clients-section']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='clients-header']",
+        "content": "The Clients section allows you to manage all your client relationships. Here you can view, add, edit, and organize your clients.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='clients-filters']",
+        "content": "The filters section lets you search for clients by name, email, or company, and filter by status (active, archived, pending) or tags to quickly find specific clients.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='clients-stats']",
+        "content": "The stats cards provide a quick overview of your client metrics: total clients, active clients, pending clients, and total unpaid amount across all clients.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='clients-list']",
+        "content": "The clients list displays all your clients with their contact information, project counts, invoice counts, tags, and status. Click any client to view detailed information.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-add-client']",
+        "content": "The 'Add Client' button opens a form to create a new client. You can enter contact information, company details, and assign tags to organize your clients.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-add-client']",
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='add-client-modal']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='add-client-modal']",
+        "content": "The Add Client modal contains a form with fields for first name, last name, email, company, phone, and portal URL. You can also assign tags to clients using standard tags or create custom tags with custom colors. Tags help organize and categorize your clients for easier management.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='btn-cancel-client']",
+        "timeout": 2000,
+        "optional": false
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-cancel-client']",
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='clients-section']",
+        "timeout": 5000,
+        "optional": false
+      }
+    ]
+  },
+  {
+    "id": "projects",
+    "title": "Projects",
+    "keywords": [
+      "projects",
+      "project management",
+      "new project",
+      "project details",
+      "tasks",
+      "milestones",
+      "project tabs",
+      "client workflow"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-client-workflow']",
+        "content": "We're navigating to the Client Workflow page to explore the Projects section.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='workflow-header']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='workflow-step-navigation']",
+        "content": "The Client Workflow is organized into three sections: Clients, Projects, and Portals. We're now viewing the Projects section.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-header']",
+        "content": "The Projects section provides a complete overview of all your client projects. Here you can create, manage, and track progress across all your active work.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-filters']",
+        "content": "Use these filters to search for specific projects and filter by status (active, completed, on-hold, draft, archived) or client.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-project']",
+        "content": "The 'New Project' button opens a modal where you can create a new project with details like project name, client, status, due date, description, and tags.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-stats']",
+        "content": "The stats cards give you a quick overview: total projects, completed projects, and active projects at a glance.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-grid']",
+        "content": "Your projects are displayed in a grid layout. Each project card shows the client, progress percentage, status, tags, due date, and activity counts (messages, files, invoices).",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-card-first']",
+        "content": "This is an example project card. It displays key project information at a glance. We're going to click this project to view its full details.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='project-card-first']",
+        "optional": false,
+        "timeout": 5000
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/projects/[id]"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='project-details-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-details-header']",
+        "content": "The project details header shows the project name, status, tags, and quick action buttons. You can edit the project, view the client portal, or delete the project from here.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-details-tabs']",
+        "content": "The project details are organized into tabs: Tasks (manage project tasks and milestones), Messages (communicate with clients), Files (share project files), Forms (collect client information), Contracts (manage agreements), Invoices (billing), and Time Tracked (track hours spent). This makes it easy to manage all aspects of the project in one place.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-header']",
+        "content": "You've completed the Projects tour! You now know how to manage your projects, view project details, and navigate the different project tabs.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "contracts",
+    "title": "Contracts",
+    "keywords": [
+      "contracts",
+      "agreements",
+      "contract builder",
+      "new contract",
+      "service agreement",
+      "legal documents"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-client-workflow']",
+        "content": "We're navigating to the Client Workflow page to explore the Contracts feature.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-card-first']",
+        "content": "We're going to view a project so we can create a contract for it. Let's click on this project.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='project-card-first']",
+        "optional": false,
+        "timeout": 5000
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/projects/[id]"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='project-details-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contracts-tab']",
+        "content": "The Contracts tab is where you manage all agreements with your clients. Let's navigate to it now.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='contracts-tab-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contracts-header']",
+        "content": "The Contracts section displays all contracts for this project. You can view contract status, manage signatures, and track agreement progress.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-new-contract']",
+        "content": "The 'New Contract' button opens the contract builder where you can create professional service agreements. Let's create a contract now.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='btn-new-contract']",
+        "optional": false,
+        "timeout": 5000
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/contracts/new"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='contract-builder-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contract-builder-header']",
+        "content": "The Contract Builder allows you to create professional service agreements. The header shows the contract title and action buttons for preview, save, and send.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contract-preview']",
+        "content": "The center panel shows a live preview of your contract. You can see how it will look to your clients in real-time as you customize it.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contract-settings']",
+        "content": "The settings panel on the right lets you customize contract details, company information, client information, pricing, payment terms, and branding options. Everything you need to create a complete service agreement.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='contract-actions']",
+        "content": "When you're done, you can preview the final contract, save it as a draft, or send it directly to your client for signature.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-header']",
+        "content": "You've completed the Contracts tour! You now know how to create and manage professional service agreements for your projects.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Tasks",
+    "keywords": [
+      "tasks",
+      "task management",
+      "to-do",
+      "project tasks",
+      "milestones",
+      "task tracking",
+      "task list"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-client-workflow']",
+        "content": "We're navigating to the Client Workflow page to explore the Tasks feature.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='project-card-first']",
+        "content": "We're going to view a project to explore its tasks. Let's click on this project.",
+        "optional": true
+      },
+      {
+        "type": "click",
+        "target": "[data-help='project-card-first']",
+        "optional": false,
+        "timeout": 5000
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/projects/[id]"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='project-details-header']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='tasks-tab']",
+        "content": "The Tasks tab is where you Track everything you need to deliver this project. Let's navigate to it now.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='tasks-tab-content']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='tasks-header']",
+        "content": "The Tasks section provides a complete overview of all tasks for this project. You can view task status, progress, due dates, and organize tasks by milestones.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-add-task']",
+        "content": "The 'Add Task' button opens a form to create new tasks. You can set the task title, description, status, assignee, due date, and link it to a milestone.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='tasks-tab-content']",
+        "content": "Tasks can be organized in different views: Board (Kanban style), List (detailed table), or Timeline (Gantt chart). You can filter tasks by status, milestone, or search by name. Each task shows its status, due date, assignee, and can be expanded to see more details.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='projects-section']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='projects-header']",
+        "content": "You've completed the Tasks tour! You now know how to manage project tasks, organize them by milestones, and track progress across different views.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "portals",
+    "title": "Client Portals",
+    "keywords": [
+      "portals",
+      "client portal",
+      "portal settings",
+      "global settings",
+      "portal editor",
+      "branding",
+      "customization",
+      "portal modules"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-client-workflow']",
+        "content": "We're navigating to the Client Workflow page to explore the Client Portals feature.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow?active=portals"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portals-section']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portals-notice']",
+        "content": "Client Portals provide a secure, branded space where your clients can access their projects, files, invoices, and communicate with you. Each client gets one dedicated portal.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portals-header']",
+        "content": "The portal management area allows you to search portals, filter by status, and access global portal settings that apply to all client portals.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-create-portal']",
+        "content": "The 'Create Portal' button allows you to set up a new client portal by selecting a client and configuring initial settings.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portals-stats']",
+        "content": "These stats provide quick insights into your portal activity: total number of portals, those currently live, and overall portal views.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portals-grid']",
+        "content": "The portal grid displays all your client portals with their status, activity metrics, and quick actions. You can view, edit, or manage portal settings from here.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-card-first']",
+        "content": "Each portal card shows the portal name, client information, status, and key metrics. The three-dot menu provides quick actions for managing the portal.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-edit-portal']",
+        "content": "The 'Edit Portal' option allows you to customize this specific client portal individually. Any changes you make here will override the global portal settings for this portal only.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-global-portal-settings']",
+        "content": "The 'Global Portal Settings' button is where you configure default settings that apply to all client portals. This includes branding, enabled modules, welcome messages, and the login page design. We're navigating there now.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/portals/global/portal-settings"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/portals/global/portal-settings"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portal-editor-page']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-editor-header']",
+        "content": "Welcome to the Portal Editor! This is your control center for customizing the look, feel, and functionality of your client portals. Changes made here will apply to all new portals by default.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-editor-left-side']",
+        "content": "The left side of the Portal Editor includes the navigation sidebar and the live preview area. The sidebar shows the portal structure with sections like Home, Timeline, Files, Invoices, and more. The main preview area displays exactly how your portal will look to clients in real-time as you make changes.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portal-editor-settings-panel']",
+        "content": "The settings panel on the right is where you customize everything about your portal. You can configure branding colors, upload logos and background images, enable or disable modules, set project visibility, customize the sidebar appearance, and configure the login page design. All changes are reflected instantly in the preview on the left.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='btn-back-to-workflow']",
+        "content": "We're navigating back to the Portals tab in the Client Workflow page to finish the tour.",
+        "optional": true
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/workflow?active=portals"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/workflow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='portals-section']",
+        "timeout": 5000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='portals-header']",
+        "content": "You've completed the Client Portals tour! You now understand how to create and manage client portals, customize individual portal settings, and configure global defaults that apply to all portals.",
+        "optional": true
+      }
+    ]
+  },
+  {
+    "id": "grow",
+    "title": "Grow Your Brand",
+    "keywords": [
+      "grow",
+      "growth",
+      "brand",
+      "content",
+      "social media",
+      "ai studio",
+      "schedule",
+      "analytics",
+      "insights"
+    ],
+    "steps": [
+      {
+        "type": "hint",
+        "target": "[data-help='sidebar-grow']",
+        "content": "We're navigating to the Grow section to explore brand growth tools and content creation features.",
+        "optional": false
+      },
+      {
+        "type": "route",
+        "path": "/dashboard/grow"
+      },
+      {
+        "type": "waitForRoute",
+        "path": "/dashboard/grow"
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='grow-page']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='grow-header']",
+        "content": "Welcome to Grow Your Brand! This section helps you build visibility and attract clients through consistent, strategic content. Let Jolix guide your growth with AI-powered content creation, smart scheduling, and performance tracking.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='grow-tabs']",
+        "content": "The Grow section is organized into five powerful tabs: Growth Plan (your personalized content strategy), AI Studio (intelligent content composer), Schedule (content calendar), Growth Insights (analytics), and Brand Profile (brand assets and identity).",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='growth-plan-content']",
+        "content": "The Growth Plan tab is where you define your content strategy. Set your growth goals, choose topics you want to focus on, select platforms, and determine your posting frequency. Jolix will create a personalized 30-day content plan tailored to your objectives. You can track your weekly progress and see how you're performing against your goals.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='ai-studio-tab']",
+        "content": "The AI Studio tab is your intelligent content composer where you can create high-quality posts with AI assistance or compose manually.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='ai-studio-content']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='ai-studio-content']",
+        "content": "In the AI Studio, you have two modes: Manual composition where you write from scratch, or AI-assisted mode where you provide a brief description and AI generates engaging content for you. The composer supports multiple platforms including Twitter, LinkedIn, and includes options for images, links, and hashtags. You can even enable Auto-Plan mode to automatically schedule content based on your growth plan.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-tab']",
+        "content": "The Schedule tab provides a comprehensive view of your content calendar to plan and organize your posts.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='schedule-content']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='schedule-content']",
+        "content": "The Schedule interface offers three views: Week (see your posts across the week), Month (bird's-eye view of the month), and List (detailed post list). You can see scheduled posts, drafts, and published content at a glance. Each post shows its platform, scheduled time, and performance metrics. This helps you maintain a consistent posting rhythm and avoid gaps in your content strategy.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='growth-insights-tab']",
+        "content": "The Growth Insights tab is where you track your content performance and audience growth through detailed analytics.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='growth-insights-content']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='growth-insights-content']",
+        "content": "Growth Insights provides key metrics including total engagements, follower count, and growth trends. Interactive charts show your engagement patterns throughout the week and follower growth over time. You can track your top-performing posts, best posting times, and audience demographics. Use these insights to refine your content strategy and double down on what works.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='brand-profile-tab']",
+        "content": "The Brand Profile tab is your central location for managing brand assets and identity.",
+        "optional": true
+      },
+      {
+        "type": "waitFor",
+        "target": "[data-help='brand-profile-content']",
+        "timeout": 3000,
+        "optional": false
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='brand-profile-content']",
+        "content": "In Brand Profile, you can set your brand colors, upload your logo, define your brand voice and tone, and store frequently used content like bio descriptions, CTAs, and hashtag sets. Having all your brand assets in one place ensures consistency across all your content and makes it easy for AI to understand and reflect your unique brand identity in generated content.",
+        "optional": true
+      },
+      {
+        "type": "hint",
+        "target": "[data-help='grow-tabs']",
+        "content": "You've completed the Grow Your Brand tour! You now understand how to create a growth strategy, compose content with AI assistance, schedule your posts strategically, track performance with analytics, and manage your brand assets — all the tools you need to build visibility and attract clients consistently.",
+        "optional": true
+      }
+    ]
+  }
+]
+

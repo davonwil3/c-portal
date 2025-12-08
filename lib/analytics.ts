@@ -106,6 +106,121 @@ export function momGrowth(invoices: Invoice[]): number {
   return ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
 }
 
+// Calculate MoM growth for total invoiced
+export function momGrowthTotalInvoiced(invoices: Invoice[]): { value: number | null; hasData: boolean } {
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
+  
+  // Total invoiced for current month
+  const currentMonthTotal = invoices
+    .filter(inv => {
+      const date = new Date(inv.issueDate)
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Total invoiced for last month
+  const lastMonthTotal = invoices
+    .filter(inv => {
+      const date = new Date(inv.issueDate)
+      return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Need at least 2 months of data to calculate trend
+  if (lastMonthTotal === 0 && currentMonthTotal === 0) {
+    return { value: null, hasData: false }
+  }
+  
+  if (lastMonthTotal === 0) {
+    return { value: currentMonthTotal > 0 ? 100 : 0, hasData: true }
+  }
+  
+  return { value: ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100, hasData: true }
+}
+
+// Calculate MoM growth for total collected
+export function momGrowthTotalCollected(invoices: Invoice[]): { value: number | null; hasData: boolean } {
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
+  
+  // Total collected for current month
+  const currentMonthCollected = invoices
+    .filter(inv => {
+      const date = new Date(inv.issueDate)
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear && inv.status === 'paid'
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Total collected for last month
+  const lastMonthCollected = invoices
+    .filter(inv => {
+      const date = new Date(inv.issueDate)
+      return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear && inv.status === 'paid'
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Need at least 2 months of data to calculate trend
+  if (lastMonthCollected === 0 && currentMonthCollected === 0) {
+    return { value: null, hasData: false }
+  }
+  
+  if (lastMonthCollected === 0) {
+    return { value: currentMonthCollected > 0 ? 100 : 0, hasData: true }
+  }
+  
+  return { value: ((currentMonthCollected - lastMonthCollected) / lastMonthCollected) * 100, hasData: true }
+}
+
+// Calculate MoM growth for outstanding balance
+// This compares outstanding balance at end of current month vs end of last month
+export function momGrowthOutstanding(invoices: Invoice[]): { value: number | null; hasData: boolean } {
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
+  
+  // Outstanding balance as of end of current month (all outstanding invoices issued up to end of current month)
+  const endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59)
+  const currentMonthOutstanding = invoices
+    .filter(inv => {
+      const issueDate = new Date(inv.issueDate)
+      const isOutstanding = inv.status === 'sent' || inv.status === 'viewed' || inv.status === 'overdue' || inv.status === 'partially_paid'
+      // Include all outstanding invoices issued up to end of current month
+      return issueDate <= endOfCurrentMonth && isOutstanding
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Outstanding balance as of end of last month (all outstanding invoices issued up to end of last month)
+  const endOfLastMonth = new Date(lastMonthYear, lastMonth + 1, 0, 23, 59, 59)
+  const lastMonthOutstanding = invoices
+    .filter(inv => {
+      const issueDate = new Date(inv.issueDate)
+      const isOutstanding = inv.status === 'sent' || inv.status === 'viewed' || inv.status === 'overdue' || inv.status === 'partially_paid'
+      // Include all outstanding invoices issued up to end of last month
+      return issueDate <= endOfLastMonth && isOutstanding
+    })
+    .reduce((sum, inv) => sum + inv.amount, 0)
+  
+  // Need at least 2 months of data to calculate trend
+  if (lastMonthOutstanding === 0 && currentMonthOutstanding === 0) {
+    return { value: null, hasData: false }
+  }
+  
+  if (lastMonthOutstanding === 0) {
+    return { value: currentMonthOutstanding > 0 ? 100 : 0, hasData: true }
+  }
+  
+  return { value: ((currentMonthOutstanding - lastMonthOutstanding) / lastMonthOutstanding) * 100, hasData: true }
+}
+
 export function newClientsThisMonth(invoices: Invoice[]): number {
   const now = new Date()
   const currentMonth = now.getMonth()

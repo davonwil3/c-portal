@@ -66,10 +66,13 @@ import { getInvoicesByClient } from "@/lib/invoices"
 import { getProjectsByClient } from "@/lib/projects"
 import { getFiles } from "@/lib/files"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { useTour } from "@/contexts/TourContext"
+import { dummyClients } from "@/lib/tour-dummy-data"
 
 const tagOptions = ["VIP", "Enterprise", "Startup", "Design", "Marketing", "Retainer", "Completed"]
 
 export default function ClientsPage() {
+  const { isTourRunning } = useTour()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [tagFilter, setTagFilter] = useState("all")
@@ -101,7 +104,6 @@ export default function ClientsPage() {
     email: "",
     company: "",
     phone: "",
-    portalUrl: "",
     tags: [] as Array<{ name: string; color?: string }>,
   })
 
@@ -111,7 +113,6 @@ export default function ClientsPage() {
     email: "",
     company: "",
     phone: "",
-    portalUrl: "",
     tags: [] as Array<{ name: string; color?: string }>,
   })
 
@@ -125,15 +126,65 @@ export default function ClientsPage() {
 
   const router = useRouter()
 
+  // Pre-load tour dummy data immediately when tour is running
+  useEffect(() => {
+    if (isTourRunning) {
+      // Convert dummy clients to Client type format
+      const tourClients = dummyClients.map(dc => ({
+        id: dc.id,
+        first_name: dc.name.split(' ')[0],
+        last_name: dc.name.split(' ').slice(1).join(' '),
+        email: dc.email,
+        company: dc.company,
+        phone: '',
+        status: dc.status,
+        created_at: dc.joined,
+        updated_at: dc.joined,
+        account_id: 'tour-account',
+      } as Client))
+      
+      setClients(tourClients)
+      setClientTags({})
+      setClientTagColors({})
+      setAvailableTags(tagOptions)
+      setLoading(false)
+    }
+  }, [isTourRunning])
+
   // Load clients on component mount
   useEffect(() => {
-    loadClients()
-  }, [])
+    if (!isTourRunning) {
+      loadClients()
+    }
+  }, [isTourRunning])
 
   const loadClients = async () => {
     try {
       setLoading(true)
       
+      // Use dummy data during tours
+      if (isTourRunning) {
+        // Convert dummy clients to Client type format
+        const tourClients = dummyClients.map(dc => ({
+          id: dc.id,
+          first_name: dc.name.split(' ')[0],
+          last_name: dc.name.split(' ').slice(1).join(' '),
+          email: dc.email,
+          company: dc.company,
+          phone: '',
+          status: dc.status,
+          created_at: dc.joined,
+          updated_at: dc.joined,
+          account_id: 'tour-account',
+        } as Client))
+        
+        setClients(tourClients)
+        setClientTags({})
+        setClientTagColors({})
+        setAvailableTags(tagOptions)
+        setLoading(false)
+        return
+      }
       
       const clientsData = await getClients()
       setClients(clientsData)
@@ -237,7 +288,6 @@ export default function ClientsPage() {
         email: newClient.email,
         company: newClient.company || undefined,
         phone: newClient.phone || undefined,
-        portal_url: newClient.portalUrl || undefined,
         tags: newClient.tags,
       })
 
@@ -271,7 +321,6 @@ export default function ClientsPage() {
       email: "",
       company: "",
       phone: "",
-          portalUrl: "",
       tags: [],
     })
   }
@@ -297,7 +346,6 @@ export default function ClientsPage() {
         email: editClient.email,
         company: editClient.company || undefined,
         phone: editClient.phone || undefined,
-        portal_url: editClient.portalUrl || undefined,
         tags: editClient.tags,
       })
 
@@ -316,7 +364,6 @@ export default function ClientsPage() {
                   email: editClient.email,
                   company: editClient.company || null,
                   phone: editClient.phone || null,
-                  portal_url: editClient.portalUrl || null,
                 }
               : client
           )
@@ -438,7 +485,6 @@ export default function ClientsPage() {
           email: client.email || "",
           company: client.company || "",
           phone: client.phone || "",
-          portalUrl: client.portal_url || "",
           tags: (clientTags[client.id] || []).map(tagName => ({
             name: tagName,
             color: clientTagColors[client.id]?.[tagName] || getTagDisplayColor(tagName, client.id)
@@ -1206,15 +1252,6 @@ export default function ClientsPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="portalUrl">Portal URL</Label>
-                <Input
-                  id="portalUrl"
-                  value={newClient.portalUrl}
-                  onChange={(e) => setNewClient({ ...newClient, portalUrl: e.target.value })}
-                  placeholder="company-name"
-                />
-              </div>
-              <div>
                 <Label>Tags</Label>
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
@@ -1364,15 +1401,6 @@ export default function ClientsPage() {
                   value={editClient.phone}
                   onChange={(e) => setEditClient({ ...editClient, phone: e.target.value })}
                   placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              <div>
-                <Label htmlFor="editPortalUrl">Portal URL</Label>
-                <Input
-                  id="editPortalUrl"
-                  value={editClient.portalUrl}
-                  onChange={(e) => setEditClient({ ...editClient, portalUrl: e.target.value })}
-                  placeholder="company-name"
                 />
               </div>
               <div>

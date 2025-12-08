@@ -3,6 +3,17 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { BarChart3 } from "lucide-react"
+import {
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from "recharts"
 
 // Mock data for the chart
 const mockData = [
@@ -16,8 +27,6 @@ const mockData = [
 ]
 
 export function AnalyticsMiniChart() {
-  const maxValue = Math.max(...mockData.map(d => Math.max(d.views, d.leads)))
-
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -31,50 +40,47 @@ export function AnalyticsMiniChart() {
         </Button>
       </div>
 
-      {/* Simple Bar Chart */}
-      <div className="space-y-4">
-        <div className="flex items-end justify-between gap-2 h-48">
-          {mockData.map((data, idx) => (
-            <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-              <div className="w-full flex flex-col gap-1 items-center h-full justify-end">
-                {/* Views Bar */}
-                <div 
-                  className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-all cursor-pointer group relative"
-                  style={{ height: `${(data.views / maxValue) * 100}%` }}
-                  title={`${data.views} views`}
-                >
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                    {data.views} views
-                  </div>
-                </div>
-                {/* Leads Bar */}
-                <div 
-                  className="w-full bg-purple-500 rounded-t hover:bg-purple-600 transition-all cursor-pointer group relative"
-                  style={{ height: `${(data.leads / maxValue) * 100}%`, minHeight: '8px' }}
-                  title={`${data.leads} leads`}
-                >
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                    {data.leads} leads
-                  </div>
-                </div>
-              </div>
-              <span className="text-xs text-gray-600 font-medium">{data.day}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-6 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-500 rounded"></div>
-            <span className="text-sm text-gray-600">Views</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-purple-500 rounded"></div>
-            <span className="text-sm text-gray-600">Leads</span>
-          </div>
-        </div>
-      </div>
+      {/* Recharts Bar Chart */}
+      <ResponsiveContainer width="100%" height={280}>
+        <ComposedChart data={mockData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis 
+            dataKey="day" 
+            stroke="#6b7280"
+            style={{ fontSize: '12px' }}
+          />
+          <YAxis 
+            stroke="#6b7280"
+            style={{ fontSize: '12px' }}
+          />
+          <Tooltip 
+            contentStyle={{ 
+              backgroundColor: 'white', 
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '12px'
+            }} 
+          />
+          <Legend 
+            wrapperStyle={{ fontSize: '14px' }}
+            iconType="circle"
+          />
+          <Bar 
+            dataKey="views" 
+            fill="#3B82F6" 
+            radius={[8, 8, 0, 0]}
+            name="Views"
+          />
+          <Line 
+            type="monotone" 
+            dataKey="leads" 
+            stroke="#8B5CF6" 
+            strokeWidth={3}
+            dot={{ fill: '#8B5CF6', r: 4 }}
+            name="Leads"
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
     </Card>
   )
 }

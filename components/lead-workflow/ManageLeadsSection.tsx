@@ -295,15 +295,15 @@ export function ManageLeadsSection() {
             <p className="text-gray-600 ml-[60px]">Track, organize, and convert your leads.</p>
         </div>
         <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => window.location.href = '/dashboard/pipeline'}>
+            <Button variant="outline" data-help="btn-pipeline-view" onClick={() => router.push('/dashboard/pipeline')}>
               <GitBranch className="mr-2 h-4 w-4" />
               Pipeline View
             </Button>
-          <Button variant="outline" onClick={() => setImportCsvOpen(true)}>
+          <Button variant="outline" data-help="btn-import-csv" onClick={() => setImportCsvOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Import CSV
           </Button>
-          <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => setNewLeadOpen(true)}>
+          <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" data-help="btn-new-lead" onClick={() => setNewLeadOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New Lead
           </Button>
@@ -312,10 +312,11 @@ export function ManageLeadsSection() {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4" data-help="search-filters-bar">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
+            data-help="input-search-leads"
             placeholder="Search leads by name, company, or status…"
             className="pl-10"
             value={searchQuery}
@@ -328,7 +329,7 @@ export function ManageLeadsSection() {
         </div>
         <Popover open={filterOpen} onOpenChange={setFilterOpen}>
           <PopoverTrigger asChild>
-            <Button variant="outline">
+            <Button variant="outline" data-help="btn-filter">
               <Filter className="mr-2 h-4 w-4" />
               Filter
             </Button>
@@ -386,7 +387,7 @@ export function ManageLeadsSection() {
       </div>
 
       {/* Segment Tabs */}
-      <Tabs value={segment} onValueChange={setSegment}>
+      <Tabs value={segment} onValueChange={setSegment} data-help="segment-tabs">
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
@@ -420,7 +421,7 @@ export function ManageLeadsSection() {
       )}
 
       {/* Leads Table */}
-      <Card>
+      <Card data-help="leads-table">
         <CardContent className="p-0">
           {filteredLeads.length === 0 ? (
             <div className="text-center py-16">

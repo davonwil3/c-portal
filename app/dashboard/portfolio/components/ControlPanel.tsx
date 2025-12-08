@@ -469,43 +469,15 @@ export function ControlPanel({
             <span className="font-semibold">Behavior</span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4 pt-4">
-            <div>
-              <Label className="mb-2 block">Primary CTAs</Label>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={data.behavior.enableHireMe}
-                    onCheckedChange={(checked) => handleBehaviorChange('enableHireMe', checked)}
-                  />
-                  <span className="text-sm">Hire Me</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={data.behavior.enableBookCall}
-                    onCheckedChange={(checked) => handleBehaviorChange('enableBookCall', checked)}
-                  />
-                  <span className="text-sm">Book a Call</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={data.behavior.enableViewServices}
-                    onCheckedChange={(checked) => handleBehaviorChange('enableViewServices', checked)}
-                  />
-                  <span className="text-sm">View Services</span>
-                </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex-1">
+                <Label className="font-medium">Show Book a Meeting Button</Label>
+                <p className="text-xs text-gray-500 mt-1">Display "Book a Meeting" button in contact forms</p>
               </div>
-            </div>
-            <div>
-              <Label>Contact Form Destination</Label>
-              <Select value={data.behavior.contactDestination} onValueChange={(value) => handleBehaviorChange('contactDestination', value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="leads">Leads Pipeline</SelectItem>
-                  <SelectItem value="email">Email Copy</SelectItem>
-                </SelectContent>
-              </Select>
+              <Switch
+                checked={data.behavior.showBookMeetingButton !== false}
+                onCheckedChange={(checked) => handleBehaviorChange('showBookMeetingButton', checked)}
+              />
             </div>
           </AccordionContent>
         </AccordionItem>

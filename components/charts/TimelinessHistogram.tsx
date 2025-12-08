@@ -40,9 +40,8 @@ const COLORS = [
 export function TimelinessHistogram({ data }: TimelinessHistogramProps) {
   console.log('TimelinessHistogram received data:', data)
   
-  // Add fallback test data with higher values to ensure visibility
-  const testData = { '0-7': 15, '8-14': 25, '15-30': 35, '31-60': 20, '60+': 10 }
-  const safeData = data || testData
+  // Use actual data, show empty state if no data
+  const safeData = data || { '0-7': 0, '8-14': 0, '15-30': 0, '31-60': 0, '60+': 0 }
   
   const chartData = Object.entries(safeData).map(([bucket, count], index) => ({
     bucket,
@@ -51,6 +50,24 @@ export function TimelinessHistogram({ data }: TimelinessHistogramProps) {
   }))
   
   console.log('TimelinessHistogram chartData:', chartData)
+  
+  const total = Object.values(safeData).reduce((sum, count) => sum + count, 0)
+  
+  if (total === 0) {
+    return (
+      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900">Payment Timeliness</CardTitle>
+          <CardDescription>Distribution of payment times for paid invoices</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No payment timeliness data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="bg-white border-0 shadow-sm rounded-2xl">

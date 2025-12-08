@@ -244,11 +244,12 @@ export default function DocumentSuitePage() {
     const tabBase = "px-4 py-1.5 text-sm rounded-full cursor-pointer transition-colors"
     const inactive = "text-gray-600 hover:text-gray-900"
     return (
-      <div className="w-full flex justify-center pt-6 pb-4">
+      <div className="w-full flex justify-center pt-6 pb-4" data-help="document-tabs-container">
         <div className="inline-flex items-center gap-1 rounded-full p-1" style={{ backgroundColor: `${accentColor}1A` }}>
           {enabledDocs.map(tab => (
             <span
               key={tab.id}
+              data-help={`tab-${tab.id}`}
               className={`${tabBase} ${activeDoc === tab.id ? "text-white" : inactive}`}
               onClick={() => setActiveDoc(tab.id)}
               style={activeDoc === tab.id ? { backgroundColor: brandColor, boxShadow: "0 2px 6px rgba(0,0,0,0.08)" } : undefined}
@@ -362,7 +363,7 @@ export default function DocumentSuitePage() {
         {/* Minimal Header */}
         <div className="border-b px-6 py-3 flex items-center justify-between bg-white">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => router.back()} className="gap-2">
+            <Button variant="ghost" size="sm" data-help="btn-back-proposals" onClick={() => router.back()} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
@@ -403,7 +404,7 @@ export default function DocumentSuitePage() {
 
                 {/* PROPOSAL PREVIEW */}
                 {activeDoc === "proposal" && proposalEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden" style={{ fontFamily: 'Georgia, serif' }}>
+                  <div className="bg-white shadow-sm overflow-hidden" style={{ fontFamily: 'Georgia, serif' }} data-help="proposal-preview">
                     <DocumentTabs />
                     {/* Document Header with Logo */}
                     <div className="px-16 pt-16 pb-8">
@@ -706,7 +707,7 @@ export default function DocumentSuitePage() {
 
                 {/* CONTRACT PREVIEW */}
                 {activeDoc === "contract" && contractEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif' }}>
+                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif' }} data-help="contract-preview">
                     <DocumentTabs />
                     {/* Header */}
                     <div className="flex justify-between items-start mb-8">
@@ -954,7 +955,7 @@ export default function DocumentSuitePage() {
 
                 {/* INVOICE PREVIEW */}
                 {activeDoc === "invoice" && invoiceEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16" style={{ fontFamily: 'Inter, sans-serif' }} data-help="invoice-preview">
                     <DocumentTabs />
                     {/* Header */}
                     <div className="flex justify-between items-start mb-12">
@@ -1492,8 +1493,10 @@ export default function DocumentSuitePage() {
                                 <div key={i} className="flex items-center gap-2">
                                   <span className="text-xs text-gray-600 w-16">Payment {i + 1}</span>
                                   <Input
-                                    type="number"
-                                    value={customPaymentAmounts[i] || "0"}
+                                    type="text"
+                                    inputMode="decimal"
+                                    pattern="[0-9]*\.?[0-9]*"
+                                    value={customPaymentAmounts[i] || ""}
                             onChange={(e) => {
                                       const next = [...customPaymentAmounts]
                                       next[i] = e.target.value
@@ -1570,9 +1573,11 @@ export default function DocumentSuitePage() {
                                 />
                                 <Input
                                   className="col-span-5"
-                                  type="number"
+                                  type="text"
+                                  inputMode="decimal"
+                                  pattern="[0-9]*\.?[0-9]*"
                                   placeholder="Amount"
-                                  value={milestones[i]?.amount || "0"}
+                                  value={milestones[i]?.amount || ""}
                                   disabled={milestonesEqualSplit}
                                   onChange={(e) => setMilestones(prev => {
                                     const next = [...prev]

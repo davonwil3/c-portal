@@ -40,6 +40,8 @@ import { toast } from "sonner"
 import { createClient } from '@/lib/supabase/client'
 import AddMembersModal from "@/components/AddMembersModal"
 import ViewMembersModal from "@/components/ViewMembersModal"
+import { useTour } from "@/contexts/TourContext"
+import { dummyPortals } from "@/lib/tour-dummy-data"
 
 // Simplified portal data structure
 interface Portal {
@@ -69,11 +71,11 @@ const statusOptions = [
   { value: "all", label: "All Status", icon: Filter },
   { value: "live", label: "Live", icon: CheckCircle, color: "text-green-600" },
   { value: "draft", label: "Draft", icon: Clock, color: "text-yellow-600" },
-  { value: "maintenance", label: "Maintenance", icon: AlertCircle, color: "text-orange-600" },
   { value: "archived", label: "Archived", icon: XCircle, color: "text-gray-600" },
 ]
 
 export default function PortalsPage() {
+  const { isTourRunning } = useTour()
   const router = useRouter()
   const [portals, setPortals] = useState<Portal[]>(initialPortals)
   const [loading, setLoading] = useState(true)
@@ -194,12 +196,6 @@ export default function PortalsPage() {
       case "delete":
         await handleDeletePortal(portal)
         break
-      case "analytics":
-        router.push(`/dashboard/portals/${portal.id}/analytics`)
-        break
-      case "settings":
-        router.push(`/dashboard/portals/${portal.id}/portal-settings`)
-        break
     }
   }
 
@@ -318,9 +314,39 @@ export default function PortalsPage() {
     router.push("/dashboard/portals/new")
   }
 
+  // Pre-load tour dummy data immediately when tour is running
+  useEffect(() => {
+    if (isTourRunning) {
+      // Convert dummy portals to Portal type format
+      const tourPortals = dummyPortals.map(dp => ({
+        id: dp.id,
+        name: `${dp.client} Portal`,
+        client: {
+          id: dp.id,
+          name: dp.client,
+          avatar: '/placeholder-user.jpg'
+        },
+        status: dp.status as 'live' | 'draft' | 'archived' | 'maintenance',
+        url: `https://${dp.slug}.clientportalhq.com`,
+        views: dp.files * 10,
+        lastActivity: new Date(dp.lastActivity).toLocaleDateString(),
+        description: `Client portal for ${dp.client}`,
+        modules: ['files', 'messages', 'projects']
+      }))
+      
+      setPortals(tourPortals)
+      setLoading(false)
+    }
+  }, [isTourRunning])
+
   // Fetch portals data on component mount
   useEffect(() => {
     const fetchPortals = async () => {
+      // Skip if tour is running - dummy data loads in separate useEffect
+      if (isTourRunning) {
+        return
+      }
+      
       try {
         setLoading(true)
         
@@ -351,7 +377,7 @@ export default function PortalsPage() {
     }
 
     fetchPortals()
-  }, [])
+  }, [isTourRunning])
 
   const getActivityIndicator = (lastActivity: string) => {
     if (lastActivity === "Never") {
@@ -399,7 +425,15 @@ export default function PortalsPage() {
                   className="pl-10 h-10 border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
                 />
               </div>
-              <div className="flex gap-3">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => router.push("/dashboard/portals/global/portal-settings")}
+                className="border-gray-200"
+              >
+                <Globe className="h-4 w-4 mr-2" />
+                Global Portal Settings
+              </Button>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[160px] h-10 border-gray-200">
                     <Filter className="h-4 w-4 mr-2" />
@@ -454,10 +488,10 @@ export default function PortalsPage() {
         </Card>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loading ? (
             <>
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3].map((i) => (
                 <Card key={i} className="bg-white border-0 shadow-sm rounded-2xl">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
@@ -516,22 +550,6 @@ export default function PortalsPage() {
                     </div>
                     <div className="p-3 bg-purple-100 rounded-lg">
                       <BarChart3 className="h-6 w-6 text-purple-600" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="bg-white border-0 shadow-sm rounded-2xl">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Active Portals</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {portals.filter(p => p.status === "live").length}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-orange-100 rounded-lg">
-                      <Globe className="h-6 w-6 text-orange-600" />
                     </div>
                   </div>
                 </CardContent>
@@ -596,18 +614,10 @@ export default function PortalsPage() {
                         <ExternalLink className="h-4 w-4 mr-2" />
                         View Portal
                       </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => handlePortalAction("analytics", portal, e)}>
-                          <BarChart3 className="h-4 w-4 mr-2" />
-                          Analytics
-                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => handlePortalAction("edit", portal, e)}>
                         <Edit className="h-4 w-4 mr-2" />
                         Edit Portal
                       </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => handlePortalAction("settings", portal, e)}>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Settings
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={(e) => handlePortalAction("add-members", portal, e)}>
                           <Users className="h-4 w-4 mr-2" />
@@ -716,6 +726,15 @@ export default function PortalsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={(e) => handlePortalAction("edit", portal, e)}
+                      className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit Portal
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={(e) => handlePortalAction("copy", portal, e)}
                       className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
                     >
@@ -800,17 +819,9 @@ export default function PortalsPage() {
                             <ExternalLink className="h-4 w-4 mr-2" />
                             View Portal
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => handlePortalAction("analytics", portal, e)}>
-                            <BarChart3 className="h-4 w-4 mr-2" />
-                            Analytics
-                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => handlePortalAction("edit", portal, e)}>
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Portal
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => handlePortalAction("settings", portal, e)}>
-                            <Settings className="h-4 w-4 mr-2" />
-                            Settings
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={(e) => handlePortalAction("add-members", portal, e)}>

@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Paperclip, Smile, MoreHorizontal, MessageCircle } from "lucide-react"
+import { Send, Paperclip, Smile, MoreHorizontal, MessageCircle, Download, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
+import { getProject } from "@/lib/projects"
 
 interface Message {
   id: string
@@ -47,7 +48,10 @@ export function DashboardMessageChat({
   const [newMessage, setNewMessage] = useState("")
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load messages on component mount
   useEffect(() => {
@@ -105,8 +109,70 @@ export function DashboardMessageChat({
     }
   }
 
+  // Upload file attachment
+  const uploadAttachment = async (file: File): Promise<string | null> => {
+    setIsUploading(true)
+    try {
+      // Get project to find client_id
+      const project = await getProject(projectId)
+      
+      if (!project) {
+        toast.error('Failed to get project information')
+        return null
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('isPreview', 'false')
+      formData.append('clientId', project.client_id)
+      formData.append('accountId', accountId)
+      formData.append('projectId', projectId)
+
+      const uploadResponse = await fetch('/api/client-portal/upload-file', {
+        method: 'POST',
+        body: formData
+      })
+
+      const uploadResult = await uploadResponse.json()
+      if (!uploadResponse.ok) {
+        toast.error(uploadResult.message || 'Failed to upload attachment')
+        return null
+      }
+
+      return uploadResult.data?.publicUrl || null
+    } catch (error) {
+      console.error('Error uploading attachment:', error)
+      toast.error('Error uploading attachment')
+      return null
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // Format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  // Get file icon
+  const getFileIcon = (fileName: string, fileType: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase()
+    if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext || '')) return '🖼️'
+    if (['pdf'].includes(ext || '')) return '📄'
+    if (['doc', 'docx'].includes(ext || '')) return '📝'
+    if (['xls', 'xlsx'].includes(ext || '')) return '📊'
+    return '📎'
+  }
+
   const sendMessage = async () => {
-    if (!newMessage.trim()) return
+    if (!newMessage.trim() && !selectedFile) {
+      toast.error("Please enter a message or attach a file")
+      return
+    }
 
     if (!accountId) {
       console.error('Account ID is missing, cannot send message')
@@ -114,19 +180,41 @@ export function DashboardMessageChat({
       return
     }
 
-    const messageData = {
-      projectId,
-      accountId,
-      content: newMessage.trim(),
-      senderName: 'You', // Account user
-      senderType: 'account_user',
-      clientId: null,
-    }
-
-    console.log('Sending message with data:', messageData)
-
     try {
       setSending(true)
+      
+      let attachmentUrl: string | null = null
+      let attachmentName: string | null = null
+      let attachmentType: string | null = null
+      let attachmentSize: number | null = null
+
+      // Upload file if one is selected
+      if (selectedFile) {
+        attachmentUrl = await uploadAttachment(selectedFile)
+        if (!attachmentUrl) {
+          setSending(false)
+          return
+        }
+        attachmentName = selectedFile.name
+        attachmentType = selectedFile.type
+        attachmentSize = selectedFile.size
+      }
+
+      const messageData = {
+        projectId,
+        accountId,
+        content: newMessage.trim() || (selectedFile ? `Sent ${selectedFile.name}` : ''),
+        senderName: 'You', // Account user
+        senderType: 'account_user',
+        clientId: null,
+        attachmentUrl,
+        attachmentName,
+        attachmentType,
+        attachmentSize,
+      }
+
+      console.log('Sending message with data:', messageData)
+
       const response = await fetch('/api/messages', {
         method: 'POST',
         headers: {
@@ -140,6 +228,10 @@ export function DashboardMessageChat({
       if (result.success) {
         setMessages(prev => [...prev, result.data])
         setNewMessage("")
+        setSelectedFile(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
       } else {
         console.error('Failed to send message:', result.error)
         toast.error(`Failed to send message: ${result.error}`)
@@ -255,7 +347,36 @@ export function DashboardMessageChat({
                       {formatTime(message.created_at)}
                     </span>
                   </div>
-                  <div className="text-sm">{message.content}</div>
+                  {message.content && (
+                    <div className="text-sm">{message.content}</div>
+                  )}
+                  
+                  {/* Attachment Display */}
+                  {message.attachment_url && (
+                    <div className={`mt-2 ${message.content ? 'mt-3' : ''}`}>
+                      <a
+                        href={message.attachment_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                          message.sender_type === 'account_user'
+                            ? 'bg-white/20 hover:bg-white/30 text-white'
+                            : 'bg-white hover:bg-gray-50 text-gray-900 border border-gray-200'
+                        }`}
+                      >
+                        <span className="text-lg">{getFileIcon(message.attachment_name || '', message.attachment_type || '')}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">{message.attachment_name || 'Attachment'}</p>
+                          {message.attachment_size && (
+                            <p className={`text-xs ${message.sender_type === 'account_user' ? 'text-white/70' : 'text-gray-500'}`}>
+                              {formatFileSize(message.attachment_size)}
+                            </p>
+                          )}
+                        </div>
+                        <Download className={`h-3 w-3 ${message.sender_type === 'account_user' ? 'text-white/80' : 'text-gray-400'}`} />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -264,9 +385,60 @@ export function DashboardMessageChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Selected File Preview */}
+      {selectedFile && (
+        <div className="border-t border-gray-200 p-4 bg-white">
+          <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+            <span className="text-lg">{getFileIcon(selectedFile.name, selectedFile.type)}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+              <p className="text-xs text-gray-500">{formatFileSize(selectedFile.size)}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedFile(null)
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = ''
+                }
+              }}
+              className="h-7 w-7 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Message Input */}
       <div className="border-t border-gray-200 p-6">
         <div className="flex space-x-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) {
+                setSelectedFile(file)
+              }
+            }}
+            disabled={sending || isUploading}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || isUploading}
+            className="flex-shrink-0"
+          >
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Paperclip className="h-4 w-4" />
+            )}
+          </Button>
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
@@ -277,16 +449,20 @@ export function DashboardMessageChat({
                 sendMessage()
               }
             }}
-            disabled={sending}
+            disabled={sending || isUploading}
             className="flex-1"
           />
           <Button
             onClick={sendMessage}
-            disabled={!newMessage.trim() || sending}
+            disabled={(!newMessage.trim() && !selectedFile) || sending || isUploading}
             size="sm"
             style={{ backgroundColor: brandColor }}
           >
-            <Send className="h-4 w-4" />
+            {sending || isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>

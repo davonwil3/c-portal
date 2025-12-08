@@ -32,8 +32,7 @@ export default function CreatePortalPage() {
     name: "",
     description: "",
     clientId: "",
-    status: "draft",
-    brandColor: "#3C3CFF"
+    status: "draft"
   })
 
   // Fetch clients on component mount
@@ -163,7 +162,7 @@ export default function CreatePortalPage() {
            description: formData.description,
            url: portalUrl,
            status: formData.status,
-           brand_color: formData.brandColor,
+           brand_color: "#4647E0", // Default Jolix purple
            access_type: "invite" // Portals are only accessible via magic links
          })
          .select()
@@ -226,7 +225,7 @@ export default function CreatePortalPage() {
       }
 
       toast.success("Portal created successfully!")
-      router.push("/dashboard/portals")
+      router.push("/dashboard/workflow?active=portals")
       
     } catch (error) {
       console.error('Error creating portal:', error)
@@ -237,25 +236,35 @@ export default function CreatePortalPage() {
   }
 
   return (
-    <DashboardLayout title="Create Portal" subtitle="Set up a new client portal">
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Back Button */}
-        <Button
-          variant="ghost"
-          onClick={() => router.back()}
-          className="mb-4"
-        >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Portals
-              </Button>
+    <DashboardLayout>
+      <div className="space-y-6 -m-6 p-6">
+        {/* Page Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={() => router.back()}
+              className="rounded-xl"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Create Portal</h1>
+              <p className="text-gray-600 mt-1">Set up a new client portal</p>
+            </div>
+          </div>
+        </div>
 
-        <Card className="bg-white border-0 shadow-sm rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Globe className="h-5 w-5 text-[#3C3CFF]" />
-              <span>Create New Portal</span>
-            </CardTitle>
-          </CardHeader>
+        {/* Main Content - Wider */}
+        <div className="max-w-5xl">
+          <Card className="bg-white border-0 shadow-sm rounded-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Globe className="h-5 w-5 text-[#3C3CFF]" />
+                <span>Portal Details</span>
+              </CardTitle>
+            </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Portal Name */}
@@ -325,26 +334,6 @@ export default function CreatePortalPage() {
                 </Select>
             </div>
 
-
-              {/* Brand Color */}
-                <div className="space-y-2">
-                <Label htmlFor="brandColor">Brand Color</Label>
-                <div className="flex items-center space-x-3">
-                  <Input
-                    id="brandColor"
-                    type="color"
-                    value={formData.brandColor}
-                    onChange={(e) => setFormData({ ...formData, brandColor: e.target.value })}
-                    className="w-16 h-10 p-1"
-                  />
-                    <Input
-                      value={formData.brandColor}
-                    onChange={(e) => setFormData({ ...formData, brandColor: e.target.value })}
-                    className="flex-1"
-                    />
-                </div>
-              </div>
-
               {/* Submit Button */}
               <div className="flex gap-3 pt-4">
                 <Button
@@ -376,6 +365,7 @@ export default function CreatePortalPage() {
             </form>
           </CardContent>
         </Card>
+        </div>
       </div>
     </DashboardLayout>
   )

@@ -196,6 +196,11 @@ export async function createClient(clientData: {
   // Generate avatar initials
   const avatar_initials = `${clientData.first_name.charAt(0)}${clientData.last_name.charAt(0)}`.toUpperCase()
 
+  // Normalize portal_url: convert empty strings to null to avoid unique constraint violations
+  // PostgreSQL UNIQUE constraint allows multiple NULL values, but not duplicate empty strings
+  const portalUrl = clientData.portal_url?.trim() || null
+  const normalizedPortalUrl = portalUrl === '' ? null : portalUrl
+
   // Start a transaction
   const { data: client, error: clientError } = await supabase
     .from('clients')
@@ -206,7 +211,7 @@ export async function createClient(clientData: {
       email: clientData.email,
       company: clientData.company || null,
       phone: clientData.phone || null,
-      portal_url: clientData.portal_url || null,
+      portal_url: normalizedPortalUrl,
       avatar_initials,
       status: 'active'
     })
@@ -215,6 +220,15 @@ export async function createClient(clientData: {
 
   if (clientError) {
     console.error('Error creating client:', clientError)
+    
+    // Provide a more helpful error message for unique constraint violations
+    if (clientError.code === '23505') {
+      if (clientError.message?.includes('portal_url')) {
+        throw new Error('A client with this portal URL already exists. Please choose a different portal URL or leave it blank.')
+      }
+      throw new Error('A client with this information already exists. Please check for duplicates.')
+    }
+    
     throw clientError
   }
 
@@ -597,23 +611,83 @@ export async function createCustomTag(tagName: string, color: string): Promise<v
   return color
 }
 
-// Get client activities
+// Get client activities - aggregates activities from all projects for this client
 export async function getClientActivities(clientId: string): Promise<any[]> {
   const supabase = createSupabaseClient()
+  const { getCurrentAccount } = await import('./auth')
+  const account = await getCurrentAccount()
   
-  const { data, error } = await supabase
-    .from('client_activities')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('created_at', { ascending: false })
-    .limit(10)
-
-  if (error) {
-    console.error('Error fetching client activities:', error)
+  if (!account) {
+    console.warn('No account found')
     return []
   }
 
-  return data || []
+  try {
+    // First, get all projects for this client with names
+    const { data: projects, error: projectsError } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('client_id', clientId)
+      .eq('account_id', account.id)
+
+    if (projectsError) {
+      console.error('Error fetching projects for client:', projectsError)
+      return []
+    }
+
+    if (!projects || projects.length === 0) {
+      return []
+    }
+
+    const projectIds = projects.map(p => p.id)
+    // Create a map of project_id to project_name for quick lookup
+    const projectMap = new Map(projects.map(p => [p.id, p.name]))
+
+    // Get all activities from project_activities table only
+    // All activities (files, invoices, contracts, forms) are now logged in project_activities
+    // No need to fetch from separate activity tables to avoid duplicates
+    const { data: projectActivities } = await supabase
+      .from('project_activities')
+      .select(`
+        id,
+        project_id,
+        activity_type,
+        action,
+        metadata,
+        created_at,
+        user_id,
+        profiles:user_id(first_name, last_name, email)
+      `)
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: false })
+
+    if (!projectActivities) {
+      return []
+    }
+
+    // Map activities to include project name and format user info
+    const allActivities = projectActivities.map(activity => ({
+      id: activity.id,
+      activity_type: activity.activity_type,
+      action: activity.action,
+      metadata: activity.metadata,
+      created_at: activity.created_at,
+      source_table: 'project_activities',
+      source_id: activity.id,
+      project_id: activity.project_id,
+      project_name: projectMap.get(activity.project_id) || 'Unknown Project',
+      user_name: activity.profiles 
+        ? `${activity.profiles.first_name || ''} ${activity.profiles.last_name || ''}`.trim() || 'Unknown User'
+        : 'System',
+      user_email: activity.profiles?.email || null
+    }))
+
+    // Activities are already sorted by created_at descending from the query
+    return allActivities
+  } catch (error) {
+    console.error('Error fetching client activities:', error)
+    return []
+  }
 }
 
 // Get client invoices (using the invoices library)

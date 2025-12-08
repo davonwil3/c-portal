@@ -9,10 +9,9 @@ interface StatsCardProps {
   value: string | number
   change?: number
   icon: LucideIcon
-  detailsLink?: string
 }
 
-export function StatsCard({ title, value, change, icon: Icon, detailsLink }: StatsCardProps) {
+export function StatsCard({ title, value, change, icon: Icon }: StatsCardProps) {
   const isPositive = change && change >= 0
   
   return (
@@ -39,11 +38,6 @@ export function StatsCard({ title, value, change, icon: Icon, detailsLink }: Sta
           <Icon className="w-6 h-6 text-purple-600" />
         </div>
       </div>
-      {detailsLink && (
-        <a href={detailsLink} className="text-sm text-purple-600 hover:text-purple-700 mt-4 inline-block font-medium">
-          View details →
-        </a>
-      )}
     </Card>
   )
 }

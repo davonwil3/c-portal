@@ -411,8 +411,8 @@ export async function createFile(fileData: {
   // This should be handled by an API route using lib/ai/vector-store.server.ts (server-only)
   // Unlike structured data (invoices, forms, contracts), unstructured file content benefits from vector search
 
-  // Log activity
-  await logFileActivity(file.id, 'upload', 'uploaded file')
+  // File activity is automatically logged by database trigger (log_file_upload)
+  // No need to manually log here to avoid duplicates
 
   return file
 }

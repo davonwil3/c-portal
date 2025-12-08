@@ -51,6 +51,8 @@ import {
   type Project,
   type ProjectTag
 } from "@/lib/projects"
+import { useTour } from "@/contexts/TourContext"
+import { dummyProjects, dummyClients } from "@/lib/tour-dummy-data"
 
 const statusOptions = [
   { value: "all", label: "All Status" },
@@ -62,6 +64,7 @@ const statusOptions = [
 ]
 
 export default function ProjectsPage() {
+  const { isTourRunning } = useTour()
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Array<{ id: string; first_name: string; last_name: string; company: string | null }>>([])
@@ -96,6 +99,40 @@ export default function ProjectsPage() {
   const loadProjects = async () => {
     try {
       setLoading(true)
+      
+      // Use dummy data during tours
+      if (isTourRunning) {
+        const tourProjects = dummyProjects.map(dp => ({
+          id: dp.id,
+          name: dp.name,
+          client_id: dp.client.toLowerCase().replace(/\s+/g, '-'),
+          description: `${dp.name} for ${dp.client}`,
+          status: dp.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
+          due_date: dp.dueDate,
+          created_at: '2024-01-01',
+          updated_at: '2024-01-15',
+          account_id: 'tour-account',
+          budget: dp.budget,
+          spent: dp.spent,
+          progress: dp.progress,
+        } as Project))
+        
+        const tourClients = dummyClients.map(dc => ({
+          id: dc.id,
+          first_name: dc.name.split(' ')[0],
+          last_name: dc.name.split(' ').slice(1).join(' '),
+          company: dc.company,
+        }))
+        
+        setProjects(tourProjects)
+        setClients(tourClients)
+        setProjectTags({})
+        setProjectTagColors({})
+        setAvailableTags(['Web Development', 'Design', 'Marketing', 'Consulting'])
+        setLoading(false)
+        return
+      }
+      
       const [projectsData, clientsData, tagsData] = await Promise.all([
         getProjects(),
         getClientsForProjects(),
@@ -133,9 +170,45 @@ export default function ProjectsPage() {
     }
   }
 
+  // Pre-load tour dummy data immediately when tour is running
   useEffect(() => {
-    loadProjects()
-  }, [])
+    if (isTourRunning) {
+      const tourProjects = dummyProjects.map(dp => ({
+        id: dp.id,
+        name: dp.name,
+        client_id: dp.client.toLowerCase().replace(/\s+/g, '-'),
+        description: `${dp.name} for ${dp.client}`,
+        status: dp.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
+        due_date: dp.dueDate,
+        created_at: '2024-01-01',
+        updated_at: '2024-01-15',
+        account_id: 'tour-account',
+        budget: dp.budget,
+        spent: dp.spent,
+        progress: dp.progress,
+      } as Project))
+      
+      const tourClients = dummyClients.map(dc => ({
+        id: dc.id,
+        first_name: dc.name.split(' ')[0],
+        last_name: dc.name.split(' ').slice(1).join(' '),
+        company: dc.company,
+      }))
+      
+      setProjects(tourProjects)
+      setClients(tourClients)
+      setProjectTags({})
+      setProjectTagColors({})
+      setAvailableTags(['Web Development', 'Design', 'Marketing', 'Consulting'])
+      setLoading(false)
+    }
+  }, [isTourRunning])
+
+  useEffect(() => {
+    if (!isTourRunning) {
+      loadProjects()
+    }
+  }, [isTourRunning])
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -614,7 +687,7 @@ export default function ProjectsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" data-help="projects-header">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
             <p className="text-gray-600 mt-1">Manage and track all your client projects</p>
@@ -622,7 +695,7 @@ export default function ProjectsPage() {
         </div>
 
         {/* Header with Search and Filters */}
-            <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-col lg:flex-row gap-4" data-help="projects-filters">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
@@ -682,7 +755,7 @@ export default function ProjectsPage() {
                 </Select>
                 <Dialog open={isNewProjectOpen} onOpenChange={setIsNewProjectOpen}>
                   <DialogTrigger asChild>
-                    <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
+                    <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white" data-help="btn-new-project">
                       <Plus className="h-4 w-4 mr-2" />
                       New Project
                     </Button>
@@ -1075,8 +1148,8 @@ export default function ProjectsPage() {
             </CardContent>
           </Card>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProjects.map((project) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-help="projects-grid">
+            {filteredProjects.map((project, index) => {
               const client = clients.find(c => c.id === project.client_id)
               const clientName = client ? `${client.first_name} ${client.last_name}` : 'Unknown Client'
               const clientInitials = client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'
@@ -1087,6 +1160,7 @@ export default function ProjectsPage() {
               key={project.id}
                   className="bg-white border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200 rounded-2xl cursor-pointer group"
               onClick={() => handleProjectClick(project.id)}
+              data-help={index === 0 ? "project-card-first" : undefined}
             >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">

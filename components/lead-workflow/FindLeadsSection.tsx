@@ -20,8 +20,8 @@ import { toast } from "sonner"
 import { 
   Search, 
   Clock, 
-  MapPin,
-  DollarSign,
+  MapPin, 
+  DollarSign, 
   Copy, 
   X,
   ChevronRight,
@@ -166,18 +166,78 @@ function useMockLeads(): Lead[] {
 }
 
 // Components
-function PageHeader() {
+function PageHeader({ onGenerateMore, refreshState }: { 
+  onGenerateMore: () => void
+  refreshState: RefreshState
+}) {
+  const [timeLeft, setTimeLeft] = useState<number>(0)
+
+  useEffect(() => {
+    if (!refreshState.isCoolingDown || !refreshState.nextRefreshAt) {
+      setTimeLeft(0)
+      return
+    }
+
+    const updateTimeLeft = () => {
+      const now = Date.now()
+      const remaining = refreshState.nextRefreshAt! - now
+      setTimeLeft(Math.max(0, remaining))
+    }
+
+    updateTimeLeft()
+    const interval = setInterval(updateTimeLeft, 60000)
+
+    return () => clearInterval(interval)
+  }, [refreshState.isCoolingDown, refreshState.nextRefreshAt])
+
+  const isDisabled = refreshState.isCoolingDown && timeLeft > 0
+
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#3C3CFF] to-[#6366F1] rounded-lg flex items-center justify-center shadow-md">
-              <Search className="h-5 w-5 text-white" />
+    <div className="relative overflow-hidden rounded-3xl bg-white border-2 border-gray-100 shadow-2xl">
+      {/* Accent gradient bar */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#3C3CFF] via-[#6366F1] to-[#3C3CFF]"></div>
+      
+      <div className="relative z-10 p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-start gap-4">
+              {/* Icon with gradient background */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#3C3CFF] to-[#6366F1] rounded-xl blur-lg opacity-30"></div>
+                <div className="relative w-12 h-12 bg-gradient-to-br from-[#3C3CFF] to-[#6366F1] rounded-xl flex items-center justify-center shadow-lg">
+                  <Search className="h-6 w-6 text-white" />
+                </div>
+              </div>
+              
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-1.5">
+                  <h2 className="text-2xl font-bold text-gray-900">Find Leads</h2>
+                  <Badge className="bg-gradient-to-r from-green-400 to-emerald-500 text-white border-0 px-2.5 py-0.5 text-xs font-semibold shadow-md">
+                    <Target className="h-3 w-3 mr-1" />
+                    AI-Powered
+                  </Badge>
+                </div>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  Discover and import potential clients that match your expertise. Our AI finds the perfect opportunities for you.
+                </p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Find Leads</h2>
           </div>
-          <p className="text-gray-600 ml-[60px]">Discover and import potential clients.</p>
+          
+          <div className="ml-6">
+            <Button
+              data-help="btn-generate-leads"
+              size="lg"
+              onClick={onGenerateMore}
+              disabled={isDisabled}
+              className={`bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] hover:from-[#2D2DCC] hover:to-[#4F46E5] text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl px-6 h-12 font-semibold text-sm ${
+                isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+              }`}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              {isDisabled ? `Next batch in ${formatCountdown(timeLeft)}` : 'Generate More Leads'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -189,7 +249,7 @@ function ContextBar({ preferences, onRefine }: {
   onRefine: () => void 
 }) {
   return (
-    <Card className="mb-6 border-0 shadow-sm bg-white/50 backdrop-blur-sm">
+    <Card data-help="context-bar" className="mb-6 border-0 shadow-sm bg-white/50 backdrop-blur-sm">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -202,6 +262,7 @@ function ContextBar({ preferences, onRefine }: {
             </div>
           </div>
           <Button
+            data-help="btn-refine-preferences"
             size="sm"
             variant="outline"
             onClick={onRefine}
@@ -275,7 +336,7 @@ function FiltersBar({ filters, setFilters }: { filters: Filters, setFilters: (fi
   ].filter(Boolean).length
 
   return (
-    <Card className="mb-6 border-0 shadow-sm bg-white/50 backdrop-blur-sm">
+    <Card data-help="filters-bar" className="mb-6 border-0 shadow-sm bg-white/50 backdrop-blur-sm">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
@@ -398,15 +459,15 @@ function LeadCard({ lead, onOpen, onSave, onDismiss, isSaved }: {
               <span>{lead.postedAgo}</span>
             </div>
             {lead.location && lead.location !== 'Remote' && (
-              <div className="flex items-center space-x-1">
-                <MapPin className="h-4 w-4" />
-                <span>{lead.location}</span>
-              </div>
+            <div className="flex items-center space-x-1">
+              <MapPin className="h-4 w-4" />
+              <span>{lead.location}</span>
+            </div>
             )}
             {lead.budget && (
               <div className="text-sm text-gray-600">
                 {lead.budget}
-              </div>
+            </div>
             )}
           </div>
         </div>
@@ -418,6 +479,7 @@ function LeadCard({ lead, onOpen, onSave, onDismiss, isSaved }: {
           
           <div className="flex gap-2">
             <Button
+              data-help="btn-view-lead"
               size="sm"
               onClick={() => onOpen(lead)}
               className="bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] hover:from-[#2D2DCC] hover:to-[#4F46E5] text-white shadow-md hover:shadow-lg transition-all duration-200"
@@ -426,6 +488,7 @@ function LeadCard({ lead, onOpen, onSave, onDismiss, isSaved }: {
               {isSaved ? 'Open' : 'View'}
             </Button>
             <Button
+              data-help="btn-save-lead"
               size="sm"
               variant="outline"
               onClick={() => onSave(lead)}
@@ -686,18 +749,16 @@ export function FindLeadsSection() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div></div>
-        <div className="flex items-center space-x-3">
-          <RefreshButton 
-            refreshState={refreshState} 
-            onRefresh={handleRefresh} 
-          />
+      <div className="flex items-center justify-end">
+        <div data-help="credits-badge">
           <CreditsBadge count={credits.count} lowThreshold={credits.lowThreshold} />
         </div>
       </div>
 
-      <PageHeader />
+      <PageHeader 
+        onGenerateMore={handleRefresh}
+        refreshState={refreshState}
+      />
 
       <ContextBar 
         preferences={preferences} 
@@ -716,7 +777,7 @@ export function FindLeadsSection() {
           onSetNiche={() => setNicheModalOpen(true)}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div data-help="leads-list" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredLeads.map((lead) => (
             <LeadCard
               key={lead.id}

@@ -46,7 +46,8 @@ function convertFromDatabaseFormat(
       id: t.id,
       author: t.author,
       role: t.role,
-      quote: t.quote
+      quote: t.quote,
+      avatar: t.avatar || undefined
     })),
     contact: {
       title: portfolio.contact_title || '',

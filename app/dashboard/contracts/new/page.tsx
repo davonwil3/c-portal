@@ -1,2417 +1,1687 @@
 "use client"
 
-export const dynamic = 'force-dynamic'
-
-import { useState, useEffect, useRef } from "react"
-import { DashboardLayout } from "@/components/dashboard/layout"
+import React, { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import {
   ArrowLeft,
-  ArrowRight,
-  FileText,
-  Users,
-  Package,
-  Edit3,
+  Save,
   Eye,
   Send,
-  Save,
-  Mail,
-  Settings,
-  Crown,
-  ExternalLink,
-  Plus,
-  Copy,
-  MousePointer,
-  Loader2,
-  Trash2,
   Download,
-  Upload,
-  CheckCircle,
-  AlertCircle,
+  FileSignature,
+  Settings,
+  Pencil,
+  Image as ImageIcon,
+  Building2,
+  User,
+  DollarSign,
+  Mail,
+  Link as LinkIcon,
 } from "lucide-react"
-import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
-import NextDynamic from 'next/dynamic'
-import type SignatureCanvasType from 'react-signature-canvas'
-// react-signature-canvas is a client-only library; avoid SSR to prevent prerender errors
-const SignatureCanvas = NextDynamic(() => import('react-signature-canvas'), { ssr: false })
-import { getContractTemplates, type ContractTemplate, createContract, updateContract, getContract, type Contract, createContractTemplate, getContractTemplateByNumber, updateContractTemplate } from "@/lib/contracts"
-import { getClients as getClientsData } from "@/lib/clients"
-import { getProjectsByClient as getProjectsByClientData } from "@/lib/projects"
 import { toast } from "sonner"
-import { createClient } from '@/lib/supabase/client'
+import { DashboardLayout } from "@/components/dashboard/layout"
+import { getProjectWithClient } from "@/lib/projects"
+import { createContract, getContract, updateContract } from "@/lib/contracts"
+import { getClients } from "@/lib/clients"
+import { getCurrentAccount } from "@/lib/auth"
+import Image from "next/image"
 
 export default function NewContractPage() {
-  const searchParams = useSearchParams()
   const router = useRouter()
-  const editContractId = searchParams.get('edit')
-  const editMode = searchParams.get('mode')
+  const searchParams = useSearchParams()
+  const projectId = searchParams?.get("project")
+  const editContractId = searchParams?.get("edit")
+  const viewContractId = searchParams?.get("view")
+  const isViewMode = !!viewContractId
   const isEditMode = !!editContractId
-  const isEditingTemplate = editMode === 'template'
-
-  const [currentStep, setCurrentStep] = useState(1)
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
-  const [selectedClient, setSelectedClient] = useState<string>("")
-  const [selectedProject, setSelectedProject] = useState<string>("")
-  const [createNewProject, setCreateNewProject] = useState(false)
-  const [newProjectName, setNewProjectName] = useState("")
-  const [newProjectDueDate, setNewProjectDueDate] = useState("")
-
-  // Signature refs
-  const companySignatureRef = useRef<SignatureCanvasType | null>(null)
-  const clientSignatureRef = useRef<SignatureCanvasType | null>(null)
-
-  // Data loading states
-  const [templates, setTemplates] = useState<ContractTemplate[]>([])
-  const [clients, setClients] = useState<any[]>([])
-  const [projects, setProjects] = useState<any[]>([])
-  const [loadingTemplates, setLoadingTemplates] = useState(true)
-  const [loadingClients, setLoadingClients] = useState(false)
-  const [loadingProjects, setLoadingProjects] = useState(false)
-  const [loadingContract, setLoadingContract] = useState(false)
-
-  // Email and saving states
-  const [emailProvider, setEmailProvider] = useState<string>("")
-  const [isEmailConnected, setIsEmailConnected] = useState(false)
-  const [saveOnly, setSaveOnly] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [savingTemplate, setSavingTemplate] = useState(false)
-  const [documentName, setDocumentName] = useState("")
-
-  // Contract form data
-  const [contractData, setContractData] = useState({
-    companyName: "Your Company",
-    companyAddress: "",
-    companyLogo: null as File | null,
-    clientName: "",
-    clientEmail: "",
-    clientAddress: "",
-    projectScope: "",
-    milestones: "",
-    paymentType: "fixed", // "fixed" or "hourly"
-    paymentTerms: "",
-    depositAmount: "",
-    totalAmount: "",
-    hourlyRate: "",
-    estimatedHours: "",
-    ipRights: "client",
-    revisions: "3",
-    terminationClause: "30-day notice",
-    signatureOrder: "sequential",
-    companySignature: null as string | null,
-    clientSignature: null as string | null,
-  })
-
-  // Email settings
-  const [emailSettings, setEmailSettings] = useState({
-    subject: "Contract for Review and Signature",
-    body: "Please review and sign the attached contract.",
-    ccEmails: "",
-    bccEmails: "",
-    reminderSchedule: "3-days",
-    expirationDate: "",
-  })
-
-  const totalSteps = 5
-  const stepTitles = isEditingTemplate 
-    ? ["Edit Template", "Link Context", "Fill Fields", "Review & Edit", "Save Template"]
-    : ["Choose Template", "Link Context", "Fill Fields", "Review & Edit", "Send Contract"]
-
-  // Load existing contract or template data if in edit mode
+  
+  // Contract state
+  const [clientName, setClientName] = useState("")
+  const [projectName, setProjectName] = useState("")
+  const [contractTitle, setContractTitle] = useState("Service Agreement")
+  const [loading, setLoading] = useState(false)
+  const [account, setAccount] = useState<{ plan_tier?: string } | null>(null)
+  
+  // Load project data if coming from a project
   useEffect(() => {
-    if (isEditMode && editContractId) {
-      if (isEditingTemplate) {
-        loadExistingTemplate(editContractId)
-      } else {
-        loadExistingContract(editContractId)
+    if (projectId) {
+      loadProjectData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  // Load account data
+  useEffect(() => {
+    const loadAccount = async () => {
+      try {
+        const accountData = await getCurrentAccount()
+        if (accountData) {
+          setAccount(accountData)
+        }
+      } catch (error) {
+        console.error('Error loading account:', error)
       }
     }
-  }, [isEditMode, editContractId, isEditingTemplate])
+    loadAccount()
+  }, [])
 
-  // Load template data when a template is selected
+  // Load contract data if editing or viewing
   useEffect(() => {
-    if (selectedTemplate && selectedTemplate !== "blank") {
-      loadTemplateData(selectedTemplate)
+    if (editContractId || viewContractId) {
+      loadContractData(editContractId || viewContractId!)
     }
-  }, [selectedTemplate])
-
-  const loadExistingContract = async (contractId: string) => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editContractId, viewContractId])
+  
+  const loadProjectData = async () => {
+    if (!projectId) return
+    
     try {
-      setLoadingContract(true)
+      setLoading(true)
+      const { project, client } = await getProjectWithClient(projectId)
+      
+      if (project) {
+        // Pre-fill project name with the actual project name from database
+        setProjectName(project.name || "")
+      }
+    } catch (error) {
+      console.error("Error loading project data:", error)
+      toast.error("Failed to load project data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadContractData = async (contractId: string) => {
+    try {
+      setLoading(true)
       const contract = await getContract(contractId)
       
       if (!contract) {
-        toast.error('Contract not found')
-        router.push('/dashboard/contracts')
+        toast.error("Contract not found")
+        router.push("/dashboard/contracts")
         return
       }
 
-      // Pre-fill contract data from existing contract
-      if (contract.contract_content) {
-        const content = contract.contract_content
-        setContractData({
-          companyName: content.companyName || "Your Company",
-          companyAddress: content.companyAddress || "",
-          companyLogo: null, // Logo would need to be re-uploaded
-          clientName: content.clientName || "",
-          clientEmail: content.clientEmail || "",
-          clientAddress: content.clientAddress || "",
-          projectScope: content.projectScope || "",
-          milestones: content.milestones || "",
-          paymentType: content.paymentType || "fixed",
-          paymentTerms: content.paymentTerms || "",
-          depositAmount: content.depositAmount || "",
-          totalAmount: content.totalAmount || "",
-          hourlyRate: content.hourlyRate || "",
-          estimatedHours: content.estimatedHours || "",
-          ipRights: content.ipRights || "client",
-          revisions: content.revisions || "3",
-          terminationClause: content.terminationClause || "30-day notice",
-          signatureOrder: content.signatureOrder || "sequential",
-          companySignature: content.companySignature || null,
-          clientSignature: content.clientSignature || null,
-        })
-      }
-
-      // Set client and project selections
-      if (contract.client_id) {
-        setSelectedClient(contract.client_id)
-      }
-      if (contract.project_id) {
-        setSelectedProject(contract.project_id)
-      }
-
-      // Set document name
-      setDocumentName(contract.name || "")
-
-      // Set email settings
-      setEmailSettings({
-        subject: contract.email_subject || "Contract for Review and Signature",
-        body: contract.email_body || "Please review and sign the attached contract.",
-        ccEmails: contract.cc_emails?.join(', ') || "",
-        bccEmails: contract.bcc_emails?.join(', ') || "",
-        reminderSchedule: contract.reminder_schedule || "3-days",
-        expirationDate: contract.expiration_date ? new Date(contract.expiration_date).toISOString().split('T')[0] : "",
-      })
-
-      // Skip to step 2 for editing (since template is already chosen)
-      setCurrentStep(2)
-
-      toast.success('Contract loaded for editing')
-    } catch (error) {
-      console.error('Error loading contract:', error)
-      toast.error('Failed to load contract')
-      router.push('/dashboard/contracts')
-    } finally {
-      setLoadingContract(false)
-    }
-  }
-
-  const loadTemplateData = async (templateId: string) => {
-    try {
-      const template = templates.find(t => t.id === templateId)
-      if (template && template.template_content) {
-        const content = template.template_content
-        
-        // Populate all form fields with template data
-        setContractData({
-          companyName: content.companyName || "Your Company",
-          companyAddress: content.companyAddress || "",
-          companyLogo: null, // Logo would need to be re-uploaded
-          clientName: content.clientName || "",
-          clientEmail: content.clientEmail || "",
-          clientAddress: content.clientAddress || "",
-          projectScope: content.projectScope || "",
-          milestones: content.milestones || "",
-          paymentType: content.paymentType || "fixed",
-          paymentTerms: content.paymentTerms || "",
-          depositAmount: content.depositAmount || "",
-          totalAmount: content.totalAmount || "",
-          hourlyRate: content.hourlyRate || "",
-          estimatedHours: content.estimatedHours || "",
-          ipRights: content.ipRights || "client",
-          revisions: content.revisions || "3",
-          terminationClause: content.terminationClause || "30-day notice",
-          signatureOrder: content.signatureOrder || "sequential",
-          companySignature: content.companySignature || null,
-          clientSignature: content.clientSignature || null,
-        })
-
-        // Set document name from template
-        setDocumentName(template.name || "")
-        
-        toast.success(`Template "${template.name}" loaded successfully!`)
-      }
-    } catch (error) {
-      console.error('Error loading template data:', error)
-      toast.error('Failed to load template data')
-    }
-  }
-
-  const loadExistingTemplate = async (templateNumber: string) => {
-    try {
-      setLoadingContract(true)
+      const content = contract.contract_content || {}
       
-      // Get template directly from database by template_number
-      const template = await getContractTemplateByNumber(templateNumber)
+      // Load all contract data into state
+      setContractTitle(contract.name || "Service Agreement")
+      setProjectName(content.projectName || "")
+      setClientName(content.clientName || "")
       
-      if (!template) {
-        toast.error('Template not found')
-        router.push('/dashboard/contracts/templates')
-        return
+      // Branding
+      if (content.branding) {
+        setBrandColor(content.branding.brandColor || "#3C3CFF")
+        setAccentColor(content.branding.accentColor || "#6366F1")
+        setLogoUrl(content.branding.logoUrl || "")
+        setShowLogo(content.branding.showLogo ?? true)
+        setShowAddress(content.branding.showAddress ?? true)
       }
-
-      // Set the template as selected
-      setSelectedTemplate(template.id)
-
-      // Pre-fill contract data from template
-      if (template.template_content) {
-        const content = template.template_content
-        setContractData({
-          companyName: content.companyName || "Your Company",
-          companyAddress: content.companyAddress || "",
-          companyLogo: null,
-          clientName: content.clientName || "",
-          clientEmail: content.clientEmail || "",
-          clientAddress: content.clientAddress || "",
-          projectScope: content.projectScope || "",
-          milestones: content.milestones || "",
-          paymentType: content.paymentType || "fixed",
-          paymentTerms: content.paymentTerms || "",
-          depositAmount: content.depositAmount || "",
-          totalAmount: content.totalAmount || "",
-          hourlyRate: content.hourlyRate || "",
-          estimatedHours: content.estimatedHours || "",
-          ipRights: content.ipRights || "client",
-          revisions: content.revisions || "3",
-          terminationClause: content.terminationClause || "30-day notice",
-          signatureOrder: content.signatureOrder || "sequential",
-          companySignature: content.companySignature || null,
-          clientSignature: content.clientSignature || null,
-        })
+      
+      // Company info
+      if (content.company) {
+        setCompanyName(content.company.name || "")
+        setCompanyEmail(content.company.email || "")
+        setCompanyAddress(content.company.address || "")
       }
-
-      // Set document name from template
-      setDocumentName(template.name || "")
-
-      // Skip to step 2 for editing (since template is already chosen)
-      setCurrentStep(2)
-
-      toast.success('Template loaded for editing')
+      
+      // Client info
+      if (content.client) {
+        setClientEmail(content.client.email || "")
+        setClientCompany(content.client.company || "")
+        setClientAddress(content.client.address || "")
+        setLoadedClientName(content.client.name || "")
+      }
+      
+      // Contract specifics
+      if (content.terms) {
+        setRevisionCount(content.terms.revisionCount || "2")
+        setHourlyRate(content.terms.hourlyRate || "150")
+        setLateFee(content.terms.lateFee || "5")
+        setLateDays(content.terms.lateDays || "15")
+        setIncludeLateFee(content.terms.includeLateFee ?? true)
+        setIncludeHourlyClause(content.terms.includeHourlyClause ?? true)
+        setClientSignatureName(content.terms.clientSignatureName || "")
+        setYourName(content.terms.yourName || "")
+        setYourSignatureDate(content.terms.yourSignatureDate || "")
+        setClientSignatureDate(content.terms.clientSignatureDate || "")
+        setEstimatedCompletionDate(content.terms.estimatedCompletionDate || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+        setProjectTotal(content.terms.projectTotal || "0")
+        setPaymentSchedule(content.terms.paymentSchedule || "single")
+      }
+      
+      // Payment plan
+      if (content.paymentPlan) {
+        setPaymentPlanEnabled(content.paymentPlan.enabled || false)
+        setPaymentPlanType(content.paymentPlan.type || "50-50")
+        setCustomPaymentsCount(content.paymentPlan.customPaymentsCount || 3)
+        setCustomEqualSplit(content.paymentPlan.customEqualSplit ?? true)
+        setCustomPaymentAmounts(content.paymentPlan.customPaymentAmounts || ["0", "0", "0"])
+        setMilestonesCount(content.paymentPlan.milestonesCount || 4)
+        setMilestonesEqualSplit(content.paymentPlan.milestonesEqualSplit ?? true)
+        setMilestones(content.paymentPlan.milestones || [
+          { id: "m1", name: "Discovery", amount: "0" },
+          { id: "m2", name: "Design", amount: "0" },
+          { id: "m3", name: "Development", amount: "0" },
+          { id: "m4", name: "Launch", amount: "0" },
+        ])
+      }
+      
+      // Scope
+      if (content.scope) {
+        setDeliverables(content.scope.deliverables || "")
+        setTimeline(content.scope.timeline || "")
+      }
+      
     } catch (error) {
-      console.error('Error loading template:', error)
-      toast.error('Failed to load template')
-      router.push('/dashboard/contracts/templates')
+      console.error("Error loading contract data:", error)
+      toast.error("Failed to load contract data")
+      router.push("/dashboard/contracts")
     } finally {
-      setLoadingContract(false)
+      setLoading(false)
+    }
+  }
+  
+  // Branding
+  const [brandColor, setBrandColor] = useState("#3C3CFF")
+  const [accentColor, setAccentColor] = useState("#6366F1")
+  const [logoUrl, setLogoUrl] = useState("")
+  const [showLogo, setShowLogo] = useState(true)
+  const [showAddress, setShowAddress] = useState(true)
+  
+  // Company info
+  const [companyName, setCompanyName] = useState("")
+  const [companyEmail, setCompanyEmail] = useState("")
+  const [companyAddress, setCompanyAddress] = useState("")
+  
+  // Client info
+  const [clientEmail, setClientEmail] = useState("")
+  const [clientCompany, setClientCompany] = useState("")
+  const [clientAddress, setClientAddress] = useState("")
+  
+  // Contract specifics
+  const [revisionCount, setRevisionCount] = useState("2")
+  const [hourlyRate, setHourlyRate] = useState("150")
+  const [lateFee, setLateFee] = useState("5")
+  const [lateDays, setLateDays] = useState("15")
+  const [includeLateFee, setIncludeLateFee] = useState(true)
+  const [includeHourlyClause, setIncludeHourlyClause] = useState(true)
+  const [clientSignatureName, setClientSignatureName] = useState("")
+  const [yourName, setYourName] = useState("")
+  const [yourSignatureDate, setYourSignatureDate] = useState<string>("")
+  const [clientSignatureDate, setClientSignatureDate] = useState<string>("")
+  const [loadedClientName, setLoadedClientName] = useState<string>("")
+  const [estimatedCompletionDate, setEstimatedCompletionDate] = useState<string>(
+    new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  )
+  const [projectTotal, setProjectTotal] = useState("0")
+  const [paymentSchedule, setPaymentSchedule] = useState("single")
+  
+  // Payment plan settings (matching proposal page)
+  const [paymentPlanEnabled, setPaymentPlanEnabled] = useState(false)
+  const [paymentPlanType, setPaymentPlanType] = useState("50-50")
+  // Custom plan state
+  const [customPaymentsCount, setCustomPaymentsCount] = useState(3)
+  const [customEqualSplit, setCustomEqualSplit] = useState(true)
+  const [customPaymentAmounts, setCustomPaymentAmounts] = useState<string[]>(["0", "0", "0"])
+  // Milestone plan state
+  const [milestonesCount, setMilestonesCount] = useState(4)
+  const [milestonesEqualSplit, setMilestonesEqualSplit] = useState(true)
+  const [milestones, setMilestones] = useState<Array<{ id: string; name: string; amount: string }>>([
+    { id: "m1", name: "Discovery", amount: "0" },
+    { id: "m2", name: "Design", amount: "0" },
+    { id: "m3", name: "Development", amount: "0" },
+    { id: "m4", name: "Launch", amount: "0" },
+  ])
+  
+  // Scope & deliverables
+  const [deliverables, setDeliverables] = useState("")
+  const [timeline, setTimeline] = useState("")
+  const [showPreview, setShowPreview] = useState(false)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [sendMethod, setSendMethod] = useState<"portal" | "email" | "link" | null>(null)
+  
+  const openLogoPicker = (e?: React.MouseEvent) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    const el = document.getElementById("logoUpload") as HTMLInputElement | null
+    if (el) {
+      el.click()
     }
   }
 
-  // Update client name when client is selected
-  useEffect(() => {
-    if (selectedClient) {
-      const selectedClientData = clients.find(client => client.id === selectedClient)
-      if (selectedClientData) {
-        setContractData(prev => ({
-          ...prev,
-          clientName: selectedClientData.company || `${selectedClientData.first_name} ${selectedClientData.last_name}`,
-          clientEmail: selectedClientData.email || ""
-        }))
-      }
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setLogoUrl(reader.result as string)
     }
-  }, [selectedClient, clients])
-
-  // Set default document name
-  useEffect(() => {
-    if (contractData.clientName && !documentName.trim()) {
-      setDocumentName(`${contractData.clientName} - Contract`)
-    }
-  }, [contractData.clientName]) // Remove documentName from dependencies to prevent interference
-
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setContractData(prev => ({ ...prev, companyLogo: file }))
-    }
+    reader.readAsDataURL(file)
   }
 
-  const removeLogo = () => {
-    setContractData(prev => ({ ...prev, companyLogo: null }))
-  }
-
-  // Signature functions
-  const clearCompanySignature = () => {
-    companySignatureRef.current?.clear()
-    setContractData(prev => ({ ...prev, companySignature: null }))
-  }
-
-  const clearClientSignature = () => {
-    clientSignatureRef.current?.clear()
-    setContractData(prev => ({ ...prev, clientSignature: null }))
-  }
-
-  const saveCompanySignature = () => {
-    if (companySignatureRef.current?.isEmpty()) {
-      toast.error("Please sign before saving")
+  const saveContract = async (status: "draft" | "sent" = "draft") => {
+    // If in view mode, don't save
+    if (isViewMode) {
+      toast.info("View mode - contract cannot be saved")
       return
     }
-    const signatureData = companySignatureRef.current?.getTrimmedCanvas().toDataURL('image/png')
-    setContractData(prev => ({ ...prev, companySignature: signatureData || null }))
-    toast.success("Company signature saved")
-  }
-
-  const saveClientSignature = () => {
-    if (clientSignatureRef.current?.isEmpty()) {
-      toast.error("Please sign before saving")
-      return
+    // Build contract content JSON from all state
+    const contractContent = {
+      // Basic info
+      title: contractTitle,
+      projectName,
+      clientName,
+      
+      // Branding
+      branding: {
+        brandColor,
+        accentColor,
+        logoUrl,
+        showLogo,
+        showAddress,
+      },
+      
+      // Company info
+      company: {
+        name: companyName,
+        email: companyEmail,
+        address: companyAddress,
+      },
+      
+      // Client info
+      client: {
+        name: clientName,
+        email: clientEmail,
+        company: clientCompany,
+        address: clientAddress,
+      },
+      
+      // Contract specifics
+      terms: {
+        revisionCount,
+        hourlyRate,
+        lateFee,
+        lateDays,
+        includeLateFee,
+        includeHourlyClause,
+        clientSignatureName,
+        yourName,
+        estimatedCompletionDate,
+        projectTotal,
+        paymentSchedule,
+      },
+      
+      // Payment plan
+      paymentPlan: {
+        enabled: paymentPlanEnabled,
+        type: paymentPlanType,
+        customPaymentsCount,
+        customEqualSplit,
+        customPaymentAmounts,
+        milestonesCount,
+        milestonesEqualSplit,
+        milestones,
+        schedule: getPaymentSchedule(),
+      },
+      
+      // Scope
+      scope: {
+        deliverables,
+        timeline,
+      },
     }
-    const signatureData = clientSignatureRef.current?.getTrimmedCanvas().toDataURL('image/png')
-    setContractData(prev => ({ ...prev, clientSignature: signatureData || null }))
-    toast.success("Client signature saved")
-  }
 
-  useEffect(() => {
-    loadTemplates()
-    loadClients()
-  }, [])
+    // Try to find client_id from clientName
+    let clientId: string | undefined = undefined
+    if (clientName) {
+      try {
+        const clients = await getClients()
+        const matchingClient = clients.find(client => {
+          const fullName = `${client.first_name} ${client.last_name}`.trim()
+          const company = client.company || ""
+          return fullName === clientName || company === clientName || 
+                 client.email === clientEmail
+        })
+        if (matchingClient) {
+          clientId = matchingClient.id
+        }
+      } catch (error) {
+        console.warn("Could not find client:", error)
+      }
+    }
 
-  useEffect(() => {
-    if (selectedClient) {
-      loadProjects(selectedClient)
+    // Calculate total value
+    const totalValue = parseFloat(projectTotal || "0") || 0
+
+    // Build payment terms string
+    const paymentScheduleArray = getPaymentSchedule()
+    const paymentTerms = paymentPlanEnabled
+      ? paymentScheduleArray.map((amount, index) => 
+          `Payment ${index + 1}: $${amount.toFixed(2)}`
+        ).join(", ")
+      : `Single payment: $${totalValue.toFixed(2)}`
+
+    // Create contract data
+    const contractData = {
+      name: contractTitle || "Service Agreement",
+      description: deliverables || `Contract for ${clientName || "client"}`,
+      contract_content: contractContent,
+      contract_type: "custom" as const,
+      client_id: clientId,
+      project_id: projectId || undefined,
+      status: status,
+      total_value: totalValue > 0 ? totalValue : undefined,
+      currency: "USD",
+      payment_terms: paymentTerms,
+      start_date: estimatedCompletionDate ? new Date(estimatedCompletionDate).toISOString() : undefined,
+      metadata: {
+        revisionCount,
+        hourlyRate,
+        lateFee,
+        lateDays,
+        includeLateFee,
+        includeHourlyClause,
+      },
+    }
+
+    // Update existing contract if editing, otherwise create new
+    if (isEditMode && editContractId) {
+      const contract = await updateContract(editContractId, contractData)
+      return contract
     } else {
-      setProjects([])
+      const contract = await createContract(contractData)
+      return contract
     }
-  }, [selectedClient])
+  }
 
-  const loadTemplates = async () => {
+  const handleSaveDraft = async () => {
     try {
-      setLoadingTemplates(true)
-      const data = await getContractTemplates()
-      setTemplates(data)
+      setLoading(true)
+      await saveContract("draft")
+      toast.success("Contract saved as draft")
     } catch (error) {
-      console.error('Error loading templates:', error)
-      toast.error('Failed to load contract templates')
+      console.error("Error saving draft:", error)
+      toast.error("Failed to save contract draft")
     } finally {
-      setLoadingTemplates(false)
+      setLoading(false)
     }
   }
 
-  const loadClients = async () => {
+  const handleSendContract = () => {
+    setShowSendModal(true)
+  }
+
+  const handleConfirmSend = async () => {
     try {
-      setLoadingClients(true)
-      const data = await getClientsData()
-      setClients(data)
+      setLoading(true)
+      
+      if (sendMethod === "portal") {
+        await saveContract("sent")
+        toast.success("Contract saved to client portal")
+      } else if (sendMethod === "email") {
+        await saveContract("sent")
+        toast.success("Contract sent to client via email")
+      } else if (sendMethod === "link") {
+        await saveContract("sent")
+        toast.success("Contract link generated and copied to clipboard")
+      }
+      
+      // Navigate back to project details page if we came from a project, otherwise go to contracts page
+      if (projectId) {
+        router.push(`/dashboard/projects/${projectId}`)
+      } else {
+        router.push("/dashboard/contracts")
+      }
     } catch (error) {
-      console.error('Error loading clients:', error)
-      toast.error('Failed to load clients')
+      console.error("Error saving contract:", error)
+      toast.error("Failed to save contract")
     } finally {
-      setLoadingClients(false)
+      setLoading(false)
+      setShowSendModal(false)
+      setSendMethod(null)
     }
   }
 
-  const loadProjects = async (clientId: string) => {
-    try {
-      setLoadingProjects(true)
-      const data = await getProjectsByClientData(clientId)
-      setProjects(data)
-    } catch (error) {
-      console.error('Error loading projects:', error)
-      toast.error('Failed to load projects')
-    } finally {
-      setLoadingProjects(false)
+  // Payment schedule helpers (from proposal page)
+  const total = parseFloat(projectTotal || "0")
+  
+  const getEqualAmounts = (sum: number, count: number): number[] => {
+    const base = Math.floor((sum / count) * 100) / 100
+    const amounts = Array.from({ length: count }, () => base)
+    // distribute remainder cents
+    const remainder = Math.round(sum * 100) - Math.round(base * 100) * count
+    for (let i = 0; i < remainder; i++) {
+      amounts[i] = Math.round((amounts[i] + 0.01) * 100) / 100
     }
+    return amounts
   }
 
-  const handleNext = () => {
-    if (currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1)
+  const getPaymentSchedule = React.useCallback((): number[] => {
+    if (!paymentPlanEnabled) return [total]
+    if (paymentPlanType === "50-50") return getEqualAmounts(total, 2)
+    if (paymentPlanType === "33-33-33") return getEqualAmounts(total, 3)
+    if (paymentPlanType === "custom") {
+      if (customEqualSplit) return getEqualAmounts(total, customPaymentsCount)
+      // use user-entered amounts
+      const nums = Array.from({ length: customPaymentsCount }).map((_, i) => Number(customPaymentAmounts[i] || 0))
+      return nums
     }
-  }
+    // milestone based – use milestone amounts
+    const amounts = milestones.slice(0, milestonesCount).map(m => Number(m.amount || 0))
+    return amounts
+  }, [paymentPlanEnabled, paymentPlanType, total, customEqualSplit, customPaymentsCount, customPaymentAmounts, milestones, milestonesCount])
 
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
-
-  // Connect email provider
-  const connectEmailProvider = async (provider: string) => {
-    try {
-      // This would integrate with your email service (Gmail, Outlook, etc.)
-      // For now, we'll simulate the connection
-      setEmailProvider(provider)
-      setIsEmailConnected(true)
-      toast.success(`Connected to ${provider}`)
-    } catch (error) {
-      toast.error('Failed to connect email provider')
-    }
-  }
-
-  // Save contract to database and optionally send email
-  const handleSaveAndSend = async (saveAsDraft: boolean = false) => {
-    if (!documentName.trim()) {
-      toast.error("Please enter a document name")
-      return
-    }
-
-    if (!saveOnly && !isEmailConnected) {
-      toast.error("Please connect an email provider to send the contract")
-      return
-    }
-
-    setSending(true)
-    try {
-      // Prepare contract data for database
-      const contractContent = {
-        companyName: contractData.companyName,
-        companyAddress: contractData.companyAddress,
-        clientName: contractData.clientName,
-        clientEmail: contractData.clientEmail,
-        clientAddress: contractData.clientAddress,
-        projectScope: contractData.projectScope,
-        paymentType: contractData.paymentType,
-        paymentTerms: contractData.paymentTerms,
-        depositAmount: contractData.depositAmount,
-        totalAmount: contractData.totalAmount,
-        hourlyRate: contractData.hourlyRate,
-        estimatedHours: contractData.estimatedHours,
-        milestones: contractData.milestones,
-        ipRights: contractData.ipRights,
-        revisions: contractData.revisions,
-        terminationClause: contractData.terminationClause,
-        signatureOrder: contractData.signatureOrder,
-        companySignature: contractData.companySignature,
-        clientSignature: contractData.clientSignature,
-      }
-
-      // Prepare data for database
-      const contractDataForDB = {
-        name: documentName,
-        description: `Contract for ${contractData.clientName}`,
-        contract_content: contractContent,
-        contract_type: 'custom' as const,
-        client_id: selectedClient || undefined,
-        project_id: selectedProject || undefined,
-        status: saveAsDraft ? ('draft' as const) : ('awaiting_signature' as const),
-        total_value: contractData.paymentType === "fixed" ? parseFloat(contractData.totalAmount) || 0 : 
-                    (parseFloat(contractData.hourlyRate) || 0) * (parseFloat(contractData.estimatedHours) || 0),
-        currency: 'USD',
-        payment_terms: contractData.paymentTerms,
-        deposit_amount: parseFloat(contractData.depositAmount) || 0,
-        signer_email: contractData.clientEmail,
-        email_subject: emailSettings.subject,
-        email_body: emailSettings.body,
-        cc_emails: emailSettings.ccEmails ? [emailSettings.ccEmails] : [],
-        bcc_emails: emailSettings.bccEmails ? [emailSettings.bccEmails] : [],
-        reminder_schedule: emailSettings.reminderSchedule,
-        expiration_date: emailSettings.expirationDate ? new Date(emailSettings.expirationDate).toISOString() : undefined,
-      }
-
-      let contract: Contract
-
-      if (isEditMode && editContractId) {
-        if (isEditingTemplate) {
-          // Update existing template
-          console.log('Updating template in database...')
-          const templateData = {
-            name: documentName,
-            description: `Template: ${documentName}`,
-            template_content: contractContent,
-            template_html: generateContractDocument(contractContent),
-            template_type: 'custom' as const,
-            is_public: false,
-            is_default: false,
-            tags: ['template', 'custom'],
-            metadata: {
-              source: 'contract_creator',
-              updated_from: 'edit_template'
-            }
-          }
-          
-          // Get the template by template_number to get its ID
-          const template = await getContractTemplateByNumber(editContractId)
-          if (template) {
-            await updateContractTemplate(template.id, templateData)
-            console.log('Template updated:', template.id)
-            toast.success('Template updated successfully!')
-            router.push('/dashboard/contracts/templates')
-            return
-          } else {
-            toast.error('Template not found')
-            return
-          }
-        } else {
-          // Update existing contract
-          console.log('Updating contract in database...')
-          contract = await updateContract(editContractId, contractDataForDB)
-          console.log('Contract updated:', contract.id)
-        }
-      } else {
-        // Create new contract
-        console.log('Creating contract in database...')
-        contract = await createContract(contractDataForDB)
-        console.log('Contract created:', contract.id)
-      }
-
-      const supabase = createClient()
-
-      // Upload logo to unified storage if exists
-      if (contractData.companyLogo) {
-        console.log('Uploading company logo...')
-        const fileExt = contractData.companyLogo.name.split('.').pop()
-        const fileName = `contract-logos/${contract.id}.${fileExt}`
-        
-        // Get account and client info for unified storage path
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('account_id')
-          .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-          .single()
-        
-        const { data: contractInfo } = await supabase
-          .from('contracts')
-          .select('client_id')
-          .eq('id', contract.id)
-          .single()
-        
-        if (profile && contractInfo) {
-          const logoPath = `${profile.account_id}/clients/${contractInfo.client_id}/contracts/${contract.id}/logo.${fileExt}`
-          
-          const { data: logoData, error: uploadError } = await supabase.storage
-            .from('client-portal-content')
-            .upload(logoPath, contractData.companyLogo, {
-              cacheControl: '3600',
-              upsert: false
-            })
-          
-          if (uploadError) {
-            console.error('Error uploading logo:', uploadError)
-            toast.error('Failed to upload company logo')
-          } else {
-            console.log('Logo uploaded successfully:', logoData)
-            toast.success('Company logo uploaded')
-          }
-        }
-      }
-
-      // Generate and save contract document to storage (exactly as it appears in step 4)
-      console.log('Generating contract document...')
-      const contractDocument = generateContractDocument(contractContent)
-      console.log('Contract document generated, length:', contractDocument.length)
-      
-      const contractBlob = new Blob([contractDocument], { type: 'text/html' })
-      console.log('Contract blob created, size:', contractBlob.size)
-      
-      // Get account and client info for unified storage path
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('account_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-        .single()
-      
-      const { data: contractInfo } = await supabase
-        .from('contracts')
-        .select('client_id')
-        .eq('id', contract.id)
-        .single()
-      
-      let contractFileName = ''
-      if (profile && contractInfo) {
-        contractFileName = `${profile.account_id}/clients/${contractInfo.client_id}/contracts/${contract.id}/contract.html`
-      } else {
-        contractFileName = `contracts/${contract.id}/contract.html`
-      }
-      console.log('Contract file path:', contractFileName)
-      
-      console.log('Uploading contract document to unified storage...')
-      
-      const { data: uploadData, error: contractUploadError } = await supabase.storage
-        .from('client-portal-content')
-        .upload(contractFileName, contractBlob, {
-          contentType: 'text/html',
-          cacheControl: '3600',
-          upsert: false
-        })
-      
-      if (contractUploadError) {
-        console.error('Error uploading contract document:', contractUploadError)
-        console.error('Error details:', {
-          message: contractUploadError.message,
-          name: contractUploadError.name
-        })
-        toast.error(`Failed to upload contract document: ${contractUploadError.message}`)
-      } else {
-        console.log('Contract document uploaded successfully:', uploadData)
-        toast.success('Contract document saved to unified storage')
-      }
-
-      // Update contract with file paths
-      if (uploadData) {
-        await updateContract(contract.id, {
-          contract_html: contractFileName,
-          contract_pdf_path: contractFileName.replace('.html', '.pdf') // For future PDF generation
-        })
-      }
-
-      // Send email if not save only
-      if (!saveOnly && isEmailConnected) {
-        // This would integrate with your email service
-        // For now, we'll simulate sending
-        await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate email sending
-        toast.success("Contract sent successfully!")
-      } else {
-        toast.success("Contract saved successfully!")
-      }
-
-      // Navigate back to contracts page
-      router.push('/dashboard/contracts')
-      
-    } catch (error) {
-      console.error('Error saving contract:', error)
-      toast.error('Failed to save contract')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 1:
         return (
-          <div className="space-y-6">
+    <DashboardLayout>
+      <div className="flex h-screen bg-gray-50">
+        {/* Header - Top */}
+        <div className="fixed top-0 left-0 right-0 h-16 bg-white border-b z-50 flex items-center justify-between px-6" data-help="contract-builder-header">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.back()}
+              className="gap-2"
+              data-help="btn-back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {isEditMode ? "Edit Contract Template" : "Choose a Template"}
-              </h2>
-              <p className="text-gray-600">
-                {isEditMode 
-                  ? "This contract was created from a template. You can modify the template selection if needed."
-                  : "Select a contract template to get started, or create from scratch."
-                }
+              <h1 className="font-semibold text-gray-900">
+                {isViewMode ? "View Contract" : isEditMode ? "Edit Contract" : "New Contract"}
+              </h1>
+              <p className="text-xs text-gray-500">
+                {projectId ? `For ${projectName || "project"}` : isViewMode ? "View contract details" : isEditMode ? "Edit contract details" : "Create a service agreement"}
+              </p>
+            </div>
+            </div>
+
+          <div className="flex items-center gap-2" data-help="contract-actions">
+            <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
+              <Eye className="h-4 w-4 mr-2" />
+              Preview
+            </Button>
+            {!isViewMode && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleSaveDraft}>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Draft
+                </Button>
+                <Button size="sm" className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={handleSendContract}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Contract
+                </Button>
+              </>
+            )}
+                    </div>
+                  </div>
+
+        {/* Contract Preview - CENTER */}
+        <div className="flex-1 pt-16" data-help="contract-preview">
+          <ScrollArea className="h-full">
+            <div className="max-w-6xl mx-auto p-12">
+              <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif' }}>
+                {/* Header */}
+                <div className="flex justify-between items-start mb-8">
+                  {showLogo ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={`w-32 h-32 rounded-lg flex items-center justify-center transition-all ${
+                              logoUrl 
+                                ? 'relative cursor-pointer group border-2 border-transparent hover:border-gray-300 hover:shadow-md' 
+                                : 'border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer hover:border-gray-400 hover:bg-gray-100'
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              openLogoPicker(e)
+                            }}
+                          >
+                            {logoUrl ? (
+                              <>
+                                <img src={logoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
+                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/10 rounded-lg" />
+                                <div className="absolute top-1 right-1 bg-white/95 rounded p-1.5 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Pencil className="h-3.5 w-3.5 text-gray-700" />
+                  </div>
+                              </>
+                            ) : (
+                              <div className="text-center">
+                                <ImageIcon className="h-8 w-8 mx-auto text-gray-400 mb-1 group-hover:text-gray-500 transition-colors" />
+                                <span className="text-xs text-gray-500">Logo</span>
+                  </div>
+                            )}
+                </div>
+                        </TooltipTrigger>
+                        {logoUrl && (
+                          <TooltipContent>
+                            <p>Click to replace logo</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <div className="w-32" />
+                  )}
+                  {/* Hidden file input for logo upload */}
+                  <input
+                    id="logoUpload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                  <div className="text-right text-sm space-y-1" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    <div className="font-semibold text-gray-900">{companyName || "{your_company_name}"}</div>
+                    <div className="text-gray-600">{companyEmail || "{your_email}"}</div>
+                    {showAddress && (
+                      <div className="text-gray-600 text-xs">{companyAddress || "{your_address}"}</div>
+                                  )}
+                                </div>
+                              </div>
+
+                <div className="text-center border-b pb-6 mb-8" style={{ borderColor: accentColor }}>
+                  <h1 className="text-2xl font-normal text-gray-900 mb-2">Freelance Service Agreement</h1>
+                  <p className="text-sm text-gray-600" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    This Agreement is between <strong>{companyName || "{your_company_name}"}</strong> ("Freelancer") and <strong>{clientName || "{client_name}"}</strong> ("Client") for the project described below.
+                  </p>
+                  <p className="text-sm text-gray-600 mt-2" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    Both parties agree to the following terms.
+                  </p>
+            </div>
+
+                <div className="space-y-8 text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  {/* 1. Project Summary */}
+                    <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      1️⃣ Project Summary
+                    </h2>
+                    <p className="text-gray-700 leading-relaxed mb-3">
+                      Freelancer agrees to perform the following services for Client:
+                    </p>
+                    <div className="ml-4 space-y-2 text-gray-700">
+                      <p><strong>Project:</strong> {projectName || "{project_name}"}</p>
+                      <p><strong>Deliverables:</strong></p>
+                      {deliverables ? (
+                        <div className="whitespace-pre-wrap ml-4">{deliverables}</div>
+                      ) : (
+                        <p className="text-gray-500 italic ml-4">Custom website design (10 pages)&#10;Mobile-responsive development&#10;CMS integration&#10;SEO optimization&#10;30 days post-launch support</p>
+                      )}
+                      <p><strong>Start Date:</strong> {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                      <p><strong>Estimated Completion:</strong> {new Date(estimatedCompletionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+          </div>
+                    <p className="text-gray-700 mt-3 leading-relaxed">
+                      Any additional work outside this scope will require a new written agreement or change order.
               </p>
             </div>
 
-            {isEditMode && (
-              <Card className="bg-blue-50 border-blue-200">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <Edit3 className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Editing Mode</p>
-                      <p className="text-sm text-blue-700 mt-1">
-                        You're editing an existing contract. All fields will be pre-filled with current data.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  {/* 2. Payment Terms */}
+                            <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      2️⃣ Payment Terms
+                    </h2>
+                    <div className="space-y-3 text-gray-700 leading-relaxed">
+                      <p><strong>Total Project Fee:</strong> ${parseFloat(projectTotal || "0").toLocaleString()} USD</p>
+                      {paymentPlanEnabled ? (
+                        <>
+                          {paymentPlanType === "milestone" ? (
+                            <>
+                              <p><strong>Payment Schedule:</strong> Milestone-based billing. You will be invoiced at each milestone; no full upfront payment is required.</p>
+                              <ul className="ml-4 space-y-1 list-disc">
+                                {milestones.slice(0, milestonesCount).map((m, i) => (
+                                  <li key={m.id}>{m.name || `Milestone ${i+1}`}: ${Number(m.amount || 0).toLocaleString()} USD</li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <>
+                              <p><strong>Payment Schedule:</strong> The total fee will be paid in {getPaymentSchedule().length} payment(s) as follows:</p>
+                              <ul className="ml-4 space-y-1 list-disc">
+                                {getPaymentSchedule().map((amt, idx) => (
+                                  <li key={idx}>Payment {idx + 1}: ${amt.toLocaleString()} USD</li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <p><strong>Payment Schedule:</strong> Full payment due upon project completion.</p>
+                      )}
+                      <p>Client agrees to pay invoices by the due date shown on each invoice.</p>
+                      {includeLateFee && (
+                        <p>Late payments may incur a {lateFee}% fee after {lateDays} days overdue.</p>
+                      )}
+                      <p>Ownership of deliverables transfers to Client only after full payment has been received.</p>
+            </div>
+          </div>
 
-            {/* Start from Blank Option */}
-            <Card
-              className={`cursor-pointer transition-all ${
-                selectedTemplate === "blank" ? "ring-2 ring-[#3C3CFF] bg-[#F0F2FF]" : "hover:shadow-md"
-              }`}
-              onClick={() => {
-                setSelectedTemplate("blank")
-                // Clear all form fields for blank template
-                setContractData({
-                  companyName: "Your Company",
-                  companyAddress: "",
-                  companyLogo: null,
-                  clientName: "",
-                  clientEmail: "",
-                  clientAddress: "",
-                  projectScope: "",
-                  milestones: "",
-                  paymentType: "fixed",
-                  paymentTerms: "",
-                  depositAmount: "",
-                  totalAmount: "",
-                  hourlyRate: "",
-                  estimatedHours: "",
-                  ipRights: "client",
-                  revisions: "3",
-                  terminationClause: "30-day notice",
-                  signatureOrder: "sequential",
-                  companySignature: null,
-                  clientSignature: null,
-                })
-                setDocumentName("")
-              }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <Edit3 className="h-6 w-6 text-gray-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Start from Blank</h3>
-                    <p className="text-sm text-gray-600">Create a custom contract from scratch</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Saved Templates */}
-            {loadingTemplates ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                  {/* 3. Revisions & Changes */}
+            <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      3️⃣ Revisions & Changes
+              </h2>
+                    <div className="space-y-3 text-gray-700 leading-relaxed">
+                      <p>This agreement includes {revisionCount} revision(s) per deliverable.</p>
+                      {includeHourlyClause && (
+                        <p>Additional revisions or changes in scope will be billed at ${hourlyRate} USD per hour or a mutually agreed rate.</p>
+                      )}
+            </div>
               </div>
-            ) : templates.length > 0 ? (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Saved Templates</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Select a template to automatically populate all fields including company details, payment terms, milestones, and more. 
-                  You can then customize any field before proceeding.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {templates.map((template) => (
-                    <Card
-                      key={template.id}
-                      className={`cursor-pointer transition-all ${
-                        selectedTemplate === template.id ? "ring-2 ring-[#3C3CFF] bg-[#F0F2FF]" : "hover:shadow-md"
-                      }`}
-                      onClick={() => setSelectedTemplate(template.id)}
-                    >
-                      <CardContent className="p-6">
+
+                  {/* 4. Intellectual Property */}
+                    <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      4️⃣ Intellectual Property
+              </h2>
+                    <p className="text-gray-700 leading-relaxed mb-2">After full payment:</p>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Client owns final approved deliverables.</li>
+                      <li>Freelancer retains the right to display completed work for portfolio and marketing purposes, unless Client requests otherwise in writing.</li>
+                    </ul>
+                    </div>
+
+                  {/* 5. Confidentiality */}
+                    <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      5️⃣ Confidentiality
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Freelancer will not share or disclose Client's confidential information without written consent.</li>
+                      <li>Client will not share Freelancer's proprietary methods or materials without consent.</li>
+                    </ul>
+                    </div>
+
+                  {/* 6. Termination */}
+                    <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      6️⃣ Termination
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Either party may end this Agreement with written notice.</li>
+                      <li>Client agrees to pay for all work completed up to the termination date.</li>
+                      <li>Deposits and completed milestone payments are non-refundable once work has begun.</li>
+                    </ul>
+                        </div>
+
+                  {/* 7. Liability */}
+                    <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      7️⃣ Liability
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Freelancer provides services in good faith but cannot guarantee specific results or outcomes.</li>
+                      <li>Freelancer's total liability is limited to the amount Client has paid under this Agreement.</li>
+                    </ul>
+                    </div>
+
+                  {/* 8. Acceptance & Signatures */}
+                  <div className="border-t pt-12 mt-12" style={{ borderColor: accentColor }}>
+                    <h2 className="text-base font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Georgia, serif' }}>
+                      8️⃣ Acceptance & Signatures
+                    </h2>
+                    <p className="text-gray-700 leading-relaxed mb-6">
+                      By signing below, both parties agree to the terms of this Agreement.<br />
+                      Typing your full legal name acts as your electronic signature.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-12 mt-8">
+                      {/* Freelancer Signature */}
+                    <div>
+                        <div className="text-xs font-semibold text-gray-700 mb-4">Service Provider</div>
                         <div className="space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div className="w-10 h-10 bg-[#3C3CFF] bg-opacity-10 rounded-lg flex items-center justify-center">
-                              <FileText className="h-5 w-5 text-[#3C3CFF]" />
+                    <div>
+                            <div className="text-xs text-gray-600 mb-1">Name:</div>
+                            <div className="text-sm text-gray-900">{yourName || "Your Name"}</div>
+                    </div>
+                    <div>
+                            <div className="text-xs text-gray-600 mb-1">Date:</div>
+                            <div className="text-sm text-gray-900">
+                              {yourSignatureDate ? new Date(yourSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
                             </div>
-                            {template.is_default && <Badge className="bg-green-100 text-green-800">Default</Badge>}
+                    </div>
+                    <div>
+                            <div className="text-xs text-gray-600 mb-1">Signature:</div>
+                            <div className="text-2xl text-gray-900" style={{ fontFamily: "'Dancing Script', cursive" }}>
+                              {yourName || "Your Name"}
+                    </div>
+                        </div>
+                      </div>
+                    </div>
+
+                      {/* Client Signature */}
+                        <div>
+                        <div className="text-xs font-semibold text-gray-700 mb-4">Client</div>
+                        <div className="space-y-3">
+                        <div>
+                            <div className="text-xs text-gray-600 mb-1">Name:</div>
+                            <div className="text-sm text-gray-900">
+                              {loadedClientName && loadedClientName !== "{client_name}" ? loadedClientName : '_______________'}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-gray-600 mb-1">Date:</div>
+                            <div className="text-sm text-gray-900">
+                              {clientSignatureDate ? new Date(clientSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
+                            </div>
+                        </div>
+                          
+                        <div>
+                            <div className="text-xs text-gray-600 mb-2">Signature:</div>
+                            <div className="text-2xl text-gray-900 pb-1" style={{ fontFamily: "'Dancing Script', cursive", minHeight: '32px' }}>
+                              {clientSignatureName && clientSignatureName.trim() !== '' ? clientSignatureName : <>&nbsp;</>}
+                            </div>
+                      </div>
+                        </div>
+                        </div>
+                </div>
+            </div>
+                    </div>
+                    {account?.plan_tier === 'free' && (
+                      <div className="pt-10 mt-10 border-t border-gray-100">
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                          <span>Powered by</span>
+                          <a
+                            href="https://jolix.io"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
+                          >
+                            <Image
+                              src="/jolixlogo.png"
+                              alt="Jolix"
+                              width={18}
+                              height={18}
+                              className="object-contain"
+                            />
+                            <span>Jolix</span>
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                </div>
+            </div>
+          </ScrollArea>
+                    </div>
+
+        {/* Settings Panel - RIGHT */}
+        {!isViewMode && (
+        <div className="w-96 border-l bg-white overflow-hidden flex flex-col pt-16" data-help="contract-settings">
+          <ScrollArea className="flex-1">
+            <div className="p-6 space-y-6">
+              {/* Contract Settings Header */}
+                    <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <FileSignature className="h-5 w-5 text-[#3C3CFF]" />
+                  <h2 className="font-semibold text-gray-900">Contract Settings</h2>
+                    </div>
+              </div>
+
+              {/* Basic Info */}
+              <Accordion type="single" collapsible defaultValue="basic">
+                <AccordionItem value="basic">
+                  <AccordionTrigger className="text-sm font-medium">
+                  <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Basic Information
+                  </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="contractTitle">Contract Title</Label>
+                      <Input
+                        id="contractTitle"
+                        value={contractTitle}
+                        onChange={(e) => setContractTitle(e.target.value)}
+                        placeholder="Service Agreement"
+                      />
+                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="clientName">Client Name *</Label>
+                      <Input
+                        id="clientName"
+                        value={clientName}
+                        onChange={(e) => setClientName(e.target.value)}
+                        placeholder="John Doe"
+                          />
+                        </div>
+                    {projectId && (
+                      <div className="space-y-2">
+                        <Label htmlFor="projectNameBasic">Project Name</Label>
+                        <Input
+                          id="projectNameBasic"
+                          value={projectName}
+                          onChange={(e) => setProjectName(e.target.value)}
+                          placeholder="Enter project name"
+                        />
+                        <p className="text-xs text-gray-500">Project name from the connected project (editable)</p>
+                      </div>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Company Info */}
+                <AccordionItem value="company">
+                  <AccordionTrigger className="text-sm font-medium">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4" />
+                      Your Company
                           </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyName">Company Name</Label>
+                              <Input
+                        id="companyName"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Your Company LLC"
+                              />
+                        </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="companyEmail">Company Email</Label>
+                              <Input
+                        id="companyEmail"
+                        type="email"
+                        value={companyEmail}
+                        onChange={(e) => setCompanyEmail(e.target.value)}
+                        placeholder="hello@yourcompany.com"
+                              />
+                          </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="companyAddress">Company Address</Label>
+                        <Textarea
+                        id="companyAddress"
+                        value={companyAddress}
+                        onChange={(e) => setCompanyAddress(e.target.value)}
+                        placeholder="456 Business Ave, City, State ZIP"
+                        rows={2}
+                        />
+                      </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="showAddress">Show Address on Contract</Label>
+                      <Switch
+                        id="showAddress"
+                        checked={showAddress}
+                        onCheckedChange={setShowAddress}
+                              />
+                            </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="yourName">Your Full Name</Label>
+                              <Input
+                        id="yourName"
+                        value={yourName}
+                        onChange={(e) => setYourName(e.target.value)}
+                        placeholder="Jane Smith"
+                              />
+                            </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Scope & Deliverables */}
+                <AccordionItem value="scope">
+                  <AccordionTrigger className="text-sm font-medium">
+                    <div className="flex items-center gap-2">
+                      <FileSignature className="h-4 w-4" />
+                      Scope & Deliverables
+                          </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="projectName">Project Name</Label>
+                              <Input
+                        id="projectName"
+                        value={projectName}
+                        onChange={(e) => setProjectName(e.target.value)}
+                        placeholder="Enter project name"
+                      />
+                      <p className="text-xs text-gray-500">This will appear in the Project Summary section</p>
+                            </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="deliverables">Deliverables</Label>
+                          <Textarea
+                        id="deliverables"
+                        value={deliverables}
+                        onChange={(e) => setDeliverables(e.target.value)}
+                        placeholder="List all deliverables..."
+                        rows={6}
+                              />
+                            </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="timeline">Timeline Details</Label>
+                          <Textarea
+                        id="timeline"
+                        value={timeline}
+                        onChange={(e) => setTimeline(e.target.value)}
+                        placeholder="Describe the timeline..."
+                        rows={4}
+                          />
+                        </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="completionDate">Estimated Completion</Label>
+                      <Input
+                        id="completionDate"
+                        type="date"
+                        value={estimatedCompletionDate}
+                        onChange={(e) => setEstimatedCompletionDate(e.target.value)}
+                        />
+                      </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Payment Terms */}
+                <AccordionItem value="payment">
+                  <AccordionTrigger className="text-sm font-medium">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Payment Terms
+                      </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="projectTotal">Project Total ($)</Label>
+                      <Input
+                        id="projectTotal"
+                        type="number"
+                        value={projectTotal}
+                        onChange={(e) => setProjectTotal(e.target.value)}
+                        placeholder="5000"
+                      />
+                    </div>
+
                           <div>
-                            <h3 className="font-semibold text-gray-900">{template.name}</h3>
-                            <p className="text-sm text-gray-600 mt-1">{template.description}</p>
-                            <Badge variant="outline" className="mt-2">
-                              {template.template_type}
-                            </Badge>
-                            
-                            {/* Show populated fields */}
-                            {template.template_content && (
-                              <div className="mt-3 pt-3 border-t border-gray-100">
-                                <p className="text-xs font-medium text-gray-700 mb-2">Pre-filled fields:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {template.template_content.companyName && (
-                                    <Badge variant="secondary" className="text-xs">Company</Badge>
-                                  )}
-                                  {template.template_content.clientName && (
-                                    <Badge variant="secondary" className="text-xs">Client</Badge>
-                                  )}
-                                  {template.template_content.projectScope && (
-                                    <Badge variant="secondary" className="text-xs">Scope</Badge>
-                                  )}
-                                  {template.template_content.paymentType && (
-                                    <Badge variant="secondary" className="text-xs">Payment</Badge>
-                                  )}
-                                  {template.template_content.totalAmount && (
-                                    <Badge variant="secondary" className="text-xs">Amount</Badge>
-                                  )}
-                                  {template.template_content.milestones && (
-                                    <Badge variant="secondary" className="text-xs">Milestones</Badge>
-                                  )}
-                                </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs">Payment Plans</Label>
+                        <Switch checked={paymentPlanEnabled} onCheckedChange={setPaymentPlanEnabled} />
+                          </div>
+                      {paymentPlanEnabled && (
+                        <Select value={paymentPlanType} onValueChange={(v) => {
+                          setPaymentPlanType(v)
+                          if (v === "custom") {
+                            // initialize custom amounts
+                            const count = customPaymentsCount
+                            const equal = Math.max(Math.floor((total / count) * 100) / 100, 0)
+                            setCustomPaymentAmounts(Array.from({ length: count }, () => equal.toString()))
+                          } else if (v === "milestone") {
+                            // initialize milestones
+                            const count = milestonesCount
+                            const eq = getEqualAmounts(total, count)
+                            setMilestones(prev => Array.from({ length: count }).map((_, i) => ({
+                              id: `m${i+1}`,
+                              name: prev[i]?.name || ["Discovery", "Design", "Development", "Launch"][i] || `Milestone ${i+1}`,
+                              amount: eq[i]?.toString() || "0"
+                            })))
+                            setMilestonesEqualSplit(true)
+                          }
+                        }}>
+                          <SelectTrigger className="text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                            <SelectItem value="50-50">50/50 Split</SelectItem>
+                            <SelectItem value="33-33-33">3 Equal Payments</SelectItem>
+                            <SelectItem value="milestone">Milestone Based</SelectItem>
+                            <SelectItem value="custom">Custom Plan</SelectItem>
+                              </SelectContent>
+                            </Select>
+                      )}
+                    </div>
+
+                    {/* Custom payment plan editor */}
+                    {paymentPlanEnabled && paymentPlanType === "custom" && (
+                          <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Number of Payments</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={customPaymentsCount}
+                              onChange={(e) => {
+                                const next = Math.max(1, parseInt(e.target.value || "1"))
+                                setCustomPaymentsCount(next)
+                                const equal = Math.max(Math.floor((total / next) * 100) / 100, 0)
+                                if (customEqualSplit) {
+                                  setCustomPaymentAmounts(Array.from({ length: next }, () => equal.toString()))
+                                } else {
+                                  setCustomPaymentAmounts(Array.from({ length: next }, (_, i) => customPaymentAmounts[i] || "0"))
+                                }
+                              }}
+                              className="mt-1"
+                            />
+                              </div>
+                          <div className="flex items-end gap-2">
+                            <div className="flex items-center justify-between w-full">
+                              <Label className="text-xs">Equal Split</Label>
+                              <Switch
+                                checked={customEqualSplit}
+                                onCheckedChange={(checked) => {
+                                  setCustomEqualSplit(!!checked)
+                                  const next = customPaymentsCount
+                                  const equal = Math.max(Math.floor((total / next) * 100) / 100, 0)
+                                  if (checked) {
+                                    setCustomPaymentAmounts(Array.from({ length: next }, () => equal.toString()))
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {!customEqualSplit && (
+                          <div className="space-y-2">
+                            <Label className="text-xs">Amounts</Label>
+                            {Array.from({ length: customPaymentsCount }).map((_, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="text-xs text-gray-600 w-16">Payment {i + 1}</span>
+                                <Input
+                                  type="text"
+                                  inputMode="decimal"
+                                  pattern="[0-9]*\.?[0-9]*"
+                                  value={customPaymentAmounts[i] || ""}
+                                  onChange={(e) => {
+                                    const next = [...customPaymentAmounts]
+                                    next[i] = e.target.value
+                                    setCustomPaymentAmounts(next)
+                                  }}
+                              />
+                            </div>
+                            ))}
                               </div>
                             )}
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No saved templates</h3>
-                <p className="text-gray-600 mb-6">Create your first contract template to get started</p>
-              </div>
-            )}
+                    )}
 
-            {/* Manage Templates Link */}
-            <div className="text-center">
-              <Link
-                href="/dashboard/contracts/templates"
-                className="inline-flex items-center gap-2 text-[#3C3CFF] hover:text-[#2D2DCC] font-medium"
-              >
-                <Settings className="h-4 w-4" />
-                Manage Templates
-                <ExternalLink className="h-4 w-4" />
-              </Link>
-            </div>
-
-            {/* Template Selection Info */}
-            {selectedTemplate && selectedTemplate !== "blank" && (
-              <Card className="bg-green-50 border-green-200">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-green-800">Template Selected</p>
-                      <p className="text-sm text-green-700 mt-1">
-                        All form fields will be automatically populated with the template data. 
-                        You can customize any field before proceeding to the next step.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )
-
-      case 2:
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Link Context</h2>
-              <p className="text-gray-600">
-                {isEditMode 
-                  ? "Review and modify the client and project assignments for this contract."
-                  : "Assign this contract to a client and optionally link it to a project."
-                }
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Client Selection */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Assign Client
-                    <Badge variant="outline" className="text-red-600 border-red-200">
-                      Required
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {loadingClients ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-                    </div>
-                  ) : (
-                    <Select value={selectedClient} onValueChange={setSelectedClient}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a client" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clients.map((client) => (
-                          <SelectItem key={client.id} value={client.id}>
-                            <div>
-                              <div className="font-medium">
-                                {`${client.first_name} ${client.last_name}`}
-                                {client.company && ` / ${client.company}`}
+                    {/* Milestone payment plan editor */}
+                    {paymentPlanEnabled && paymentPlanType === "milestone" && (
+                          <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Number of Milestones</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={milestonesCount}
+                              onChange={(e) => {
+                                const next = Math.max(1, parseInt(e.target.value || "1"))
+                                setMilestonesCount(next)
+                                const eq = getEqualAmounts(total, next)
+                                if (milestonesEqualSplit) {
+                                  setMilestones(Array.from({ length: next }).map((_, i) => ({
+                                    id: `m${i+1}`,
+                                    name: milestones[i]?.name || `Milestone ${i+1}`,
+                                    amount: eq[i]?.toString() || "0"
+                                  })))
+                                } else {
+                                  setMilestones(Array.from({ length: next }).map((_, i) => ({
+                                    id: `m${i+1}`,
+                                    name: milestones[i]?.name || `Milestone ${i+1}`,
+                                    amount: milestones[i]?.amount || "0"
+                                  })))
+                                }
+                              }}
+                              className="mt-1"
+                            />
                               </div>
-                              <div className="text-sm text-gray-500">{client.email}</div>
+                          <div className="flex items-end gap-2">
+                            <div className="flex items-center justify-between w-full">
+                              <Label className="text-xs">Equal Split</Label>
+                              <Switch
+                                checked={milestonesEqualSplit}
+                                onCheckedChange={(checked) => {
+                                  setMilestonesEqualSplit(!!checked)
+                                  if (checked) {
+                                    const eq = getEqualAmounts(total, milestonesCount)
+                                    setMilestones(prev => prev.map((m, i) => ({ ...m, amount: eq[i]?.toString() || "0" })))
+                                  }
+                                }}
+                              />
                             </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Project Selection */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Link Project
-                    <Badge variant="outline" className="text-gray-600 border-gray-200">
-                      Optional
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {selectedClient ? (
-                    loadingProjects ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-                      </div>
-                    ) : projects.length > 0 ? (
-                      <Select value={selectedProject} onValueChange={setSelectedProject}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a project" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects.map((project) => (
-                            <SelectItem key={project.id} value={project.id}>
-                              <div>
-                                <div className="font-medium">{project.name}</div>
-                                <div className="text-sm text-gray-500">
-                                  {project.due_date ? `Due: ${new Date(project.due_date).toLocaleDateString()}` : 'No due date'}
-                                </div>
                               </div>
-                            </SelectItem>
+                          </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Milestones</Label>
+                          {Array.from({ length: milestonesCount }).map((_, i) => (
+                            <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                              <Input
+                                className="col-span-7"
+                                placeholder={`Milestone ${i+1} name`}
+                                value={milestones[i]?.name || ""}
+                                onChange={(e) => setMilestones(prev => {
+                                  const next = [...prev]
+                                  next[i] = next[i] || { id: `m${i+1}`, name: "", amount: "0" }
+                                  next[i].name = e.target.value
+                                  return next
+                                })}
+                              />
+                              <Input
+                                className="col-span-5"
+                                type="text"
+                                inputMode="decimal"
+                                pattern="[0-9]*\.?[0-9]*"
+                                placeholder="Amount"
+                                value={milestones[i]?.amount || ""}
+                                disabled={milestonesEqualSplit}
+                                onChange={(e) => setMilestones(prev => {
+                                  const next = [...prev]
+                                  next[i] = next[i] || { id: `m${i+1}`, name: `Milestone ${i+1}`, amount: "0" }
+                                  next[i].amount = e.target.value
+                                  return next
+                                })}
+                              />
+                        </div>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p>No projects found for this client</p>
                       </div>
-                    )
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Select a client first to see available projects</p>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )
+                    )}
 
-      case 3:
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {isEditMode ? "Edit Contract Fields" : "Fill Contract Fields"}
-              </h2>
-              <p className="text-gray-600">
-                {isEditMode 
-                  ? "Modify the contract details and terms as needed."
-                  : "Complete the contract details and terms."
-                }
-              </p>
-            </div>
-
-            {loadingContract && (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading contract data...</span>
-              </div>
-            )}
-
-            {!loadingContract && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Company Details */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Company Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="company-name">Company Name</Label>
-                      <Input
-                        id="company-name"
-                        value={contractData.companyName}
-                        onChange={(e) => setContractData({ ...contractData, companyName: e.target.value })}
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="includeLateFee">Include Late Fee</Label>
+                      <Switch
+                        id="includeLateFee"
+                        checked={includeLateFee}
+                        onCheckedChange={setIncludeLateFee}
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="company-address">Company Address</Label>
-                      <Textarea
-                        id="company-address"
-                        value={contractData.companyAddress}
-                        onChange={(e) => setContractData({ ...contractData, companyAddress: e.target.value })}
-                        placeholder="Enter your business address"
+                    {includeLateFee && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="lateFee">Late Fee (%)</Label>
+                          <Input
+                            id="lateFee"
+                            type="number"
+                            value={lateFee}
+                            onChange={(e) => setLateFee(e.target.value)}
+                            placeholder="5"
+                          />
+                  </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lateDays">Grace Period (days)</Label>
+                          <Input
+                            id="lateDays"
+                            type="number"
+                            value={lateDays}
+                            onChange={(e) => setLateDays(e.target.value)}
+                            placeholder="15"
+                          />
+                </div>
+                      </>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Revisions & Changes */}
+                <AccordionItem value="revisions">
+                  <AccordionTrigger className="text-sm font-medium">
+                    Revisions & Rates
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="revisionCount">Included Revisions</Label>
+                  <Input
+                        id="revisionCount"
+                        type="number"
+                        value={revisionCount}
+                        onChange={(e) => setRevisionCount(e.target.value)}
+                        placeholder="2"
+                  />
+                </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="includeHourlyClause">Include Hourly Rate Clause</Label>
+                    <Switch
+                        id="includeHourlyClause"
+                        checked={includeHourlyClause}
+                        onCheckedChange={setIncludeHourlyClause}
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="company-logo">Company Logo</Label>
-                      <Input
-                        id="company-logo"
+                    {includeHourlyClause && (
+                      <div className="space-y-2">
+                        <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
+                        <Input
+                          id="hourlyRate"
+                          type="number"
+                          value={hourlyRate}
+                          onChange={(e) => setHourlyRate(e.target.value)}
+                          placeholder="150"
+                        />
+                  </div>
+                )}
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Branding */}
+                <AccordionItem value="branding">
+                  <AccordionTrigger className="text-sm font-medium">
+                    Branding & Logo
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="showLogo">Show Logo</Label>
+                      <Switch
+                        id="showLogo"
+                        checked={showLogo}
+                        onCheckedChange={setShowLogo}
+                      />
+                        </div>
+                    <div className="space-y-2">
+                      <Label>Upload Logo</Label>
+                      <input
+                        id="logoUpload"
                         type="file"
                         accept="image/*"
                         onChange={handleLogoUpload}
-                        className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        className="hidden"
                       />
-                      {contractData.companyLogo && (
-                        <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                          <span>{contractData.companyLogo.name}</span>
-                          <Button variant="outline" size="sm" onClick={removeLogo}>
-                            Remove
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Client Details */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Client Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="client-name">Client Name</Label>
-                      <Input
-                        id="client-name"
-                        value={contractData.clientName}
-                        onChange={(e) => setContractData({ ...contractData, clientName: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="client-email">Client Email</Label>
-                      <Input
-                        id="client-email"
-                        type="email"
-                        value={contractData.clientEmail}
-                        onChange={(e) => setContractData({ ...contractData, clientEmail: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="client-address">Client Address</Label>
-                      <Textarea
-                        id="client-address"
-                        value={contractData.clientAddress}
-                        onChange={(e) => setContractData({ ...contractData, clientAddress: e.target.value })}
-                        placeholder="Enter client address"
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Scope & Deliverables */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Scope & Deliverables</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="project-scope">Project Scope</Label>
-                      <Textarea
-                        id="project-scope"
-                        value={contractData.projectScope}
-                        onChange={(e) => setContractData({ ...contractData, projectScope: e.target.value })}
-                        placeholder="Describe the work to be performed"
-                        rows={4}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="milestones">Milestones</Label>
-                      <Textarea
-                        id="milestones"
-                        value={contractData.milestones}
-                        onChange={(e) => setContractData({ ...contractData, milestones: e.target.value })}
-                        placeholder="List project milestones and deadlines"
-                        rows={3}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Payment Terms */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Payment Terms</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Payment Type Toggle */}
-                    <div>
-                      <Label className="text-base font-medium">Payment Structure</Label>
-                      <div className="flex items-center space-x-4 mt-2">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="payment-fixed"
-                            name="paymentType"
-                            value="fixed"
-                            checked={contractData.paymentType === "fixed"}
-                            onChange={(e) => setContractData({ ...contractData, paymentType: e.target.value })}
-                            className="h-4 w-4 text-[#3C3CFF] border-gray-300 focus:ring-[#3C3CFF]"
-                          />
-                          <Label htmlFor="payment-fixed" className="text-sm font-medium">
-                            Fixed Price
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="payment-hourly"
-                            name="paymentType"
-                            value="hourly"
-                            checked={contractData.paymentType === "hourly"}
-                            onChange={(e) => setContractData({ ...contractData, paymentType: e.target.value })}
-                            className="h-4 w-4 text-[#3C3CFF] border-gray-300 focus:ring-[#3C3CFF]"
-                          />
-                          <Label htmlFor="payment-hourly" className="text-sm font-medium">
-                            Hourly Rate
-                          </Label>
-                        </div>
-                      </div>
-                    </div>
-
-                    {contractData.paymentType === "fixed" ? (
-                      /* Fixed Price Fields */
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="deposit-amount">Deposit Amount</Label>
-                          <Input
-                            id="deposit-amount"
-                            value={contractData.depositAmount}
-                            onChange={(e) => setContractData({ ...contractData, depositAmount: e.target.value })}
-                            placeholder="$0.00"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="total-amount">Total Amount</Label>
-                          <Input
-                            id="total-amount"
-                            value={contractData.totalAmount}
-                            onChange={(e) => setContractData({ ...contractData, totalAmount: e.target.value })}
-                            placeholder="$0.00"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      /* Hourly Rate Fields */
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="hourly-rate">Hourly Rate</Label>
-                          <Input
-                            id="hourly-rate"
-                            value={contractData.hourlyRate}
-                            onChange={(e) => setContractData({ ...contractData, hourlyRate: e.target.value })}
-                            placeholder="$0.00/hour"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="estimated-hours">Estimated Hours</Label>
-                          <Input
-                            id="estimated-hours"
-                            value={contractData.estimatedHours}
-                            onChange={(e) => setContractData({ ...contractData, estimatedHours: e.target.value })}
-                            placeholder="40 hours"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <Label htmlFor="payment-terms">Payment Terms</Label>
-                      <Textarea
-                        id="payment-terms"
-                        value={contractData.paymentTerms}
-                        onChange={(e) => setContractData({ ...contractData, paymentTerms: e.target.value })}
-                        placeholder={contractData.paymentType === "fixed" ? "Net 30, payment due upon completion, etc." : "Weekly invoicing, monthly payments, etc."}
-                        rows={3}
-                      />
-                    </div>
-
-                    {/* Estimated Total for Hourly */}
-                    {contractData.paymentType === "hourly" && contractData.hourlyRate && contractData.estimatedHours && (
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <div className="text-sm font-medium text-blue-900">Estimated Total</div>
-                        <div className="text-lg font-semibold text-blue-800">
-                          ${(parseFloat(contractData.hourlyRate) * parseFloat(contractData.estimatedHours)).toFixed(2)}
-                        </div>
-                        <div className="text-xs text-blue-600">
-                          Based on {contractData.estimatedHours} hours at ${contractData.hourlyRate}/hour
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Additional Terms */}
-                <Card className="lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle>Additional Terms</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label htmlFor="ip-rights">IP/Usage Rights</Label>
-                        <Select
-                          value={contractData.ipRights}
-                          onValueChange={(value) => setContractData({ ...contractData, ipRights: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="client">Client owns all rights</SelectItem>
-                            <SelectItem value="shared">Shared ownership</SelectItem>
-                            <SelectItem value="contractor">Contractor retains rights</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="revisions">Included Revisions</Label>
-                        <Select
-                          value={contractData.revisions}
-                          onValueChange={(value) => setContractData({ ...contractData, revisions: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1 revision</SelectItem>
-                            <SelectItem value="2">2 revisions</SelectItem>
-                            <SelectItem value="3">3 revisions</SelectItem>
-                            <SelectItem value="unlimited">Unlimited</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="termination">Termination Clause</Label>
-                        <Select
-                          value={contractData.terminationClause}
-                          onValueChange={(value) => setContractData({ ...contractData, terminationClause: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="30-day notice">30-day notice</SelectItem>
-                            <SelectItem value="14-day notice">14-day notice</SelectItem>
-                            <SelectItem value="immediate">Immediate termination</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="signature-order">Signature Order</Label>
-                      <Select
-                        value={contractData.signatureOrder}
-                        onValueChange={(value) => setContractData({ ...contractData, signatureOrder: value })}
-                      >
-                        <SelectTrigger className="w-full md:w-64">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="sequential">Sequential (You first, then client)</SelectItem>
-                          <SelectItem value="simultaneous">Simultaneous (Both can sign anytime)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
-        )
-
-      case 4:
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Review & Edit Contract</h2>
-              <p className="text-gray-600">Review and edit your contract content. All fields from the previous steps are included.</p>
-            </div>
-
-            {/* Single Contract Editor */}
-            <Card className="h-[700px] flex flex-col">
-              <CardHeader className="pb-3 border-b">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Contract Editor</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
-                      <Copy className="h-4 w-4 mr-2" />
-                      Merge Tags
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <MousePointer className="h-4 w-4 mr-2" />
-                      Add Signature
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 p-0 overflow-hidden">
-                <div className="h-full overflow-y-auto">
-                  <div className="max-w-4xl mx-auto p-8 bg-white">
-                    {/* Contract Header with Logo */}
-                    <div className="text-center space-y-6 mb-8">
-                      {contractData.companyLogo && (
-                        <div className="flex justify-center">
-                          <img
-                            src={URL.createObjectURL(contractData.companyLogo)}
-                            alt="Company Logo"
-                            className="h-20 w-auto max-w-48 object-contain"
-                          />
-                        </div>
-                      )}
-                      <div>
-                        <h1 className="text-4xl font-bold text-gray-900 mb-2">CONTRACT FOR SERVICES</h1>
-                        <div className="text-lg text-gray-600">
-                          This agreement is made and entered into as of{" "}
-                          <span className="font-semibold">{new Date().toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                          })}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Parties Section */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">PARTIES</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="border-l-4 border-[#3C3CFF] pl-4">
-                          <h3 className="font-semibold text-gray-900 mb-2">COMPANY</h3>
-                          <div className="space-y-1 text-gray-700">
-                            <p className="font-medium">{contractData.companyName}</p>
-                            {contractData.companyAddress && (
-                              <p className="text-sm">{contractData.companyAddress}</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="border-l-4 border-[#3C3CFF] pl-4">
-                          <h3 className="font-semibold text-gray-900 mb-2">CLIENT</h3>
-                          <div className="space-y-1 text-gray-700">
-                            <p className="font-medium">{contractData.clientName}</p>
-                            {contractData.clientEmail && (
-                              <p className="text-sm">{contractData.clientEmail}</p>
-                            )}
-                            {contractData.clientAddress && (
-                              <p className="text-sm">{contractData.clientAddress}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Project Scope */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">1. PROJECT SCOPE</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border">
-                        <Textarea
-                          value={contractData.projectScope}
-                          onChange={(e) => setContractData({ ...contractData, projectScope: e.target.value })}
-                          placeholder="Describe the work to be performed, deliverables, and project objectives..."
-                          className="min-h-[120px] border-0 bg-transparent resize-none focus:ring-0 text-gray-700"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Payment Terms */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">2. PAYMENT TERMS</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border space-y-4">
-                        {contractData.paymentType === "fixed" ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
-                              <Input
-                                value={contractData.totalAmount}
-                                onChange={(e) => setContractData({ ...contractData, totalAmount: e.target.value })}
-                                placeholder="$0.00"
-                                className="border-0 bg-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Deposit Amount</label>
-                              <Input
-                                value={contractData.depositAmount}
-                                onChange={(e) => setContractData({ ...contractData, depositAmount: e.target.value })}
-                                placeholder="$0.00"
-                                className="border-0 bg-white"
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate</label>
-                              <Input
-                                value={contractData.hourlyRate}
-                                onChange={(e) => setContractData({ ...contractData, hourlyRate: e.target.value })}
-                                placeholder="$0.00/hour"
-                                className="border-0 bg-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Hours</label>
-                              <Input
-                                value={contractData.estimatedHours}
-                                onChange={(e) => setContractData({ ...contractData, estimatedHours: e.target.value })}
-                                placeholder="40 hours"
-                                className="border-0 bg-white"
-                              />
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                          <Textarea
-                            value={contractData.paymentTerms}
-                            onChange={(e) => setContractData({ ...contractData, paymentTerms: e.target.value })}
-                            placeholder={contractData.paymentType === "fixed" ? "Net 30, payment due upon completion, etc." : "Weekly invoicing, monthly payments, etc."}
-                            className="min-h-[80px] border-0 bg-white resize-none focus:ring-0"
-                          />
-                        </div>
-                        {contractData.paymentType === "hourly" && contractData.hourlyRate && contractData.estimatedHours && (
-                          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                            <div className="text-sm font-medium text-blue-900">Estimated Total</div>
-                            <div className="text-lg font-semibold text-blue-800">
-                              ${(parseFloat(contractData.hourlyRate) * parseFloat(contractData.estimatedHours)).toFixed(2)}
-                            </div>
-                            <div className="text-xs text-blue-600">
-                              Based on {contractData.estimatedHours} hours at ${contractData.hourlyRate}/hour
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Deliverables & Milestones */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">3. DELIVERABLES & MILESTONES</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border">
-                        <Textarea
-                          value={contractData.milestones}
-                          onChange={(e) => setContractData({ ...contractData, milestones: e.target.value })}
-                          placeholder="List project milestones, deliverables, and deadlines..."
-                          className="min-h-[120px] border-0 bg-transparent resize-none focus:ring-0 text-gray-700"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Intellectual Property */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">4. INTELLECTUAL PROPERTY</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border">
-                        <Select
-                          value={contractData.ipRights}
-                          onValueChange={(value) => setContractData({ ...contractData, ipRights: value })}
-                        >
-                          <SelectTrigger className="border-0 bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="client">Client owns all rights</SelectItem>
-                            <SelectItem value="shared">Shared ownership</SelectItem>
-                            <SelectItem value="contractor">Contractor retains rights</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Additional Terms */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">5. ADDITIONAL TERMS</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Included Revisions</label>
-                            <Select
-                              value={contractData.revisions}
-                              onValueChange={(value) => setContractData({ ...contractData, revisions: value })}
-                            >
-                              <SelectTrigger className="border-0 bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 revision</SelectItem>
-                                <SelectItem value="2">2 revisions</SelectItem>
-                                <SelectItem value="3">3 revisions</SelectItem>
-                                <SelectItem value="unlimited">Unlimited</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Termination Clause</label>
-                            <Select
-                              value={contractData.terminationClause}
-                              onValueChange={(value) => setContractData({ ...contractData, terminationClause: value })}
-                            >
-                              <SelectTrigger className="border-0 bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="30-day notice">30-day notice</SelectItem>
-                                <SelectItem value="14-day notice">14-day notice</SelectItem>
-                                <SelectItem value="immediate">Immediate termination</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Signature Section */}
-                    <div className="mb-8">
-                      <h2 className="text-xl font-bold text-gray-900 mb-4">6. SIGNATURES</h2>
-                      <div className="bg-gray-50 p-6 rounded-lg border">
-                        <p className="text-gray-700 mb-4">
-                          This contract requires signatures from both parties. 
-                          {contractData.signatureOrder === "sequential" 
-                            ? " Signatures will be collected sequentially (Company first, then Client)." 
-                            : " Both parties may sign simultaneously."}
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Company Signature */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-gray-900">Company Signature</h3>
-                              <div className="flex gap-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={clearCompanySignature}
-                                  className="h-8 px-3"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={saveCompanySignature}
-                                  className="h-8 px-3"
-                                >
-                                  <Save className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="border-2 border-gray-300 rounded-lg bg-white">
-                              <SignatureCanvas
-                                ref={companySignatureRef}
-                                canvasProps={{
-                                  className: 'w-full h-32 rounded-lg'
-                                }}
-                                backgroundColor="white"
-                              />
-                            </div>
-                            {contractData.companySignature && (
-                              <div className="flex items-center gap-2 text-sm text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                <span>Company signature saved</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Client Signature */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-gray-900">Client Signature</h3>
-                              <div className="flex gap-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={clearClientSignature}
-                                  className="h-8 px-3"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={saveClientSignature}
-                                  className="h-8 px-3"
-                                >
-                                  <Save className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="border-2 border-gray-300 rounded-lg bg-white">
-                              <SignatureCanvas
-                                ref={clientSignatureRef}
-                                canvasProps={{
-                                  className: 'w-full h-32 rounded-lg'
-                                }}
-                                backgroundColor="white"
-                              />
-                            </div>
-                            {contractData.clientSignature && (
-                              <div className="flex items-center gap-2 text-sm text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                <span>Client signature saved</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Contract Footer */}
-                    <div className="text-center text-sm text-gray-500 border-t pt-6">
-                      <p>This contract is valid and binding upon both parties upon signature.</p>
-                      <p className="mt-1">Generated on {new Date().toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Branding Notice */}
-            <Card className="bg-amber-50 border-amber-200">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <Crown className="h-5 w-5 text-amber-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">Free Plan Notice</p>
-                    <p className="text-sm text-amber-700">
-                      Contracts on the free plan include a "Powered by ClientPortalHQ" watermark.
-                      <Link href="/pricing" className="underline ml-1">
-                        Upgrade to remove
-                      </Link>
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )
-
-      case 5:
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {isEditingTemplate ? "Save Template" : "Save & Send Contract"}
-              </h2>
-              <p className="text-gray-600">
-                {isEditingTemplate 
-                  ? "Review and save your template changes."
-                  : "Configure document settings and send your contract for signature."
-                }
-              </p>
-            </div>
-
-            {/* Document Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Document Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="document-name">Document Name</Label>
-                  <Input
-                    id="document-name"
-                    value={documentName}
-                    onChange={(e) => setDocumentName(e.target.value)}
-                    placeholder="Enter document name"
-                  />
-                </div>
-                {!isEditingTemplate && (
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="save-only"
-                      checked={saveOnly}
-                      onCheckedChange={setSaveOnly}
-                    />
-                    <Label htmlFor="save-only">Save to client portal and database (don't send email)</Label>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {!isEditingTemplate && !saveOnly && (
-              <>
-                {/* Email Provider Connection */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Mail className="h-5 w-5" />
-                      Email Provider
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {!isEmailConnected ? (
-                      <div className="space-y-4">
-                        <p className="text-sm text-gray-600">Connect an email provider to send contracts directly to clients.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <Button
-                            variant="outline"
-                            onClick={() => connectEmailProvider('Gmail')}
-                            className="flex items-center gap-2"
-                          >
-                            <Mail className="h-4 w-4" />
-                            Connect Gmail
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => connectEmailProvider('Outlook')}
-                            className="flex items-center gap-2"
-                          >
-                            <Mail className="h-4 w-4" />
-                            Connect Outlook
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5 text-green-600" />
-                          <span className="text-sm font-medium text-green-800">
-                            Connected to {emailProvider}
-                          </span>
-                        </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setIsEmailConnected(false)}
+                        onClick={openLogoPicker}
+                        className="w-full"
                         >
-                          Disconnect
+                        Choose File
                         </Button>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+                    </div>
+          </ScrollArea>
+                    </div>
+        )}
+      </div>
 
-                {/* Email Configuration */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Mail className="h-5 w-5" />
-                      Email Settings
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="email-subject">Email Subject</Label>
-                      <Input
-                        id="email-subject"
-                        value={emailSettings.subject}
-                        onChange={(e) => setEmailSettings({ ...emailSettings, subject: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="email-body">Email Body</Label>
-                      <Textarea
-                        id="email-body"
-                        value={emailSettings.body}
-                        onChange={(e) => setEmailSettings({ ...emailSettings, body: e.target.value })}
-                        rows={4}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="cc-emails">CC Emails</Label>
-                        <Input
-                          id="cc-emails"
-                          value={emailSettings.ccEmails}
-                          onChange={(e) => setEmailSettings({ ...emailSettings, ccEmails: e.target.value })}
-                          placeholder="email@example.com"
-                        />
+      {/* Preview Modal */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+            <DialogTitle>Contract Preview</DialogTitle>
+          </DialogHeader>
+          
+          {/* Banner */}
+          <div className="px-6 pt-4 pb-2 bg-blue-50 border-b border-blue-200 flex-shrink-0">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <Eye className="h-4 w-4" />
+              <p className="font-medium">This is how it will look to the client</p>
                       </div>
-                      <div>
-                        <Label htmlFor="bcc-emails">BCC Emails</Label>
-                        <Input
-                          id="bcc-emails"
-                          value={emailSettings.bccEmails}
-                          onChange={(e) => setEmailSettings({ ...emailSettings, bccEmails: e.target.value })}
-                          placeholder="email@example.com"
-                        />
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
 
-                {/* Advanced Options */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5" />
-                      Advanced Options
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="reminder-schedule">
-                        Reminder Schedule
-                        <Badge className="ml-2 bg-purple-100 text-purple-800">Premium</Badge>
-                      </Label>
-                      <Select
-                        value={emailSettings.reminderSchedule}
-                        onValueChange={(value) => setEmailSettings({ ...emailSettings, reminderSchedule: value })}
-                        disabled
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1-day">Daily reminders</SelectItem>
-                          <SelectItem value="3-days">Every 3 days</SelectItem>
-                          <SelectItem value="weekly">Weekly reminders</SelectItem>
-                          <SelectItem value="none">No reminders</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="expiration-date">Expiration Date</Label>
-                      <Input
-                        id="expiration-date"
-                        type="date"
-                        value={emailSettings.expirationDate}
-                        onChange={(e) => setEmailSettings({ ...emailSettings, expirationDate: e.target.value })}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Email Preview */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Email Preview</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">To: {contractData.clientEmail || "client@example.com"}</span>
-                        <span className="text-gray-500">From: you@yourcompany.com</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="font-medium">Subject: </span>
-                        {emailSettings.subject}
-                      </div>
-                      <Separator />
-                      <div className="text-sm whitespace-pre-wrap">{emailSettings.body}</div>
-                      <div className="text-sm text-gray-500">
-                        📎 Contract attached: {documentName || "Contract"}.pdf
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-
-            {/* Save Options */}
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <Save className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">Document will be saved to:</p>
-                    <ul className="text-sm text-blue-700 mt-1 space-y-1">
-                      <li>• Database: Contract details and content</li>
-                      
-                      {saveOnly ? (
-                        <li>• Portal: Ready for client access </li>
+          {/* Contract Preview Content */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="p-12">
+              <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif' }}>
+                {/* Header */}
+                <div className="flex justify-between items-start mb-8">
+                  {showLogo ? (
+                    <div className="w-32 h-32 rounded-lg flex items-center justify-center border-2 border-gray-300 bg-gray-50">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
                       ) : (
-                        <><li>• Email: Sent to client for signature</li><li>• Portal: Ready for client access </li></>
+                        <div className="text-center">
+                          <ImageIcon className="h-8 w-8 mx-auto text-gray-400 mb-1" />
+                          <span className="text-xs text-gray-500">Logo</span>
+                      </div>
                       )}
-                    </ul>
+                    </div>
+                  ) : (
+                    <div className="w-32" />
+                  )}
+                  <div className="text-right text-sm space-y-1" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    <div className="font-semibold text-gray-900">{companyName || "{your_company_name}"}</div>
+                    <div className="text-gray-600">{companyEmail || "{your_email}"}</div>
+                    {showAddress && (
+                      <div className="text-gray-600 text-xs">{companyAddress || "{your_address}"}</div>
+                    )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        )
 
-      default:
-        return null
-    }
-  }
-
-  // Generate contract document exactly as it appears in step 4
-  const generateContractDocument = (content: any) => {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${documentName}</title>
-    <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            line-height: 1.6; 
-            margin: 0; 
-            padding: 0;
-            background-color: #f8fafc;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            min-height: 100vh;
-        }
-        .header { 
-            text-align: center; 
-            margin-bottom: 40px; 
-            padding: 40px 20px 20px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #111827;
-            margin-bottom: 10px;
-        }
-        .header p {
-            font-size: 1.125rem;
-            color: #6b7280;
-        }
-        .content {
-            padding: 0 40px 40px;
-        }
-        .section { 
-            margin-bottom: 32px; 
-        }
-        .section h2 { 
-            color: #111827; 
-            border-bottom: 2px solid #3C3CFF; 
-            padding-bottom: 8px; 
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-        .parties { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 24px; 
-            margin-bottom: 32px; 
-        }
-        .party { 
-            border-left: 4px solid #3C3CFF; 
-            padding-left: 16px; 
-        }
-        .party h3 {
-            font-weight: 600;
-            color: #111827;
-            margin-bottom: 8px;
-        }
-        .party p {
-            color: #374151;
-            margin-bottom: 4px;
-        }
-        .party .name {
-            font-weight: 500;
-            color: #111827;
-        }
-        .content-box {
-            background-color: #f9fafb;
-            padding: 24px;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-        }
-        .content-box p {
-            color: #374151;
-            margin: 0;
-        }
-        .payment-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-        .payment-field {
-            margin-bottom: 16px;
-        }
-        .payment-field label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #374151;
-            margin-bottom: 4px;
-        }
-        .payment-field input {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: white;
-            font-size: 0.875rem;
-        }
-        .payment-field textarea {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: white;
-            font-size: 0.875rem;
-            resize: vertical;
-            min-height: 80px;
-        }
-        .estimated-total {
-            background-color: #dbeafe;
-            border: 1px solid #93c5fd;
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 16px;
-        }
-        .estimated-total .label {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #1e40af;
-        }
-        .estimated-total .amount {
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: #1e3a8a;
-        }
-        .estimated-total .details {
-            font-size: 0.75rem;
-            color: #3b82f6;
-        }
-        .signature-section {
-            margin-top: 32px;
-        }
-        .signature-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-        }
-        .signature-area {
-            border: 2px dashed #d1d5db;
-            border-radius: 8px;
-            padding: 24px;
-            text-align: center;
-            background: white;
-        }
-        .signature-area h3 {
-            font-weight: 600;
-            color: #111827;
-            margin-bottom: 8px;
-        }
-        .signature-area p {
-            color: #6b7280;
-            font-size: 0.875rem;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 24px;
-            border-top: 1px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 0.875rem;
-        }
-        @media (max-width: 768px) {
-            .parties, .payment-grid, .signature-grid {
-                grid-template-columns: 1fr;
-            }
-            .content {
-                padding: 0 20px 40px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>CONTRACT FOR SERVICES</h1>
-            <p>This agreement is made and entered into as of ${new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            })}</p>
+                <div className="text-center border-b pb-6 mb-8" style={{ borderColor: accentColor }}>
+                  <h1 className="text-2xl font-normal text-gray-900 mb-2">Freelance Service Agreement</h1>
+                  <p className="text-sm text-gray-600" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    This Agreement is between <strong>{companyName || "{your_company_name}"}</strong> ("Freelancer") and <strong>{clientName || "{client_name}"}</strong> ("Client") for the project described below.
+                  </p>
+                  <p className="text-sm text-gray-600 mt-2" style={{ fontFamily: 'Inter, sans-serif' }}>
+                    Both parties agree to the following terms.
+                  </p>
         </div>
 
-        <div class="content">
-            <div class="section">
-                <h2>PARTIES</h2>
-                <div class="parties">
-                    <div class="party">
-                        <h3>COMPANY</h3>
-                        <p class="name">${content.companyName}</p>
-                        ${content.companyAddress ? `<p>${content.companyAddress}</p>` : ''}
+                <div className="space-y-8 text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  {/* 1. Project Summary */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      1️⃣ Project Summary
+                    </h2>
+                    <p className="text-gray-700 leading-relaxed mb-3">
+                      Freelancer agrees to perform the following services for Client:
+                    </p>
+                    <div className="ml-4 space-y-2 text-gray-700">
+                      <p><strong>Project:</strong> {projectName || "{project_name}"}</p>
+                      <p><strong>Deliverables:</strong></p>
+                      {deliverables ? (
+                        <div className="whitespace-pre-wrap ml-4">{deliverables}</div>
+                      ) : (
+                        <p className="text-gray-500 italic ml-4">Custom website design (10 pages)&#10;Mobile-responsive development&#10;CMS integration&#10;SEO optimization&#10;30 days post-launch support</p>
+                      )}
+                      <p><strong>Start Date:</strong> {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                      <p><strong>Estimated Completion:</strong> {new Date(estimatedCompletionDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                     </div>
-                    <div class="party">
-                        <h3>CLIENT</h3>
-                        <p class="name">${content.clientName}</p>
-                        ${content.clientEmail ? `<p>${content.clientEmail}</p>` : ''}
-                        ${content.clientAddress ? `<p>${content.clientAddress}</p>` : ''}
+                    <p className="text-gray-700 mt-3 leading-relaxed">
+                      Any additional work outside this scope will require a new written agreement or change order.
+                    </p>
                     </div>
+
+                  {/* 2. Payment Terms */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      2️⃣ Payment Terms
+                    </h2>
+                    <div className="space-y-3 text-gray-700 leading-relaxed">
+                      <p><strong>Total Project Fee:</strong> ${parseFloat(projectTotal || "0").toLocaleString()} USD</p>
+                      {paymentPlanEnabled ? (
+                        <>
+                          {paymentPlanType === "milestone" ? (
+                            <>
+                              <p><strong>Payment Schedule:</strong> Milestone-based billing. You will be invoiced at each milestone; no full upfront payment is required.</p>
+                              <ul className="ml-4 space-y-1 list-disc">
+                                {milestones.slice(0, milestonesCount).map((m, i) => (
+                                  <li key={m.id}>{m.name || `Milestone ${i+1}`}: ${Number(m.amount || 0).toLocaleString()} USD</li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <>
+                              <p><strong>Payment Schedule:</strong> The total fee will be paid in {getPaymentSchedule().length} payment(s) as follows:</p>
+                              <ul className="ml-4 space-y-1 list-disc">
+                                {getPaymentSchedule().map((amt, idx) => (
+                                  <li key={idx}>Payment {idx + 1}: ${amt.toLocaleString()} USD</li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <p><strong>Payment Schedule:</strong> Full payment due upon project completion.</p>
+                      )}
+                      <p>Client agrees to pay invoices by the due date shown on each invoice.</p>
+                      {includeLateFee && (
+                        <p>Late payments may incur a {lateFee}% fee after {lateDays} days overdue.</p>
+                      )}
+                      <p>Ownership of deliverables transfers to Client only after full payment has been received.</p>
                 </div>
             </div>
 
-            <div class="section">
-                <h2>1. PROJECT SCOPE</h2>
-                <div class="content-box">
-                    <p>${content.projectScope || 'Project scope to be defined...'}</p>
+                  {/* 3. Revisions & Changes */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      3️⃣ Revisions & Changes
+                    </h2>
+                    <div className="space-y-3 text-gray-700 leading-relaxed">
+                      <p>This agreement includes {revisionCount} revision(s) per deliverable.</p>
+                      {includeHourlyClause && (
+                        <p>Additional revisions or changes in scope will be billed at ${hourlyRate} USD per hour or a mutually agreed rate.</p>
+                      )}
                 </div>
             </div>
 
-            <div class="section">
-                <h2>2. PAYMENT TERMS</h2>
-                <div class="content-box">
-                    ${content.paymentType === "fixed" ? `
-                        <div class="payment-grid">
-                            <div class="payment-field">
-                                <label>Total Amount</label>
-                                <input type="text" value="${content.totalAmount || '$0.00'}" readonly />
+                  {/* 4. Intellectual Property */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      4️⃣ Intellectual Property
+                    </h2>
+                    <p className="text-gray-700 leading-relaxed mb-2">After full payment:</p>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Client owns final approved deliverables.</li>
+                      <li>Freelancer retains the right to display completed work for portfolio and marketing purposes, unless Client requests otherwise in writing.</li>
+                    </ul>
                             </div>
-                            <div class="payment-field">
-                                <label>Deposit Amount</label>
-                                <input type="text" value="${content.depositAmount || '$0.00'}" readonly />
+
+                  {/* 5. Confidentiality */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      5️⃣ Confidentiality
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Freelancer will not share or disclose Client's confidential information without written consent.</li>
+                      <li>Client will not share Freelancer's proprietary methods or materials without consent.</li>
+                    </ul>
                             </div>
+
+                  {/* 6. Termination */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      6️⃣ Termination
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Either party may end this Agreement with written notice.</li>
+                      <li>Client agrees to pay for all work completed up to the termination date.</li>
+                      <li>Deposits and completed milestone payments are non-refundable once work has begun.</li>
+                    </ul>
                         </div>
-                    ` : `
-                        <div class="payment-grid">
-                            <div class="payment-field">
-                                <label>Hourly Rate</label>
-                                <input type="text" value="${content.hourlyRate || '$0.00'}/hour" readonly />
+
+                  {/* 7. Liability */}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+                      7️⃣ Liability
+                    </h2>
+                    <ul className="ml-4 space-y-2 text-gray-700 list-disc">
+                      <li>Freelancer provides services in good faith but cannot guarantee specific results or outcomes.</li>
+                      <li>Freelancer's total liability is limited to the amount Client has paid under this Agreement.</li>
+                    </ul>
                             </div>
-                            <div class="payment-field">
-                                <label>Estimated Hours</label>
-                                <input type="text" value="${content.estimatedHours || '0'} hours" readonly />
-                            </div>
-                        </div>
-                        ${content.hourlyRate && content.estimatedHours ? `
-                            <div class="estimated-total">
-                                <div class="label">Estimated Total</div>
-                                <div class="amount">$${(parseFloat(content.hourlyRate) * parseFloat(content.estimatedHours)).toFixed(2)}</div>
-                                <div class="details">Based on ${content.estimatedHours} hours at $${content.hourlyRate}/hour</div>
-                            </div>
-                        ` : ''}
-                    `}
-                    <div class="payment-field" style="margin-top: 16px;">
-                        <label>Payment Terms</label>
-                        <textarea readonly>${content.paymentTerms || ''}</textarea>
-                    </div>
-                </div>
-            </div>
 
-            <div class="section">
-                <h2>3. DELIVERABLES & MILESTONES</h2>
-                <div class="content-box">
-                    <p>${content.milestones || 'Project milestones to be defined...'}</p>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>4. INTELLECTUAL PROPERTY</h2>
-                <div class="content-box">
-                    <p>${content.ipRights === "client" ? "All work product will be owned by the Client upon full payment." : 
-                        content.ipRights === "shared" ? "Intellectual property will be shared between parties." : 
-                        "Contractor retains all intellectual property rights."}</p>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>5. ADDITIONAL TERMS</h2>
-                <div class="content-box">
-                    <p><strong>Included Revisions:</strong> ${content.revisions} revision${content.revisions !== "1" ? "s" : ""}</p>
-                    <p><strong>Termination:</strong> Either party may terminate this agreement with ${content.terminationClause}</p>
-                </div>
-            </div>
-
-            <div class="section signature-section">
-                <h2>6. SIGNATURES</h2>
-                <p style="margin-bottom: 16px; color: #374151;">
-                    This contract requires signatures from both parties. 
-                    ${content.signatureOrder === "sequential" 
-                        ? " Signatures will be collected sequentially (Company first, then Client)." 
-                        : " Both parties may sign simultaneously."}
-                </p>
-                
-                <div class="signature-grid">
-                    <div class="signature-area">
-                        <h3>Company Signature</h3>
-                        ${content.companySignature ? `<img src="${content.companySignature}" alt="Company Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
-                    </div>
+                  {/* 8. Acceptance & Signatures */}
+                  <div className="border-t pt-12 mt-12" style={{ borderColor: accentColor }}>
+                    <h2 className="text-base font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Georgia, serif' }}>
+                      8️⃣ Acceptance & Signatures
+                    </h2>
+                    <p className="text-gray-700 leading-relaxed mb-6">
+                      By signing below, both parties agree to the terms of this Agreement.<br />
+                      Typing your full legal name acts as your electronic signature.
+                    </p>
                     
-                    <div class="signature-area">
-                        <h3>Client Signature</h3>
-                        ${content.clientSignature ? `<img src="${content.clientSignature}" alt="Client Signature" style="max-width: 200px; margin-top: 8px;" />` : '<p>Signature required</p>'}
+                    <div className="grid grid-cols-2 gap-12 mt-8">
+                      {/* Freelancer Signature */}
+                      <div>
+                        <div className="text-xs font-semibold text-gray-700 mb-4">Service Provider</div>
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Name:</div>
+                            <div className="text-sm text-gray-900">{yourName || "Your Name"}</div>
+                            </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Date:</div>
+                            <div className="text-sm text-gray-900">
+                              {yourSignatureDate ? new Date(yourSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
+                            </div>
+                        </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Signature:</div>
+                            <div className="text-2xl text-gray-900" style={{ fontFamily: "'Dancing Script', cursive" }}>
+                              {yourName || "Your Name"}
+                            </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="footer">
-            <p>This contract is valid and binding upon both parties upon signature.</p>
-            <p style="margin-top: 4px;">Generated on ${new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            })}</p>
-        </div>
-    </div>
-</body>
-</html>
-    `
-  }
-
-  const saveAsTemplate = async () => {
-    if (!documentName.trim()) {
-      toast.error('Please enter a document name before saving as template')
-      return
-    }
-
-    try {
-      setSavingTemplate(true)
-      
-      // Generate contract HTML content
-      const htmlContent = generateContractDocument(contractData)
-      
-      // Create template data
-      const templateData = {
-        name: documentName,
-        description: `Template created from ${documentName}`,
-        template_content: contractData,
-        template_html: htmlContent,
-        template_type: 'custom' as const,
-        is_public: false,
-        is_default: false,
-        tags: ['template', 'custom'],
-        metadata: {
-          source: 'contract_creator',
-          created_from: 'new_contract_page'
-        }
-      }
-
-      // Save template to database
-      const newTemplate = await createContractTemplate(templateData)
-      
-      toast.success('Template saved successfully!')
-      
-      // Refresh templates list so it appears in step 1
-      await loadTemplates()
-      
-    } catch (error) {
-      console.error('Error saving template:', error)
-      toast.error('Failed to save template')
-    } finally {
-      setSavingTemplate(false)
-    }
-  }
-
-  const handleDownloadPDF = async () => {
-    // Implement PDF download functionality
-  }
-
-  return (
-    <DashboardLayout>
-      <div className="max-w-6xl mx-auto">
-        {/* Progress Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/dashboard/contracts" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Contracts
-            </Link>
-            <div className="text-sm text-gray-500">
-              {isEditMode 
-                ? (isEditingTemplate ? "Editing Template" : "Editing Contract") 
-                : `Step ${currentStep} of ${totalSteps}`}
+                      {/* Client Signature */}
+                      <div>
+                        <div className="text-xs font-semibold text-gray-700 mb-4">Client</div>
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Name:</div>
+                            <div className="text-sm text-gray-900">
+                              {loadedClientName && loadedClientName !== "{client_name}" ? loadedClientName : '_______________'}
+                            </div>
+                </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Date:</div>
+                            <div className="text-sm text-gray-900">
+                              {clientSignatureDate ? new Date(clientSignatureDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '_______________'}
+                            </div>
             </div>
-          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Signature:</div>
+                            <div className="text-2xl text-gray-900 pb-1" style={{ fontFamily: "'Dancing Script', cursive", minHeight: '32px' }}>
+                              {clientSignatureName && clientSignatureName.trim() !== '' ? clientSignatureName : <>&nbsp;</>}
+                </div>
+            </div>
+                </div>
+            </div>
+                    </div>
+                    </div>
+                    {account?.plan_tier === 'free' && (
+                      <div className="pt-10 mt-10 border-t border-gray-100">
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                          <span>Powered by</span>
+                          <a
+                            href="https://jolix.io"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
+                          >
+                            <Image
+                              src="/jolixlogo.png"
+                              alt="Jolix"
+                              width={18}
+                              height={18}
+                              className="object-contain"
+                            />
+                            <span>Jolix</span>
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                </div>
+            </div>
+        </div>
+        </div>
+        </DialogContent>
+      </Dialog>
 
-          {/* Progress Bar */}
-          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-            <div
-              className="bg-[#3C3CFF] h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-            />
-          </div>
-
-          {/* Step Indicators */}
-          <div className="flex justify-between">
-            {stepTitles.map((title, index) => (
-              <div
-                key={index}
-                className={`flex flex-col items-center ${
-                  index + 1 <= currentStep ? "text-[#3C3CFF]" : "text-gray-400"
+      {/* Send Contract Modal */}
+      <Dialog open={showSendModal} onOpenChange={setShowSendModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Contract</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-gray-600">
+              All contracts will be saved to client portal automatically.
+            </p>
+            
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setSendMethod("portal")}
+                className={`w-full flex items-center gap-3 p-4 border-2 rounded-lg transition-all ${
+                  sendMethod === "portal"
+                    ? "border-[#3C3CFF] bg-[#3C3CFF]/5"
+                    : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium mb-2 ${
-                    index + 1 <= currentStep ? "bg-[#3C3CFF] text-white" : "bg-gray-200 text-gray-500"
-                  }`}
-                >
-                  {index + 1}
+                <div className={`p-2 rounded-lg ${
+                  sendMethod === "portal" ? "bg-[#3C3CFF]" : "bg-gray-100"
+                }`}>
+                  <LinkIcon className={`h-5 w-5 ${
+                    sendMethod === "portal" ? "text-white" : "text-gray-600"
+                  }`} />
                 </div>
-                <span className="text-xs font-medium hidden sm:block">{title}</span>
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-gray-900">Send to Client Portal only</div>
+                  <div className="text-sm text-gray-500">Contract will be available in the client portal</div>
               </div>
-            ))}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSendMethod("email")}
+                className={`w-full flex items-center gap-3 p-4 border-2 rounded-lg transition-all ${
+                  sendMethod === "email"
+                    ? "border-[#3C3CFF] bg-[#3C3CFF]/5"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${
+                  sendMethod === "email" ? "bg-[#3C3CFF]" : "bg-gray-100"
+                }`}>
+                  <Mail className={`h-5 w-5 ${
+                    sendMethod === "email" ? "text-white" : "text-gray-600"
+                  }`} />
+            </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-gray-900">Send by Email</div>
+                  <div className="text-sm text-gray-500">Contract will be sent directly to the client's email</div>
+          </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSendMethod("link")}
+                className={`w-full flex items-center gap-3 p-4 border-2 rounded-lg transition-all ${
+                  sendMethod === "link"
+                    ? "border-[#3C3CFF] bg-[#3C3CFF]/5"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${
+                  sendMethod === "link" ? "bg-[#3C3CFF]" : "bg-gray-100"
+                }`}>
+                  <LinkIcon className={`h-5 w-5 ${
+                    sendMethod === "link" ? "text-white" : "text-gray-600"
+                  }`} />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-gray-900">Send a Link</div>
+                  <div className="text-sm text-gray-500">Generate a shareable link for the contract</div>
+              </div>
+              </button>
           </div>
         </div>
 
-        {/* Step Content */}
-        <div className="mb-8">{renderStepContent()}</div>
-
-        {/* Navigation */}
-        <div className="flex justify-between items-center pt-6 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t">
           <Button
             variant="outline"
-            onClick={handlePrevious}
-            disabled={currentStep === 1}
-            className="flex items-center gap-2 bg-transparent"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Previous
+              onClick={() => {
+                setShowSendModal(false)
+                setSendMethod(null)
+              }}
+            >
+              Cancel
           </Button>
-
-          <div className="flex gap-3">
-            {currentStep === totalSteps ? (
-              <>
                 <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2 bg-transparent"
-                  onClick={saveAsTemplate}
-                  disabled={savingTemplate}
-                >
-                  {savingTemplate ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileText className="h-4 w-4" />
-                  )}
-                  Save as Template
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => handleSaveAndSend(true)} // true = save as draft
-                  disabled={sending || !documentName.trim()}
-                  className="flex items-center gap-2 bg-transparent"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-2" />
-                  )}
-                  Save as Draft
-                </Button>
-                <Button 
-                  onClick={() => handleSaveAndSend(false)} // false = save as pending
-                  disabled={sending || !documentName.trim()}
-                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
+              onClick={handleConfirmSend}
+              disabled={!sendMethod}
+              className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+            >
                     <Send className="h-4 w-4 mr-2" />
-                  )}
-                  {isEditMode 
-                    ? (isEditingTemplate ? "Save Template" : "Update Contract") 
-                    : (saveOnly ? "Save Contract" : "Save & Send")}
+              Send
                 </Button>
-                {!saveOnly && !isEditMode && (
-                  <Button 
-                    variant="outline" 
-                    className="flex items-center gap-2 bg-transparent"
-                    disabled={sending}
-                  >
-                    <Eye className="h-4 w-4" />
-                    Send Test to Self
-                  </Button>
-                )}
-              </>
-            ) : (
-              <Button
-                onClick={handleNext}
-                disabled={currentStep === 1 && !selectedTemplate}
-                className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white flex items-center gap-2"
-              >
-                Next
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            )}
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

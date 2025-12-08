@@ -33,6 +33,23 @@ const chartConfig = {
 export function RevenueTrend({ data }: RevenueTrendProps) {
   const chartData = data && data.length > 0 ? data : []
   
+  // Show empty state if no data
+  if (chartData.length === 0) {
+    return (
+      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900">Revenue Trend</CardTitle>
+          <CardDescription>Monthly revenue and invoice creation trends</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No revenue trend data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+  
   // Find the index of the current month for the tooltip and note
   const currentMonthIndex = chartData.findIndex(d => d.isCurrentMonth)
   

@@ -58,11 +58,15 @@ import {
   Copy,
   Settings,
   BarChart3,
-  AlertCircle
+  AlertCircle,
+  Download,
+  FileSignature,
+  Target
 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useTour } from "@/contexts/TourContext"
 import { 
   getClients, 
   createClient as createClientFunc, 
@@ -98,6 +102,7 @@ import {
   type Project,
   type ProjectTag
 } from "@/lib/projects"
+import { dummyProjects, dummyClients as tourDummyClients, dummyPortals } from "@/lib/tour-dummy-data"
 
 // Step configuration
 const workflowSteps = [
@@ -148,6 +153,74 @@ const formatFileSize = (bytes: number, decimalPoint = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 };
 
+// Helper function to format activity time
+const formatActivityTime = (dateString: string) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+  
+  if (diffInSeconds < 60) return 'Just now'
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
+  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`
+  
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
+}
+
+// Helper function to get activity color based on activity_type
+const getActivityColor = (activityType: string, sourceTable?: string) => {
+  const type = activityType?.toLowerCase() || ''
+  
+  // Use activity_type from project_activities table
+  switch (type) {
+    case 'invoice':
+      return 'bg-green-100 text-green-600'
+    case 'contract':
+      return 'bg-blue-100 text-blue-600'
+    case 'file':
+      return 'bg-purple-100 text-purple-600'
+    case 'milestone':
+      return 'bg-blue-100 text-blue-600'
+    case 'task':
+      return 'bg-green-100 text-green-600'
+    case 'message':
+      return 'bg-orange-100 text-orange-600'
+    case 'status_change':
+      return 'bg-gray-100 text-gray-600'
+    case 'form':
+      return 'bg-yellow-100 text-yellow-600'
+    default:
+      return 'bg-gray-100 text-gray-600'
+  }
+}
+
+// Helper function to get activity icon based on activity_type
+const getActivityIconWithSource = (activityType: string, sourceTable?: string) => {
+  const type = activityType?.toLowerCase() || ''
+  
+  // Use activity_type from project_activities table
+  switch (type) {
+    case 'invoice':
+      return <DollarSign className="h-4 w-4" />
+    case 'contract':
+      return <FileSignature className="h-4 w-4" />
+    case 'file':
+      return <FileText className="h-4 w-4" />
+    case 'milestone':
+      return <Target className="h-4 w-4" />
+    case 'task':
+      return <CheckCircle className="h-4 w-4" />
+    case 'message':
+      return <MessageCircle className="h-4 w-4" />
+    case 'status_change':
+      return <Edit className="h-4 w-4" />
+    case 'form':
+      return <FileText className="h-4 w-4" />
+    default:
+      return <Package className="h-4 w-4" />
+  }
+}
+
 const getActivityIcon = (type: string) => {
   switch (type) {
     case "file":
@@ -184,9 +257,9 @@ const getTagDisplayColor = (tagName: string, clientId?: string, clientTagColors?
 }
 
 // Step Navigation Component
-function StepNavigation({ activeStep, onStepChange }: { activeStep: string, onStepChange: (step: string) => void }) {
+function StepNavigation({ activeStep, onStepChange, ...props }: { activeStep: string, onStepChange: (step: string) => void, [key: string]: any }) {
   return (
-    <div className="mb-8">
+    <div className="mb-8" {...props}>
       <div className="flex items-center justify-between bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-center space-x-8">
           {workflowSteps.map((step, index) => {
@@ -242,12 +315,6 @@ function StepNavigation({ activeStep, onStepChange }: { activeStep: string, onSt
           })}
         </div>
         
-        <div className="text-right">
-          <div className="text-sm font-medium text-gray-600">Progress</div>
-          <div className="text-lg font-bold text-[#3C3CFF]">
-            {Math.round((workflowSteps.findIndex(s => s.id === activeStep) + 1) / workflowSteps.length * 100)}%
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -342,9 +409,9 @@ function ClientsSection({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-help="clients-section">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-help="clients-header">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Clients</h2>
           <p className="text-gray-600 mt-1">Manage your client relationships and information</p>
@@ -352,6 +419,7 @@ function ClientsSection({
         <Button 
           onClick={onAddClient}
           className="bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] hover:from-[#2D2DCC] hover:to-[#4F46E5] text-white shadow-lg"
+          data-help="btn-add-client"
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Client
@@ -359,7 +427,7 @@ function ClientsSection({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-4" data-help="clients-filters">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
@@ -379,7 +447,6 @@ function ClientsSection({
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="archived">Archived</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
             </SelectContent>
           </Select>
           <Select value={tagFilter} onValueChange={setTagFilter}>
@@ -406,8 +473,8 @@ function ClientsSection({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-0">
+      <div className="flex flex-col sm:flex-row gap-4" data-help="clients-stats">
+        <Card className="flex-1 bg-gradient-to-br from-blue-50 to-blue-100/50 border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -419,7 +486,7 @@ function ClientsSection({
           </CardContent>
         </Card>
         
-        <Card className="bg-gradient-to-br from-green-50 to-green-100/50 border-0">
+        <Card className="flex-1 bg-gradient-to-br from-green-50 to-green-100/50 border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -431,19 +498,7 @@ function ClientsSection({
           </CardContent>
         </Card>
         
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold text-orange-900">{clients.filter(c => c.status === 'pending').length}</div>
-                <div className="text-sm text-orange-700">Pending</div>
-              </div>
-              <Circle className="h-8 w-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-0">
+        <Card className="flex-1 bg-gradient-to-br from-purple-50 to-purple-100/50 border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -457,7 +512,7 @@ function ClientsSection({
       </div>
 
       {/* Clients List */}
-      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+      <Card className="bg-white border-0 shadow-sm rounded-2xl" data-help="clients-list">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-semibold text-gray-900">All Clients</CardTitle>
@@ -743,9 +798,9 @@ function ProjectsSection({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-help="projects-section">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-help="projects-header">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
           <p className="text-gray-600 mt-1">Organize client work and track project progress</p>
@@ -753,6 +808,7 @@ function ProjectsSection({
         <Button 
           onClick={onAddProject}
           className="bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] hover:from-[#2D2DCC] hover:to-[#4F46E5] text-white shadow-lg"
+          data-help="btn-new-project"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Project
@@ -760,7 +816,7 @@ function ProjectsSection({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col lg:flex-row gap-4">
+      <div className="flex flex-col lg:flex-row gap-4" data-help="projects-filters">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
@@ -803,7 +859,7 @@ function ProjectsSection({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-help="projects-stats">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -839,18 +895,6 @@ function ProjectsSection({
             </div>
           </CardContent>
         </Card>
-        
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-0">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold text-purple-900">{Math.round(projects.reduce((sum, p) => sum + (p.progress || 0), 0) / projects.length)}%</div>
-                <div className="text-sm text-purple-700">Avg Progress</div>
-              </div>
-              <Star className="h-8 w-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Projects Grid */}
@@ -877,8 +921,8 @@ function ProjectsSection({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.map((project) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-help="projects-grid">
+          {filteredProjects.map((project, index) => {
             const client = clients.find(c => c.id === project.client_id)
             const clientName = client ? `${client.first_name} ${client.last_name}` : 'Unknown Client'
             const clientInitials = client ? `${client.first_name[0]}${client.last_name[0]}` : 'UC'
@@ -889,6 +933,7 @@ function ProjectsSection({
                 key={project.id}
                 className="bg-white border border-gray-200 shadow-lg hover:shadow-xl hover:border-[#3C3CFF]/30 hover:scale-[1.02] transition-all duration-200 rounded-2xl cursor-pointer group"
                 onClick={() => onViewProject(project)}
+                data-help={index === 0 ? "project-card-first" : undefined}
               >
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -970,20 +1015,11 @@ function ProjectsSection({
                   </div>
 
                   <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-600">Progress</span>
-                        <span className="text-sm font-medium text-gray-900">{project.progress || 0}%</span>
-                      </div>
-                      <Progress value={project.progress || 0} className="h-2" />
-                    </div>
-
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className={getStatusColor(project.status)}>
                         {project.status.replace("-", " ")}
                       </Badge>
                     </div>
-
 
                     <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                       <div className="flex items-center space-x-4 text-xs text-gray-500">
@@ -1007,6 +1043,18 @@ function ProjectsSection({
                         </div>
                       )}
                     </div>
+                    
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onViewProject(project)
+                      }}
+                      className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
+                      size="sm"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View Project
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1055,11 +1103,11 @@ function PortalsSection({
   getActivityIndicator: (lastActivity: string) => React.ReactNode
   handlePortalAction: (action: string, portal: Portal, e: React.MouseEvent) => void
 }) {
+  const router = useRouter()
   const statusOptions = [
-    { value: "all", label: "All Status", icon: Filter },
+    { value: "all", label: "All Status", icon: null },
     { value: "live", label: "Live", icon: CheckCircle, color: "text-green-600" },
     { value: "draft", label: "Draft", icon: Clock, color: "text-yellow-600" },
-    { value: "maintenance", label: "Maintenance", icon: AlertCircle, color: "text-orange-600" },
     { value: "archived", label: "Archived", icon: XCircle, color: "text-gray-600" },
   ]
 
@@ -1075,9 +1123,16 @@ function PortalsSection({
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-help="portals-section">
+      {/* Portal Settings Info */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3" data-help="portals-notice">
+        <p className="text-sm text-gray-700">
+          <span className="font-medium">Global Portal Settings</span> set default templates for all new portals. Individual portal settings can be customized per portal.
+        </p>
+      </div>
+
       {/* One Portal Per Client Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4" data-help="portals-notice">
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
             <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center">
@@ -1095,7 +1150,7 @@ function PortalsSection({
       </div>
 
       {/* Header with Search, Filters, and Actions */}
-      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+      <Card className="bg-white border-0 shadow-sm rounded-2xl" data-help="portals-header">
         <CardContent className="p-6">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
@@ -1105,23 +1160,36 @@ function PortalsSection({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-10 border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
+                data-help="portals-search"
               />
             </div>
             <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => router.push("/dashboard/portals/global/portal-settings")}
+                className="border-gray-200"
+                data-help="btn-global-portal-settings"
+              >
+                <Globe className="h-4 w-4 mr-2" />
+                Global Portal Settings
+              </Button>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[160px] h-10 border-gray-200">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {statusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center space-x-2">
-                        <option.icon className={`h-4 w-4 ${option.color || "text-gray-600"}`} />
-                        <span>{option.label}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {statusOptions.map((option) => {
+                    const IconComponent = option.icon
+                    return (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center space-x-2">
+                          {IconComponent && <IconComponent className={`h-4 w-4 ${option.color || "text-gray-600"}`} />}
+                          <span>{option.label}</span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
 
@@ -1152,7 +1220,7 @@ function PortalsSection({
                   </div>
                 </Button>
               </div>
-              <Button onClick={onCreatePortal} className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
+              <Button onClick={onCreatePortal} className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white" data-help="btn-create-portal">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Portal
               </Button>
@@ -1162,10 +1230,10 @@ function PortalsSection({
       </Card>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-help="portals-stats">
         {loading ? (
           <>
-            {[1, 2, 3, 4].map((i) => (
+            {[1, 2, 3].map((i) => (
               <Card key={i} className="bg-white border-0 shadow-sm rounded-2xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -1228,22 +1296,6 @@ function PortalsSection({
                 </div>
               </CardContent>
             </Card>
-            
-            <Card className="bg-white border-0 shadow-sm rounded-2xl">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Active Portals</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {portals.filter(p => p.status === "live").length}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-orange-100 rounded-lg">
-                    <Globe className="h-6 w-6 text-orange-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </>
         )}
       </div>
@@ -1257,11 +1309,12 @@ function PortalsSection({
           </div>
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPortals.map((portal) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-help="portals-grid">
+          {filteredPortals.map((portal, index) => (
             <Card
               key={portal.id}
               className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl cursor-pointer group"
+              data-help={index === 0 ? "portal-card-first" : undefined}
             >
               <CardContent className="p-6">
                 {/* Header */}
@@ -1304,17 +1357,9 @@ function PortalsSection({
                         <ExternalLink className="h-4 w-4 mr-2" />
                         View Portal
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => handlePortalAction("analytics", portal, e)}>
-                        <BarChart3 className="h-4 w-4 mr-2" />
-                        Analytics
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => handlePortalAction("edit", portal, e)}>
+                      <DropdownMenuItem onClick={(e) => handlePortalAction("edit", portal, e)} data-help="btn-edit-portal">
                         <Edit className="h-4 w-4 mr-2" />
                         Edit Portal
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => handlePortalAction("settings", portal, e)}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Settings
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => handlePortalAction("add-members", portal, e)}>
                         <Users className="h-4 w-4 mr-2" />
@@ -1323,10 +1368,6 @@ function PortalsSection({
                       <DropdownMenuItem onClick={(e) => handlePortalAction("view-members", portal, e)}>
                         <Users className="h-4 w-4 mr-2" />
                         View Members
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => handlePortalAction("copy", portal, e)}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Link
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => handlePortalAction("archive", portal, e)}>
                         <Archive className="h-4 w-4 mr-2" />
@@ -1355,23 +1396,6 @@ function PortalsSection({
                     </Badge>
                   </div>
 
-                  {/* Portal Info */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Portal URL</span>
-                      <span className="text-[#3C3CFF] font-mono text-xs">
-                        {(() => {
-                          const urlParts = portal.url.split('.')
-                          if (urlParts.length >= 3) {
-                            return `/${urlParts[0]}/${urlParts[1]}`
-                          } else {
-                            return `/${urlParts[0]}/${portal.client.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
-                          }
-                        })()}
-                      </span>
-                    </div>
-
-                  </div>
 
                   {/* Views */}
                   {portal.status === "live" && (
@@ -1382,27 +1406,6 @@ function PortalsSection({
                       </div>
                     </div>
                   )}
-
-                  {/* Modules */}
-                  <div className="space-y-2">
-                    <span className="text-xs text-gray-600">Modules ({portal.modules.length})</span>
-                    <div className="flex flex-wrap gap-1">
-                      {portal.modules.slice(0, 3).map((module) => (
-                        <Badge
-                          key={module}
-                          variant="outline"
-                          className="text-xs bg-blue-50 text-blue-700 border-blue-200 capitalize"
-                        >
-                          {module}
-                        </Badge>
-                      ))}
-                      {portal.modules.length > 3 && (
-                        <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-200">
-                          +{portal.modules.length - 3} more
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
@@ -1418,11 +1421,20 @@ function PortalsSection({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={(e) => handlePortalAction("copy", portal, e)}
+                      onClick={(e) => handlePortalAction("edit", portal, e)}
                       className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
                     >
-                      <Link2 className="h-4 w-4 mr-1" />
-                      Copy Link
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit Portal
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => handlePortalAction("add-members", portal, e)}
+                      className="flex-1 text-[#3C3CFF] border-[#3C3CFF] hover:bg-[#F0F2FF]"
+                    >
+                      <Users className="h-4 w-4 mr-1" />
+                      Add Members
                     </Button>
                   </div>
                 </div>
@@ -1462,10 +1474,6 @@ function PortalsSection({
                       <p className="text-sm font-medium text-gray-900">{portal.views.toLocaleString()}</p>
                       <p className="text-xs text-gray-500">Views</p>
                     </div>
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-gray-900">{portal.modules.length}</p>
-                      <p className="text-xs text-gray-500">Modules</p>
-                    </div>
                     <Badge variant="outline" className={`${getStatusConfig(portal.status).color} flex items-center space-x-1`}>
                       {(() => {
                         const IconComponent = getStatusConfig(portal.status).icon
@@ -1473,18 +1481,6 @@ function PortalsSection({
                       })()}
                       <span className="capitalize">{portal.status}</span>
                     </Badge>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-900 font-mono">
-                        {(() => {
-                          const urlParts = portal.url.split('.')
-                          if (urlParts.length >= 3) {
-                            return `/${urlParts[0]}/${urlParts[1]}`
-                          } else {
-                            return `/${urlParts[0]}/${portal.client.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
-                          }
-                        })()}
-                      </p>
-                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -1501,17 +1497,9 @@ function PortalsSection({
                           <ExternalLink className="h-4 w-4 mr-2" />
                           View Portal
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => handlePortalAction("analytics", portal, e)}>
-                          <BarChart3 className="h-4 w-4 mr-2" />
-                          Analytics
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={(e) => handlePortalAction("edit", portal, e)}>
                           <Edit className="h-4 w-4 mr-2" />
                           Edit Portal
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => handlePortalAction("settings", portal, e)}>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Settings
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={(e) => handlePortalAction("add-members", portal, e)}>
                           <Users className="h-4 w-4 mr-2" />
@@ -1593,6 +1581,7 @@ interface Portal {
 
 // Main Component
 export default function ClientWorkflowPage() {
+  const { isTourRunning, currentTour } = useTour()
   const [activeStep, setActiveStep] = useState("clients")
   
   // Client state
@@ -1623,7 +1612,6 @@ export default function ClientWorkflowPage() {
     email: "",
     company: "",
     phone: "",
-    portalUrl: "",
     tags: [] as Array<{ name: string; color?: string }>,
   })
   
@@ -1633,7 +1621,6 @@ export default function ClientWorkflowPage() {
     email: "",
     company: "",
     phone: "",
-    portalUrl: "",
     tags: [] as Array<{ name: string; color?: string }>,
   })
   
@@ -1642,6 +1629,8 @@ export default function ClientWorkflowPage() {
   const [addNewTagColor, setAddNewTagColor] = useState("#6B7280")
   const [editNewTag, setEditNewTag] = useState("")
   const [editNewTagColor, setEditNewTagColor] = useState("#6B7280")
+
+  // No auto-close logic - tour will explicitly close the modal
   const [customTagColors, setCustomTagColors] = useState<Record<string, string>>({})
   
   // Additional client data state
@@ -1709,11 +1698,44 @@ export default function ClientWorkflowPage() {
   const [selectedPortalForView, setSelectedPortalForView] = useState<Portal | null>(null)
   
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Check for active query parameter to set initial step
+  useEffect(() => {
+    const activeParam = searchParams.get('active')
+    if (activeParam && ['clients', 'projects', 'portals'].includes(activeParam)) {
+      setActiveStep(activeParam)
+    }
+  }, [searchParams])
 
   // Load clients on component mount
   useEffect(() => {
     loadClients()
   }, [])
+
+  // Auto-switch to projects tab when projects or contracts tour is running
+  useEffect(() => {
+    if ((currentTour?.id === "projects" || currentTour?.id === "contracts" || currentTour?.id === "tasks") && activeStep !== "projects") {
+      setActiveStep("projects")
+    }
+    
+    // Reload real data when tour ends
+    if (currentTour?.id !== "projects" && currentTour?.id !== "contracts" && currentTour?.id !== "tasks" && activeStep === "projects" && projects.length > 0 && projects[0]?.account_id === 'tour-account') {
+      loadProjects()
+    }
+  }, [currentTour?.id, activeStep])
+
+  // Auto-switch to portals tab when portals tour is running
+  useEffect(() => {
+    if (currentTour?.id === "portals" && activeStep !== "portals") {
+      setActiveStep("portals")
+    }
+    
+    // Reload real data when portals tour ends
+    if (currentTour?.id !== "portals" && activeStep === "portals" && portals.length > 0 && portals[0]?.url?.includes('.jolix.io')) {
+      loadPortals()
+    }
+  }, [currentTour?.id, activeStep])
 
   // Load projects when projects step is active
   useEffect(() => {
@@ -1813,7 +1835,6 @@ export default function ClientWorkflowPage() {
         email: newClient.email,
         company: newClient.company || undefined,
         phone: newClient.phone || undefined,
-        portal_url: newClient.portalUrl || undefined,
         tags: newClient.tags,
       })
 
@@ -1847,7 +1868,6 @@ export default function ClientWorkflowPage() {
           email: "",
           company: "",
           phone: "",
-          portalUrl: "",
           tags: [],
         })
       }
@@ -1873,7 +1893,6 @@ export default function ClientWorkflowPage() {
         email: editClient.email,
         company: editClient.company || undefined,
         phone: editClient.phone || undefined,
-        portal_url: editClient.portalUrl || undefined,
         tags: editClient.tags,
       })
 
@@ -1892,7 +1911,6 @@ export default function ClientWorkflowPage() {
                   email: editClient.email,
                   company: editClient.company || null,
                   phone: editClient.phone || null,
-                  portal_url: editClient.portalUrl || null,
                 }
               : client
           )
@@ -2013,7 +2031,6 @@ export default function ClientWorkflowPage() {
           email: client.email || "",
           company: client.company || "",
           phone: client.phone || "",
-          portalUrl: client.portal_url || "",
           tags: (clientTags[client.id] || []).map(tagName => ({
             name: tagName,
             color: clientTagColors[client.id]?.[tagName] || getTagDisplayColor(tagName, client.id)
@@ -2137,6 +2154,49 @@ export default function ClientWorkflowPage() {
   const loadProjects = async () => {
     try {
       setProjectsLoading(true)
+      
+      // Use dummy data during tours (projects, contracts, and tasks tours)
+      if (isTourRunning || currentTour?.id === "projects" || currentTour?.id === "contracts" || currentTour?.id === "tasks") {
+        const tourProjects: Project[] = dummyProjects.map(dp => ({
+          id: dp.id,
+          name: dp.name,
+          client_id: dp.client.toLowerCase().replace(/\s+/g, '-'),
+          description: `${dp.name} for ${dp.client}`,
+          status: dp.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
+          due_date: dp.dueDate,
+          start_date: '2024-01-01',
+          completed_date: dp.status === 'completed' ? '2024-01-15' : null,
+          portal_id: null,
+          created_at: '2024-01-01',
+          updated_at: '2024-01-15',
+          account_id: 'tour-account',
+          budget: dp.budget,
+          spent: dp.spent,
+          progress: dp.progress,
+          total_messages: 12,
+          total_files: 8,
+          total_invoices: 2,
+          last_activity_at: '2024-01-15',
+          total_milestones: 3,
+          completed_milestones: dp.status === 'completed' ? 3 : 1
+        }))
+        
+        const tourClients = tourDummyClients.map(dc => ({
+          id: dc.id,
+          first_name: dc.name.split(' ')[0],
+          last_name: dc.name.split(' ').slice(1).join(' '),
+          company: dc.company,
+        }))
+        
+        setProjects(tourProjects)
+        setProjectClients(tourClients)
+        setProjectTags({})
+        setProjectTagColors({})
+        setAvailableProjectTags(['Web Development', 'Design', 'Marketing', 'Consulting'])
+        setProjectsLoading(false)
+        return
+      }
+      
       const [projectsData, clientsData, tagsData] = await Promise.all([
         getProjects(),
         getClientsForProjects(),
@@ -2463,6 +2523,29 @@ export default function ClientWorkflowPage() {
   const loadPortals = async () => {
     try {
       setPortalsLoading(true)
+      
+      // Use dummy data during tours
+      if (isTourRunning || currentTour?.id === "portals") {
+        const tourPortals = dummyPortals.map(dp => ({
+          id: dp.id,
+          name: `${dp.client} Portal`,
+          client: {
+            id: dp.id,
+            name: dp.client,
+            avatar: dp.client.split(' ').map(w => w[0]).join('')
+          },
+          status: dp.status as 'live' | 'draft' | 'archived' | 'maintenance',
+          url: `https://${dp.slug}.jolix.io`,
+          views: dp.files * 10,
+          lastActivity: new Date(dp.lastActivity).toLocaleDateString(),
+          description: `Client portal for ${dp.client}`,
+          modules: ['files', 'messages', 'projects']
+        }))
+        
+        setPortals(tourPortals)
+        setPortalsLoading(false)
+        return
+      }
       
       // Get current user from Supabase
       const supabase = createClient()
@@ -2824,7 +2907,7 @@ export default function ClientWorkflowPage() {
     <DashboardLayout>
       <div className="space-y-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen -m-6 p-6">
         {/* Header */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white" data-help="workflow-header">
           <div className="absolute inset-0 bg-black/10"></div>
           <div className="relative z-10">
             <div className="flex items-center justify-between">
@@ -2859,12 +2942,18 @@ export default function ClientWorkflowPage() {
         {renderActiveSection()}
 
         {/* Add Client Dialog */}
-        <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-          <DialogContent className="sm:max-w-md">
+        <Dialog open={isAddClientOpen} onOpenChange={(open) => {
+          // During tours, prevent accidental closing from overlay/escape
+          if (isTourRunning && currentTour?.id === "clients" && !open) {
+            return
+          }
+          setIsAddClientOpen(open)
+        }}>
+          <DialogContent className="sm:max-w-md" data-help="add-client-modal">
             <DialogHeader>
-              <DialogTitle>Add New Client</DialogTitle>
+              <DialogTitle data-help="add-client-modal-title">Add New Client</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-4" data-help="add-client-form">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="firstName">First Name *</Label>
@@ -2911,15 +3000,6 @@ export default function ClientWorkflowPage() {
                   value={newClient.phone}
                   onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
                   placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              <div>
-                <Label htmlFor="portalUrl">Portal URL</Label>
-                <Input
-                  id="portalUrl"
-                  value={newClient.portalUrl}
-                  onChange={(e) => setNewClient({ ...newClient, portalUrl: e.target.value })}
-                  placeholder="company-name"
                 />
               </div>
               <div>
@@ -3008,10 +3088,10 @@ export default function ClientWorkflowPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddClientOpen(false)}>
+              <Button variant="outline" onClick={() => setIsAddClientOpen(false)} data-help="btn-cancel-client">
                 Cancel
               </Button>
-              <Button onClick={handleAddClient} disabled={saving}>
+              <Button onClick={handleAddClient} disabled={saving} data-help="btn-save-client">
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Add Client
               </Button>
@@ -3072,15 +3152,6 @@ export default function ClientWorkflowPage() {
                   value={editClient.phone}
                   onChange={(e) => setEditClient({ ...editClient, phone: e.target.value })}
                   placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              <div>
-                <Label htmlFor="editPortalUrl">Portal URL</Label>
-                <Input
-                  id="editPortalUrl"
-                  value={editClient.portalUrl}
-                  onChange={(e) => setEditClient({ ...editClient, portalUrl: e.target.value })}
-                  placeholder="company-name"
                 />
               </div>
               <div>
@@ -3373,36 +3444,79 @@ export default function ClientWorkflowPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="activity" className="space-y-4">
-                    <Card className="bg-white border-0 shadow-sm rounded-2xl">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Recent Activity</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {loadingClientData[selectedClient.id] ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-                            <span className="ml-2 text-gray-600">Loading activities...</span>
-                          </div>
-                        ) : clientActivities[selectedClient.id]?.length > 0 ? (
-                          <div className="space-y-3">
-                            {clientActivities[selectedClient.id].map((activity) => (
-                              <div key={activity.id} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg">
-                                <div className="flex-shrink-0">
-                                  {getActivityIcon(activity.activity_type || 'default')}
+                  <TabsContent value="activity" className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
+                    {loadingClientData[selectedClient.id] ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+                        <span className="ml-2 text-gray-600">Loading activities...</span>
+                      </div>
+                    ) : clientActivities[selectedClient.id]?.length > 0 ? (
+                      <div className="space-y-4">
+                        {clientActivities[selectedClient.id].map((activity) => (
+                          <Card key={activity.id} className="bg-white border-0 shadow-sm rounded-2xl">
+                            <CardContent className="p-6">
+                              <div className="flex items-start space-x-4">
+                                <div className={`p-2 rounded-lg ${getActivityColor(activity.activity_type, activity.source_table)}`}>
+                                  {getActivityIconWithSource(activity.activity_type, activity.source_table)}
                                 </div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-gray-900">{activity.action || 'Unknown action'}</p>
-                                  <p className="text-xs text-gray-600">{formatDate(activity.created_at)}</p>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {activity.action}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {formatActivityTime(activity.created_at)}
+                                    </p>
+                                  </div>
+                                  <div className="mt-1 flex items-center space-x-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      {activity.source_table?.replace('_activities', '').replace('_', ' ') || 'Activity'}
+                                    </Badge>
+                                    {activity.project_name && (
+                                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                        <Package className="h-3 w-3 mr-1" />
+                                        {activity.project_name}
+                                      </Badge>
+                                    )}
+                                    {activity.user_name && activity.user_name !== 'System' && (
+                                      <span className="text-xs text-gray-500">
+                                        by {activity.user_name}
+                                      </span>
+                                    )}
+                                    {(!activity.user_name || activity.user_name === 'System') && (
+                                      <span className="text-xs text-gray-400">
+                                        by System
+                                      </span>
+                                    )}
+                                  </div>
+                                  {activity.metadata && Object.keys(activity.metadata).length > 0 && (
+                                    <div className="mt-2 text-xs text-gray-600">
+                                      {activity.metadata.description && (
+                                        <p>{activity.metadata.description}</p>
+                                      )}
+                                      {activity.metadata.file_name && (
+                                        <p>File: {activity.metadata.file_name}</p>
+                                      )}
+                                      {activity.metadata.contract_name && (
+                                        <p>Contract: {activity.metadata.contract_name}</p>
+                                      )}
+                                      {activity.metadata.invoice_number && (
+                                        <p>Invoice: {activity.metadata.invoice_number}</p>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-gray-600 text-center py-8">No recent activity found for this client.</p>
-                        )}
-                      </CardContent>
-                    </Card>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Clock className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                        <p className="text-gray-600">No recent activity found for this client.</p>
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="invoices" className="space-y-4">

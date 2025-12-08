@@ -8,6 +8,7 @@ import { Bell, Moon, Sun, LogOut, User, Settings } from "lucide-react"
 import { signOut } from "@/lib/auth"
 import { toast } from "sonner"
 import Image from "next/image"
+import { TimerWidget } from "./TimerWidget"
 
 interface DashboardHeaderProps {
   title?: string
@@ -38,7 +39,7 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
 
   return (
     <header className="z-40">
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="flex items-center justify-between py-4 w-full px-8 mx-auto">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-3">
             <Image 
@@ -59,6 +60,8 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center space-x-4">
+          <TimerWidget />
+          
           <Button
             variant="ghost"
             size="icon"

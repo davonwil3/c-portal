@@ -74,7 +74,7 @@ export function TemplateSelector({ onSelectTemplate, onBack, currentTemplate = '
         </div>
 
         {/* Templates Grid */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto" data-help="template-selector-grid">
           {templates.map((template, index) => {
             const isActive = template.id === currentTemplate
             return (
@@ -95,6 +95,7 @@ export function TemplateSelector({ onSelectTemplate, onBack, currentTemplate = '
                   className={`overflow-hidden hover:shadow-2xl transition-all duration-300 group cursor-pointer border-2 h-full flex flex-col ${
                     isActive ? 'border-blue-500 ring-2 ring-blue-200' : 'hover:border-blue-500'
                   } ${template.disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  data-help={index === 0 ? "template-first" : undefined}
                 >
                   {/* Preview Image - Full card */}
                   <div className="relative flex-1 overflow-hidden">

@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/dashboard/layout"
+import { useTour } from "@/contexts/TourContext"
+import { dummyPipelineLeads, dummyLeads } from "@/lib/tour-dummy-data"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -106,9 +108,40 @@ const defaultStages = [
 ]
 
 export default function PipelinePage() {
+  const { isTourRunning } = useTour()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [leads, setLeads] = useState(mockLeads)
+  
+  // Use dummy data during tours
+  const initialLeads = useMemo(() => {
+    if (isTourRunning) {
+      // Convert dummyPipelineLeads to the format expected by this page
+      const tourLeads: any[] = []
+      Object.entries(dummyPipelineLeads).forEach(([stage, stageLeads]) => {
+        stageLeads.forEach((lead: any, index: number) => {
+          tourLeads.push({
+            id: `${stage}-${index}`,
+            name: lead.name,
+            company: lead.company,
+            email: `${lead.name.toLowerCase().replace(/\s+/g, '.')}@${lead.company.toLowerCase().replace(/\s+/g, '')}.com`,
+            phone: '+1 (555) 123-4567',
+            value: lead.value,
+            source: lead.source,
+            stage: stage,
+            niche: 'Web Dev',
+            notes: `Potential project for ${lead.company}`,
+            lastContact: new Date().toISOString(),
+            nextFollowUp: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            tags: [],
+          })
+        })
+      })
+      return tourLeads
+    }
+    return mockLeads
+  }, [isTourRunning])
+  
+  const [leads, setLeads] = useState(initialLeads)
   const [selectedLead, setSelectedLead] = useState<any>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -415,6 +448,7 @@ export default function PipelinePage() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
+                data-help="input-pipeline-search"
                 placeholder="Search leads by name or company..."
                 className="pl-10"
                 value={searchQuery}
@@ -423,7 +457,7 @@ export default function PipelinePage() {
             </div>
             <Popover open={filterOpen} onOpenChange={setFilterOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" data-help="btn-pipeline-filter">
                   <Filter className="mr-2 h-4 w-4" />
                   Filter
                 </Button>
@@ -468,11 +502,11 @@ export default function PipelinePage() {
               <Upload className="mr-2 h-4 w-4" />
               Import
             </Button>
-            <Button variant="outline" onClick={handleOpenSettings}>
+            <Button variant="outline" data-help="btn-pipeline-settings" onClick={handleOpenSettings}>
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </Button>
-            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => setNewLeadOpen(true)}>
+            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" data-help="btn-pipeline-new-lead" onClick={() => setNewLeadOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Lead
             </Button>
@@ -485,6 +519,7 @@ export default function PipelinePage() {
           ref={scrollContainerRef}
           onDragOver={handleContainerDragOver}
           onDragEnd={handleDragEnd}
+          data-help="pipeline-kanban-board"
         >
           <div className="flex gap-4 min-w-max">
             {stages.map(stage => {
@@ -497,6 +532,7 @@ export default function PipelinePage() {
                   className="w-80 flex-shrink-0"
                   onDragOver={handleColumnDragOver}
                   onDrop={(e) => handleColumnDrop(e, stage.id)}
+                  data-help={`pipeline-column-${stage.id}`}
                 >
                   <Card className="bg-white border-0 shadow-sm h-full">
                     <CardContent className="p-4">

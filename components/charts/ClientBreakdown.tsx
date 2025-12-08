@@ -26,8 +26,25 @@ const COLORS = [
 ]
 
 export function ClientBreakdown({ data }: ClientBreakdownProps) {
-  const topClients = data.slice(0, 7)
+  const safeData = data && data.length > 0 ? data : []
+  const topClients = safeData.slice(0, 7)
   const totalRevenue = topClients.reduce((sum, item) => sum + item.total, 0)
+
+  if (safeData.length === 0) {
+    return (
+      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900">Revenue by Client</CardTitle>
+          <CardDescription>Top clients by revenue</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No client data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="bg-white border-0 shadow-sm rounded-2xl">

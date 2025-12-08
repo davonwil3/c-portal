@@ -49,6 +49,7 @@ export interface Invoice {
   // Joined data
   client_name?: string
   project_name?: string
+  share_token?: string
 }
 
 export interface InvoiceLineItem {
@@ -93,6 +94,7 @@ export async function getInvoices(): Promise<Invoice[]> {
     .from('invoices')
     .select(`
       *,
+      share_token,
       clients:client_id(first_name, last_name, company),
       projects:project_id(name)
     `)

@@ -8,7 +8,7 @@ import { IconPicker } from "./IconPicker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ExternalLink, Trash2, Edit2, Send, ArrowRight } from "lucide-react"
+import { ExternalLink, Trash2, Edit2, Send, ArrowRight, Calendar } from "lucide-react"
 import { useState } from "react"
 
 interface TemplateProps {
@@ -69,6 +69,13 @@ export function InnovateTemplate({
 
   const handleContactChange = (field: string, value: string) => {
     onDataChange({ contact: { ...data.contact, [field]: value } })
+  }
+
+  const handleContactItemChange = (itemId: string, field: 'label' | 'value', value: string) => {
+    const updatedItems = data.contactItems.map(item =>
+      item.id === itemId ? { ...item, [field]: value } : item
+    )
+    onDataChange({ contactItems: updatedItems })
   }
 
   const handleSectionHeaderChange = (section: string, value: string) => {
@@ -187,6 +194,7 @@ export function InnovateTemplate({
               <Button 
                 className="rounded-full px-4 md:px-6 py-2 text-white font-semibold flex items-center gap-2 hover:opacity-90 transition-opacity text-sm md:text-base"
                 style={{ backgroundColor: data.appearance.primaryColor }}
+                data-cta="Get In Touch"
                 onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }) }}
               >
                 Get In Touch <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
@@ -198,7 +206,7 @@ export function InnovateTemplate({
           <div className="pt-32 pb-12 px-8 md:px-16">
             <div className="max-w-[1400px] mx-auto">
               {/* Main Headline */}
-              <div className="mb-8 max-w-3xl">
+              <div className="mb-8 max-w-3xl ml-8 md:ml-16">
                 {data.about?.heading && (
                   <div className="mb-4">
                     <span 
@@ -387,29 +395,30 @@ export function InnovateTemplate({
 
               {/* Right Column - Description */}
               <div className="space-y-6">
-                <p className="text-lg leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
+                <div className="text-lg leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
                   <InlineText
                     value={data.about?.column1 || "We're a team of passionate brand strategists, designers, and creative thinkers dedicated to transforming businesses through powerful visual storytelling."}
                     onChange={(val) => handleAboutChange('column1', val)}
                     editMode={editMode}
-                    className="text-lg leading-relaxed"
+                    className="text-lg leading-relaxed block"
                     style={{ color: textColor, opacity: 0.8 }}
                     placeholder="We're a team of passionate brand strategists..."
                   />
-                </p>
+                </div>
                 
                 <ul className="space-y-4">
                   <li className="flex items-start gap-3">
                     <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: textColor }} />
-                    <p className="text-base leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
+                    <div className="text-base leading-relaxed" style={{ color: textColor, opacity: 0.8 }}>
                       <InlineText
                         value={data.about?.column2 || "Our approach combines strategic thinking with creative excellence. We create meaningful brand experiences that drive real business growth."}
                         onChange={(val) => handleAboutChange('column2', val)}
                         editMode={editMode}
+                        className="block"
                         style={{ color: textColor, opacity: 0.8 }}
                         placeholder="Our approach combines strategic thinking..."
                       />
-                    </p>
+                    </div>
                   </li>
                 </ul>
 
@@ -678,18 +687,33 @@ export function InnovateTemplate({
                                 <h3 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
                                   {project.title}
                                 </h3>
-                                {project.tags && project.tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-2 mb-4">
-                                    {project.tags.map((tag, i) => (
-                                      <span 
-                                        key={i} 
-                                        className="text-xs md:text-sm px-4 py-2 bg-white/20 backdrop-blur-md rounded-full border border-white/20"
-                                      >
-                                        {tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+                                  {project.tags && project.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                      {project.tags.map((tag, i) => (
+                                        <span 
+                                          key={i} 
+                                          className="text-xs md:text-sm px-4 py-2 bg-white/20 backdrop-blur-md rounded-full border border-white/20"
+                                        >
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {project.link && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      asChild
+                                      className="bg-white/10 backdrop-blur-md border-white/30 text-white hover:bg-white/20"
+                                    >
+                                      <a href={project.link || 'https://example.com'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2">
+                                        View Project
+                                        <ExternalLink className="w-4 h-4" />
+                                      </a>
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -798,13 +822,15 @@ export function InnovateTemplate({
 
                     {/* Author Info */}
                     <div className="flex items-center gap-4 mb-12">
-                      <div className="relative">
-                        <img 
-                          src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop"
-                          alt={data.testimonials[activeTestimonialIndex]?.author}
-                          className="w-16 h-16 rounded-full object-cover"
-                        />
-                      </div>
+                      {(data.testimonials[activeTestimonialIndex] as any)?.avatar && (
+                        <div className="relative">
+                          <img 
+                            src={(data.testimonials[activeTestimonialIndex] as any).avatar}
+                            alt={data.testimonials[activeTestimonialIndex]?.author}
+                            className="w-16 h-16 rounded-full object-cover"
+                          />
+                        </div>
+                      )}
                       <div>
                         <p className="font-bold text-lg" style={{ color: textColor }}>
                           {data.testimonials[activeTestimonialIndex]?.author}
@@ -867,15 +893,16 @@ export function InnovateTemplate({
                   placeholder="Get In Touch"
                 />
               </h2>
-              <p className="text-lg md:text-xl" style={{ color: textColor, opacity: 0.7 }}>
+              <div className="text-lg md:text-xl" style={{ color: textColor, opacity: 0.7 }}>
                 <InlineText
                   value={data.contact.note}
                   onChange={(val) => handleContactChange('note', val)}
                   editMode={editMode}
+                  className="block"
                   style={{ color: textColor, opacity: 0.7 }}
                   placeholder="Let's work together on your next project"
                 />
-              </p>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-12">
@@ -897,12 +924,26 @@ export function InnovateTemplate({
                         <IconComponent className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1 pt-2">
-                        <p className="text-sm mb-1 font-medium" style={{ color: textColor, opacity: 0.6 }}>
-                          {item.label}
-                        </p>
-                        <p className="text-lg font-semibold" style={{ color: textColor }}>
-                          {item.value}
-                        </p>
+                        <div className="text-sm mb-1 font-medium" style={{ color: textColor, opacity: 0.6 }}>
+                          <InlineText
+                            value={item.label}
+                            onChange={(val) => handleContactItemChange(item.id, 'label', val)}
+                            editMode={editMode}
+                            className="text-sm font-medium"
+                            style={{ color: textColor, opacity: 0.6 }}
+                            placeholder="Label"
+                          />
+                        </div>
+                        <div className="text-lg font-semibold" style={{ color: textColor }}>
+                          <InlineText
+                            value={item.value}
+                            onChange={(val) => handleContactItemChange(item.id, 'value', val)}
+                            editMode={editMode}
+                            className="text-lg font-semibold"
+                            style={{ color: textColor }}
+                            placeholder="Value"
+                          />
+                        </div>
                       </div>
                       {editMode && (
                         <Edit2 className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity mt-2" />
@@ -914,7 +955,7 @@ export function InnovateTemplate({
 
               {/* Contact Form */}
               <div className="p-8 rounded-2xl bg-white shadow-lg">
-                <form onSubmit={handleContactSubmit} className="space-y-6">
+                <form id="contact-form" data-form-type="contact" onSubmit={handleContactSubmit} className="space-y-6">
                   <div>
                     <Input
                       type="text"
@@ -948,21 +989,36 @@ export function InnovateTemplate({
                     />
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    className="w-full h-14 text-white text-base font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: data.appearance.primaryColor }}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      "Sending..."
-                    ) : (
-                      <>
-                        <Send className="w-5 h-5 mr-2" />
-                        Send Message
-                      </>
+                  <div className="flex gap-4">
+                    <Button 
+                      type="submit" 
+                      className="flex-1 h-14 text-white text-base font-semibold rounded-xl hover:opacity-90 transition-opacity"
+                      style={{ backgroundColor: data.appearance.primaryColor }}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        "Sending..."
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5 mr-2" />
+                          Send Message
+                        </>
+                      )}
+                    </Button>
+                    {data.behavior.showBookMeetingButton !== false && (
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        className="flex-1 h-14 text-base font-semibold rounded-xl"
+                        style={{ borderColor: data.appearance.primaryColor, color: data.appearance.primaryColor }}
+                        data-cta="Book a Meeting"
+                        onClick={() => window.open('/book-meeting', '_blank')}
+                      >
+                        <Calendar className="w-5 h-5 mr-2" />
+                        Book a Meeting
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </form>
               </div>
             </div>

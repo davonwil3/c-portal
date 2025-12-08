@@ -8,7 +8,7 @@ import { IconPicker } from "./IconPicker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ExternalLink, Trash2, Edit2, Send } from "lucide-react"
+import { ExternalLink, Trash2, Edit2, Send, Calendar, ArrowRight } from "lucide-react"
 import { useState } from "react"
 
 interface TemplateProps {
@@ -67,6 +67,13 @@ export function MinimalistTemplate({
 
   const handleContactChange = (field: string, value: string) => {
     onDataChange({ contact: { ...data.contact, [field]: value } })
+  }
+
+  const handleContactItemChange = (itemId: string, field: 'label' | 'value', value: string) => {
+    const updatedItems = data.contactItems.map(item =>
+      item.id === itemId ? { ...item, [field]: value } : item
+    )
+    onDataChange({ contactItems: updatedItems })
   }
 
   const handleSectionHeaderChange = (section: string, value: string) => {
@@ -231,16 +238,31 @@ export function MinimalistTemplate({
                   placeholder="Hi there!"
                 />
               </h1>
-              <p className="text-base leading-relaxed mb-8" style={{ color: textColor }}>
+              <div className="text-base leading-relaxed mb-8" style={{ color: textColor }}>
                 <InlineText
                   value={data.hero.bio}
                   onChange={(val) => handleHeroChange('bio', val)}
                   editMode={editMode}
-                  className="text-base"
+                  className="text-base block"
                   style={{ color: textColor }}
                   placeholder="Fuelled by a passion for designing compelling products..."
                 />
-              </p>
+              </div>
+              {data.modules.contact && (
+                <Button
+                  size="lg"
+                  className="text-white px-8 h-12"
+                  style={{ backgroundColor: data.appearance.primaryColor || '#000' }}
+                  data-cta="Get in Contact"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
+                  }}
+                >
+                  Get in Contact
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              )}
             </div>
           </div>
         </section>
@@ -267,24 +289,26 @@ export function MinimalistTemplate({
 
               {/* Right: Content */}
               <div className="space-y-6">
-                <p className="leading-relaxed" style={{ color: textColor }}>
+                <div className="leading-relaxed" style={{ color: textColor }}>
                   <InlineText
                     value={data.about?.column1 || "Always up for a challenge, I have worked for lean start-ups and was a member of the first New Zealand start-up to attend Y Combinator."}
                     onChange={(val) => onDataChange({ about: { ...data.about, column1: val } })}
                     editMode={editMode}
+                    className="block"
                     style={{ color: textColor }}
                     placeholder="Your career story..."
                   />
-                </p>
-                <p className="leading-relaxed" style={{ color: textColor }}>
+                </div>
+                <div className="leading-relaxed" style={{ color: textColor }}>
                   <InlineText
                     value={data.about?.column2 || "Currently, I lead UI/UX design at SaaS start-up."}
                     onChange={(val) => onDataChange({ about: { ...data.about, column2: val } })}
                     editMode={editMode}
+                    className="block"
                     style={{ color: textColor }}
                     placeholder="Current role..."
                   />
-                </p>
+                </div>
 
                 {/* Skills Tags */}
                 {data.about?.tags && data.about.tags.length > 0 && (
@@ -473,7 +497,7 @@ export function MinimalistTemplate({
                           className="p-0 h-auto font-semibold"
                           style={{ color: data.appearance.primaryColor || '#000' }}
                         >
-                          <a href={project.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2">
+                          <a href={project.link || 'https://example.com'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2">
                             View Project
                             <ExternalLink className="w-4 h-4" />
                           </a>
@@ -589,15 +613,16 @@ export function MinimalistTemplate({
                   placeholder="Get In Touch"
                 />
               </h2>
-              <p style={{ color: textColor }}>
+              <div style={{ color: textColor }}>
                 <InlineText
                   value={data.contact.note}
                   onChange={(val) => handleContactChange('note', val)}
                   editMode={editMode}
+                  className="block"
                   style={{ color: textColor }}
                   placeholder="Let's work together on your next project"
                 />
-              </p>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-12">
@@ -619,8 +644,26 @@ export function MinimalistTemplate({
                         <IconComponent className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm mb-1" style={{ color: textColor, opacity: 0.6 }}>{item.label}</p>
-                        <p style={{ color: '#000' }}>{item.value}</p>
+                        <div className="text-sm mb-1" style={{ color: textColor, opacity: 0.6 }}>
+                          <InlineText
+                            value={item.label}
+                            onChange={(val) => handleContactItemChange(item.id, 'label', val)}
+                            editMode={editMode}
+                            className="text-sm"
+                            style={{ color: textColor, opacity: 0.6 }}
+                            placeholder="Label"
+                          />
+                        </div>
+                        <div style={{ color: '#000' }}>
+                          <InlineText
+                            value={item.value}
+                            onChange={(val) => handleContactItemChange(item.id, 'value', val)}
+                            editMode={editMode}
+                            className=""
+                            style={{ color: '#000' }}
+                            placeholder="Value"
+                          />
+                        </div>
                       </div>
                       {editMode && (
                         <Edit2 className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -632,7 +675,7 @@ export function MinimalistTemplate({
 
               {/* Contact Form */}
               <div>
-                <form onSubmit={handleContactSubmit} className="space-y-4">
+                <form id="contact-form" data-form-type="contact" onSubmit={handleContactSubmit} className="space-y-4">
                   <div>
                     <Input
                       type="text"
@@ -666,21 +709,36 @@ export function MinimalistTemplate({
                     />
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    className="w-full h-12 text-white"
-                    style={{ backgroundColor: data.appearance.primaryColor || '#000' }}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      "Sending..."
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Send Message
-                      </>
+                  <div className="flex gap-3">
+                    <Button 
+                      type="submit" 
+                      className="flex-1 h-12 text-white"
+                      style={{ backgroundColor: data.appearance.primaryColor || '#000' }}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        "Sending..."
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Send Message
+                        </>
+                      )}
+                    </Button>
+                    {data.behavior.showBookMeetingButton !== false && (
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        className="flex-1 h-12"
+                        style={{ borderColor: data.appearance.primaryColor || '#000', color: data.appearance.primaryColor || '#000' }}
+                        data-cta="Book a Meeting"
+                        onClick={() => window.open('/book-meeting', '_blank')}
+                      >
+                        <Calendar className="w-4 h-4 mr-2" />
+                        Book a Meeting
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </form>
               </div>
             </div>

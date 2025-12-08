@@ -23,6 +23,7 @@ export interface Testimonial {
   author: string
   role: string
   quote: string
+  avatar?: string
 }
 
 export interface ContactItem {
@@ -104,6 +105,7 @@ export interface PortfolioData {
     enableBookCall: boolean
     enableViewServices: boolean
     contactDestination: string
+    showBookMeetingButton?: boolean
   }
   seo: {
     metaTitle: string

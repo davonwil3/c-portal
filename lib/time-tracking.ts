@@ -29,6 +29,7 @@ export interface TimeEntryUpdate {
   hourly_rate?: number
   note?: string
   is_running?: boolean
+  start_time?: string // For resuming - update start_time to now
 }
 
 // Get all time entries for the current user
@@ -66,10 +67,48 @@ export async function getRunningTimer(): Promise<TimeEntry | null> {
     .eq('is_running', true)
     .order('start_time', { ascending: false })
     .limit(1)
-    .single()
+
+  if (error) {
+    console.error('[Time Tracking] 406 Error in getRunningTimer:', {
+      error,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      user_id: user.id,
+      url: error.url || 'N/A'
+    })
+    // Don't throw - just return null if there's an error
+    return null
+  }
+
+  return data && data.length > 0 ? data[0] : null
+}
+
+// Get paused timer for current user (has entry but is_running = false and no end_time)
+export async function getPausedTimer(entryId?: string): Promise<TimeEntry | null> {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  let query = supabase
+    .from('time_entries')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('is_running', false)
+    .is('end_time', null)
+    .order('start_time', { ascending: false })
+    .limit(1)
+
+  if (entryId) {
+    query = query.eq('id', entryId)
+  }
+
+  const { data, error } = await query.single()
 
   if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-    console.error('Error fetching running timer:', error)
+    console.error('Error fetching paused timer:', error)
     throw error
   }
 
@@ -115,6 +154,89 @@ export async function startTimeEntry(entry: TimeEntryCreate): Promise<TimeEntry>
 
   if (error) {
     console.error('Error starting time entry:', error)
+    throw error
+  }
+
+  return data
+}
+
+// Pause a time entry (sets is_running to false and stores paused_at timestamp)
+export async function pauseTimeEntry(entryId: string): Promise<TimeEntry> {
+  const supabase = createClient()
+
+  // First get the current entry to calculate elapsed time
+  const { data: currentEntry } = await supabase
+    .from('time_entries')
+    .select('*')
+    .eq('id', entryId)
+    .single()
+
+  if (!currentEntry) {
+    throw new Error('Time entry not found')
+  }
+
+  // Calculate elapsed time at pause
+  const start = new Date(currentEntry.start_time)
+  const now = new Date()
+  const elapsedSeconds = Math.floor((now.getTime() - start.getTime()) / 1000)
+
+  // Store paused_at timestamp and elapsed time in metadata (or we can add a paused_elapsed field)
+  // For now, we'll use updated_at as paused_at indicator and calculate from start_time when resuming
+  const { data, error } = await supabase
+    .from('time_entries')
+    .update({
+      is_running: false,
+      updated_at: now.toISOString(), // This acts as paused_at
+    })
+    .eq('id', entryId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error pausing time entry:', error)
+    throw error
+  }
+
+  return data
+}
+
+// Resume a time entry (sets is_running to true and updates start_time to account for pause duration)
+export async function resumeTimeEntry(entryId: string, pausedElapsedSeconds: number): Promise<TimeEntry> {
+  const supabase = createClient()
+
+  // Get the paused entry to get the original start_time
+  const { data: pausedEntry } = await supabase
+    .from('time_entries')
+    .select('*')
+    .eq('id', entryId)
+    .single()
+
+  if (!pausedEntry) {
+    throw new Error('Time entry not found')
+  }
+
+  // Calculate the actual elapsed time from the original start_time
+  // This accounts for any delay between pause and resume
+  const originalStart = new Date(pausedEntry.start_time)
+  const now = new Date()
+  
+  // The elapsed time should be based on the original start_time
+  // We adjust start_time so that: now - newStartTime = elapsedSeconds
+  // This way, any delay between pause and resume is automatically corrected
+  const newStartTime = new Date(now.getTime() - pausedElapsedSeconds * 1000)
+
+  const { data, error } = await supabase
+    .from('time_entries')
+    .update({
+      is_running: true,
+      start_time: newStartTime.toISOString(), // Adjust start_time to maintain elapsed time
+    })
+    .eq('id', entryId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error resuming time entry:', error)
     throw error
   }
 

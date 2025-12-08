@@ -69,7 +69,9 @@ import { getClients, type Client } from "@/lib/clients"
 import { getProjectsByClient, type Project } from "@/lib/projects"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { saveFormDraft, saveFormTemplate, publishForm, updateFormDraft, updateAndPublishForm, type FormField } from "@/lib/forms"
+import { getCurrentAccount, type Account } from "@/lib/auth"
 import { toast } from "sonner"
+import Image from "next/image"
 import {
   DndContext,
   closestCenter,
@@ -270,7 +272,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                     <input 
                       type="text" 
                       placeholder={field.placeholder || "Enter text..."} 
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               disabled
                     />
                   )}
@@ -279,7 +281,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                     <textarea 
               placeholder={field.placeholder || "Enter your response..."} 
                       rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               disabled
                     />
                   )}
@@ -288,7 +290,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                     <input 
                       type="email" 
                       placeholder="Enter email address..." 
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               disabled
                     />
                   )}
@@ -297,7 +299,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                     <input 
                       type="tel" 
                       placeholder="Enter phone number..." 
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               disabled
                     />
                   )}
@@ -310,7 +312,7 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                       <input 
                         type="text" 
                         placeholder="0.00" 
-                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         disabled
                       />
                     </div>
@@ -319,14 +321,14 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                   {field.type === "date" && (
                     <input 
                       type="date" 
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               disabled
             />
           )}
           
           {field.type === "dropdown" && field.options && (
             <select 
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             >
               <option value="">Select an option</option>
                     {field.options.map((option, idx) => (
@@ -375,18 +377,17 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
               )}
                   
                   {field.type === "signature" && (
-                    <div className="space-y-3">
-                      <div className="border-2 border-gray-300 rounded-md p-4 bg-white max-w-md">
+                    <div className="space-y-3 max-w-md">
+                      <div className="border-2 border-gray-200 rounded-md p-3 bg-gray-50">
                         {!builderValue ? (
-                          <div className="text-center py-4">
-                            <PenTool className="h-6 w-6 text-gray-400 mx-auto mb-2" />
-                            <div className="text-sm text-gray-600 mb-1">Type your full legal name below</div>
-                            <div className="text-xs text-gray-500">Your typed name acts as your signature</div>
+                          <div className="text-center py-2">
+                            <PenTool className="h-5 w-5 text-gray-400 mx-auto mb-1" />
+                            <div className="text-sm text-gray-600">Type your full legal name below</div>
                           </div>
                         ) : (
-                          <div className="text-center py-3">
+                          <div className="text-center py-2">
                             <div 
-                              className="text-3xl md:text-4xl text-gray-900"
+                              className="text-2xl md:text-3xl text-gray-900"
                               style={{ fontFamily: "'Dancing Script', cursive", lineHeight: 1.15 }}
                             >
                               {builderValue}
@@ -399,9 +400,9 @@ function SortableField({ field, index, onUpdate, onDelete, onSelect, isSelected,
                         value={builderValue || ''}
                         onChange={(e) => onBuilderValueChange?.(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                       />
-                      <p className="text-xs text-gray-500 max-w-md">
+                      <p className="text-xs text-gray-500">
                         By typing your name above, you agree that this constitutes a legal signature
                       </p>
             </div>
@@ -475,6 +476,49 @@ export default function FormBuilderPage() {
   const [companyPhone, setCompanyPhone] = useState("(555) 123-4567")
   const [companyEmail, setCompanyEmail] = useState("contact@yourcompany.com")
   const [isFormInitialized, setIsFormInitialized] = useState(false) // Track if form data is loaded
+  const [account, setAccount] = useState<Account | null>(null) // Track user account
+  const [isFromProjectDetails, setIsFromProjectDetails] = useState(false) // Track if form was opened from project details page
+
+  // Load account data and pre-populate company information
+  useEffect(() => {
+    const loadAccountData = async () => {
+      try {
+        const userAccount = await getCurrentAccount()
+        if (userAccount) {
+          setAccount(userAccount)
+          // Only set default values if form is not being edited and not initialized
+          if (!isFormInitialized && !searchParams.get('edit')) {
+            // Pre-load from account data, or use defaults if not available
+            setCompanyName(userAccount.company_name || "Your Company Name")
+            setCompanyAddress(userAccount.address || "123 Business Street, City, State 12345")
+            setCompanyPhone(userAccount.phone || "(555) 123-4567")
+            setCompanyEmail(userAccount.email || "contact@yourcompany.com")
+            if (userAccount.logo_url) {
+              setLogoUrl(userAccount.logo_url)
+            }
+          }
+        } else {
+          // If no account data, use dummy defaults
+          if (!isFormInitialized && !searchParams.get('edit')) {
+            setCompanyName("Your Company Name")
+            setCompanyAddress("123 Business Street, City, State 12345")
+            setCompanyPhone("(555) 123-4567")
+            setCompanyEmail("contact@yourcompany.com")
+          }
+        }
+      } catch (error) {
+        console.error('Error loading account data:', error)
+        // On error, use dummy defaults
+        if (!isFormInitialized && !searchParams.get('edit')) {
+          setCompanyName("Your Company Name")
+          setCompanyAddress("123 Business Street, City, State 12345")
+          setCompanyPhone("(555) 123-4567")
+          setCompanyEmail("contact@yourcompany.com")
+        }
+      }
+    }
+    loadAccountData()
+  }, []) // Only run on mount
 
   // DnD sensors
   const sensors = useSensors(
@@ -514,6 +558,19 @@ export default function FormBuilderPage() {
         setFields(formData.fields || [])
         setEditingFormId(formData.id) // Set the form ID for editing
         setDraftFormId(formData.id) // Also set as draft ID for auto-save
+        
+        // Load company info from form_structure if available
+        if (formData.form_structure) {
+          if (formData.form_structure.brand_color) setBrandColor(formData.form_structure.brand_color)
+          if (formData.form_structure.logo_url) setLogoUrl(formData.form_structure.logo_url)
+          if (formData.form_structure.company_name) setCompanyName(formData.form_structure.company_name)
+          if (formData.form_structure.company_address) setCompanyAddress(formData.form_structure.company_address)
+          if (formData.form_structure.company_phone) setCompanyPhone(formData.form_structure.company_phone)
+          if (formData.form_structure.company_email) setCompanyEmail(formData.form_structure.company_email)
+          if (formData.form_structure.form_date) setFormDate(formData.form_structure.form_date)
+          if (formData.form_structure.footer_line1) setFooterLine1(formData.form_structure.footer_line1)
+          if (formData.form_structure.footer_line2) setFooterLine2(formData.form_structure.footer_line2)
+        }
         
         // Set publish form data for editing
         setPublishFormData(prev => ({
@@ -568,6 +625,19 @@ export default function FormBuilderPage() {
       setFormTitle(title)
       setTimeout(() => setIsFormInitialized(true), 100)
     } else {
+      // Check if we came from project details page with client_id and project_id
+      const clientIdFromUrl = searchParams.get('client_id')
+      const projectIdFromUrl = searchParams.get('project_id')
+      
+      if (clientIdFromUrl && projectIdFromUrl) {
+        setIsFromProjectDetails(true)
+        setPublishFormData(prev => ({
+          ...prev,
+          clientId: clientIdFromUrl,
+          projectId: projectIdFromUrl,
+        }))
+      }
+      
       // No title or edit data, mark as initialized for new blank forms
       setTimeout(() => setIsFormInitialized(true), 100)
     }
@@ -621,10 +691,13 @@ export default function FormBuilderPage() {
     loadClientsAndProjects()
   }, [editingFormId, publishFormData.clientId])
 
-  // Load projects when client is selected in publish modal (for new forms)
+  // Load projects when client is selected in publish modal (for new forms) or when coming from project details
   useEffect(() => {
     const loadProjects = async () => {
-      if (!publishFormData.clientId || publishFormData.clientId === "none" || !showPublishModal) return 
+      if (!publishFormData.clientId || publishFormData.clientId === "none") return 
+      
+      // Load projects if we're in publish modal OR if we came from project details page
+      if (!showPublishModal && !isFromProjectDetails) return
       
       setLoadingProjects(true)
       try {
@@ -639,7 +712,26 @@ export default function FormBuilderPage() {
     }
 
     loadProjects()
-  }, [publishFormData.clientId, showPublishModal])
+  }, [publishFormData.clientId, showPublishModal, isFromProjectDetails])
+
+  // Load clients when coming from project details page
+  useEffect(() => {
+    const loadClientsForProjectDetails = async () => {
+      if (!isFromProjectDetails || !publishFormData.clientId) return
+      
+      setLoadingClients(true)
+      try {
+        const clientsData = await getClients()
+        setClients(clientsData)
+      } catch (error) {
+        console.error("Error loading clients:", error)
+      } finally {
+        setLoadingClients(false)
+      }
+    }
+
+    loadClientsForProjectDetails()
+  }, [isFromProjectDetails, publishFormData.clientId])
 
   const addField = (fieldType: any) => {
     const newField: FormField = {
@@ -806,7 +898,17 @@ export default function FormBuilderPage() {
           null, // Don't save project_id in manual save
           undefined, // Don't save notify_on_submission in manual save
           null, // Don't save submission_deadline in manual save
-          publishFormData.instructions
+          publishFormData.instructions,
+          false, // not silent
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
       } else if (draftFormId) {
         // Update existing draft - only save form structure
@@ -818,7 +920,17 @@ export default function FormBuilderPage() {
           null, // Don't save project_id in manual save
           undefined, // Don't save notify_on_submission in manual save
           null, // Don't save submission_deadline in manual save
-          publishFormData.instructions
+          publishFormData.instructions,
+          false, // not silent
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
       } else {
         // Create new form - only save form structure
@@ -829,7 +941,17 @@ export default function FormBuilderPage() {
           null, // Don't save project_id in manual save
           undefined, // Don't save notify_on_submission in manual save
           null, // Don't save submission_deadline in manual save
-          publishFormData.instructions
+          publishFormData.instructions,
+          false, // not silent
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
         
         // Store the draft ID for future auto-saves
@@ -888,13 +1010,13 @@ export default function FormBuilderPage() {
       
       if (editingFormId) {
         // Update and publish existing form
-        result = await updateAndPublishForm(editingFormId, publishFormData, fields)
+        result = await updateAndPublishForm(editingFormId, publishFormData, fields, brandColor, logoUrl, companyName, companyAddress, companyPhone, companyEmail, formDate, footerLine1, footerLine2)
       } else if (draftFormId) {
         // Update and publish existing draft
-        result = await updateAndPublishForm(draftFormId, publishFormData, fields)
+        result = await updateAndPublishForm(draftFormId, publishFormData, fields, brandColor, logoUrl, companyName, companyAddress, companyPhone, companyEmail, formDate, footerLine1, footerLine2)
       } else {
         // Create and publish new form
-        result = await publishForm(publishFormData, fields)
+        result = await publishForm(publishFormData, fields, brandColor, logoUrl, companyName, companyAddress, companyPhone, companyEmail, formDate, footerLine1, footerLine2)
       }
 
       if (result.success) {
@@ -964,7 +1086,16 @@ export default function FormBuilderPage() {
           undefined, // Don't save notify_on_submission in auto-save
           null, // Don't save submission_deadline in auto-save
           publishFormData.instructions,
-          true // silent for auto-save
+          true, // silent for auto-save
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
       } else if (draftFormId) {
         // Update existing draft - only save form structure
@@ -978,7 +1109,16 @@ export default function FormBuilderPage() {
           undefined, // Don't save notify_on_submission in auto-save
           null, // Don't save submission_deadline in auto-save
           publishFormData.instructions,
-          true // silent for auto-save
+          true, // silent for auto-save
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
       } else {
         // Create new draft only if we don't have one AND have a proper title
@@ -991,7 +1131,16 @@ export default function FormBuilderPage() {
           undefined, // Don't save notify_on_submission in auto-save
           null, // Don't save submission_deadline in auto-save
           publishFormData.instructions,
-          true // silent for auto-save
+          true, // silent for auto-save
+          brandColor,
+          logoUrl,
+          companyName,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          formDate,
+          footerLine1,
+          footerLine2
         )
         
         // Store the draft ID for future auto-saves
@@ -1075,7 +1224,20 @@ export default function FormBuilderPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push('/dashboard/lead-workflow?active=forms')}
+                onClick={() => {
+                  const returnTo = searchParams.get('return_to')
+                  const projectUrl = searchParams.get('project_url')
+                  const leadsUrl = searchParams.get('leads_url')
+                  
+                  if (returnTo === 'project' && projectUrl) {
+                    router.push(decodeURIComponent(projectUrl))
+                  } else if (returnTo === 'leads' && leadsUrl) {
+                    router.push(decodeURIComponent(leadsUrl))
+                  } else {
+                    // Default fallback
+                    router.push('/dashboard/lead-workflow?active=forms')
+                  }
+                }}
                 className="flex items-center space-x-2"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -1111,15 +1273,26 @@ export default function FormBuilderPage() {
                   </>
                 )}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
+              <Button 
+                data-help="btn-preview-form"
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowPreview(true)}
+              >
                 <Eye className="h-4 w-4 mr-2" />
                 Preview
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowSaveTemplate(true)}>
+              <Button 
+                data-help="btn-save-template"
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowSaveTemplate(true)}
+              >
                 <Zap className="h-4 w-4 mr-2" />
                 Save as Template
               </Button>
               <Button 
+                data-help="btn-publish-form"
                 className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90" 
                 size="sm"
                 onClick={() => {
@@ -1138,7 +1311,7 @@ export default function FormBuilderPage() {
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Sidebar - Field Library */}
-          <div className="w-80 border-r bg-gray-50 overflow-y-auto">
+          <div data-help="field-library" className="w-80 border-r bg-gray-50 overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Add a Field</h2>
 
@@ -1168,12 +1341,13 @@ export default function FormBuilderPage() {
               </div>
 
               {/* Basic Fields */}
-              <div className="space-y-2 mb-6">
+              <div data-help="field-types-list" className="space-y-2 mb-6">
                 {basicFields.map((field) => {
                     const Icon = field.icon
                     return (
                       <Card
                         key={field.id}
+                        data-help={`field-type-${field.id}`}
                         className="cursor-pointer hover:shadow-md transition-shadow"
                         draggable
                         onDragStart={(e) => {
@@ -1202,6 +1376,7 @@ export default function FormBuilderPage() {
 
           {/* Center - Form Canvas */}
           <div 
+            data-help="form-canvas"
             className={cn(
               "flex-1 overflow-y-auto bg-white transition-colors duration-200 p-8",
               isDragOver && "bg-blue-50"
@@ -1374,7 +1549,8 @@ export default function FormBuilderPage() {
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => setCompanyName(e.currentTarget.textContent || "Your Company Name")}
-                        className="text-xl font-bold text-gray-900 outline-none focus:ring-0 bg-transparent mb-1 hover:bg-gray-50 px-1 rounded"
+                        className="text-xl font-bold text-gray-900 outline-none focus:ring-0 bg-transparent mb-1 hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                        title="Click to edit company name"
                       >
                         {companyName}
                       </h2>
@@ -1383,7 +1559,8 @@ export default function FormBuilderPage() {
                           contentEditable
                           suppressContentEditableWarning
                           onBlur={(e) => setCompanyAddress(e.currentTarget.textContent || "123 Business Street, City, State 12345")}
-                          className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                          className="outline-none focus:ring-0 bg-transparent hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                          title="Click to edit company address"
                         >
                           {companyAddress}
                         </p>
@@ -1392,7 +1569,8 @@ export default function FormBuilderPage() {
                             contentEditable
                             suppressContentEditableWarning
                             onBlur={(e) => setCompanyPhone(e.currentTarget.textContent || "(555) 123-4567")}
-                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                            title="Click to edit company phone"
                           >
                             {companyPhone}
                           </span>
@@ -1400,7 +1578,8 @@ export default function FormBuilderPage() {
                             contentEditable
                             suppressContentEditableWarning
                             onBlur={(e) => setCompanyEmail(e.currentTarget.textContent || "contact@yourcompany.com")}
-                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                            title="Click to edit company email"
                           >
                             {companyEmail}
                           </span>
@@ -1432,8 +1611,9 @@ export default function FormBuilderPage() {
                           ;(e.currentTarget as HTMLElement).blur()
                         }
                       }}
-                      className="font-medium text-gray-900 px-2 py-1 rounded hover:bg-gray-50 outline-none focus:ring-0 cursor-text select-text text-sm"
+                      className="font-medium text-gray-900 px-2 py-1 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 outline-none focus:ring-0 cursor-text select-text text-sm transition-all"
                       aria-label="Form Date"
+                      title="Click to edit form date"
                     >
                       {formatDateDisplay(formDate)}
                     </div>
@@ -1524,7 +1704,8 @@ export default function FormBuilderPage() {
                             contentEditable
                             suppressContentEditableWarning
                             onBlur={(e) => setFooterLine1(e.currentTarget.textContent || "")}
-                            className="outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                            className="outline-none focus:ring-0 bg-transparent hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                            title="Click to edit footer line 1"
                           >
                             {footerLine1}
                           </div>
@@ -1532,7 +1713,8 @@ export default function FormBuilderPage() {
                             contentEditable
                             suppressContentEditableWarning
                             onBlur={(e) => setFooterLine2(e.currentTarget.textContent || "")}
-                            className="mt-1 outline-none focus:ring-0 bg-transparent hover:bg-gray-50 px-1 rounded"
+                            className="mt-1 outline-none focus:ring-0 bg-transparent hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 px-1 rounded cursor-text transition-all"
+                            title="Click to edit footer line 2"
                           >
                             {footerLine2}
                           </div>
@@ -1736,19 +1918,15 @@ export default function FormBuilderPage() {
                   {/* Logo and Company Info */}
                   <div className="flex items-start space-x-6">
                     {/* Logo */}
-                    <div className="flex-shrink-0">
-                      {logoUrl ? (
+                    {logoUrl && (
+                      <div className="flex-shrink-0">
                         <img 
                           src={logoUrl} 
                           alt="Company Logo" 
                           className="w-16 h-16 object-contain rounded-lg border border-gray-200"
                         />
-                      ) : (
-                        <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                          <ImageIcon className="h-8 w-8 text-gray-400" />
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     
                     {/* Company Details */}
                     <div className="flex-1">
@@ -1814,7 +1992,7 @@ export default function FormBuilderPage() {
                             <input 
                               type="text" 
                               placeholder={field.placeholder || "Enter text..."} 
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
@@ -1822,7 +2000,7 @@ export default function FormBuilderPage() {
                             <textarea 
                               placeholder={field.placeholder || "Enter your response..."} 
                             rows={4}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
@@ -1830,7 +2008,7 @@ export default function FormBuilderPage() {
                             <input 
                             type="email" 
                               placeholder="Enter email address..." 
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
@@ -1843,7 +2021,7 @@ export default function FormBuilderPage() {
                                 const formatted = formatPhoneNumber(e.target.value)
                                 setPreviewValues(prev => ({ ...prev, [field.id]: formatted }))
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
@@ -1863,7 +2041,7 @@ export default function FormBuilderPage() {
                                 if (parts[1] && parts[1].length > 2) return
                                 setPreviewValues(prev => ({ ...prev, [field.id]: value }))
                               }}
-                              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             />
                           </div>
                         )}
@@ -1871,7 +2049,7 @@ export default function FormBuilderPage() {
                         {field.type === "date" && (
                             <input 
                             type="date" 
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
                         
@@ -1879,7 +2057,7 @@ export default function FormBuilderPage() {
                             <select 
                               value={previewValues[field.id] || ''}
                               onChange={(e) => setPreviewValues(prev => ({ ...prev, [field.id]: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             >
                             <option value="">Select an option</option>
                             {field.options.map((option, idx) => (
@@ -1970,18 +2148,17 @@ export default function FormBuilderPage() {
                         )}
                         
                         {field.type === "signature" && (
-                          <div className="space-y-3">
-                            <div className="border-2 border-gray-300 rounded-md p-4 bg-white">
+                          <div className="space-y-3 max-w-md">
+                            <div className="border-2 border-gray-300 rounded-md p-3 bg-white">
                               {!previewValues[field.id] ? (
-                                <div className="text-center py-6">
-                                  <PenTool className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                                  <div className="text-sm text-gray-600 mb-1">Type your full legal name below</div>
-                                  <div className="text-xs text-gray-500">Your typed name acts as your signature</div>
+                                <div className="text-center py-2">
+                                  <PenTool className="h-5 w-5 text-gray-400 mx-auto mb-1" />
+                                  <div className="text-sm text-gray-600">Type your full legal name below</div>
                                 </div>
                               ) : (
-                                <div className="text-center py-4">
+                                <div className="text-center py-2">
                                   <div 
-                                    className="text-4xl md:text-5xl text-gray-900"
+                                    className="text-2xl md:text-3xl text-gray-900"
                                     style={{ fontFamily: "'Dancing Script', cursive", lineHeight: 1.15 }}
                                   >
                                     {previewValues[field.id]}
@@ -2016,6 +2193,30 @@ export default function FormBuilderPage() {
                         <Button className="text-white hover:opacity-90 px-8 py-3 text-lg font-medium" style={{ backgroundColor: brandColor }}>
                     Submit Form
                   </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Powered by Jolix Footer - Free Plan Only */}
+            {account?.plan_tier === 'free' && (
+              <div className="pt-10 mt-10 border-t border-gray-100 px-8">
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                  <span>Powered by</span>
+                  <a
+                    href="https://jolix.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
+                  >
+                    <Image
+                      src="/jolixlogo.png"
+                      alt="Jolix"
+                      width={18}
+                      height={18}
+                      className="object-contain"
+                    />
+                    <span>Jolix</span>
+                  </a>
                 </div>
               </div>
             )}
@@ -2089,53 +2290,120 @@ export default function FormBuilderPage() {
               />
             </div>
 
-            {/* Client and Project Display (Read-only) */}
+            {/* Client and Project Selection */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-gray-900">Form Assignment</h3>
-              <p className="text-sm text-gray-600">This form will be created for the project you're currently viewing.</p>
+              {isFromProjectDetails && (
+                <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  This form is assigned to the project you're currently viewing. Client and project cannot be changed.
+                </p>
+              )}
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    Client
-                  </Label>
-                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {loadingClients ? (
-                      <div className="flex items-center">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading...
-                      </div>
-                    ) : (
-                      <div className="flex items-center">
-                        <Users className="h-4 w-4 mr-2 text-gray-500" />
-                        {clients.find(c => c.id === publishFormData.clientId)?.company || 
-                         clients.find(c => c.id === publishFormData.clientId) ? 
-                         `${clients.find(c => c.id === publishFormData.clientId)?.first_name} ${clients.find(c => c.id === publishFormData.clientId)?.last_name}` : 
-                         'Not specified'}
-                      </div>
-                    )}
+              {isFromProjectDetails ? (
+                // Read-only display when from project details
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Client
+                    </Label>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                      {loadingClients ? (
+                        <div className="flex items-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </div>
+                      ) : (
+                        <div className="flex items-center">
+                          <Users className="h-4 w-4 mr-2 text-gray-500" />
+                          {clients.find(c => c.id === publishFormData.clientId)?.company || 
+                           clients.find(c => c.id === publishFormData.clientId) ? 
+                           `${clients.find(c => c.id === publishFormData.clientId)?.first_name} ${clients.find(c => c.id === publishFormData.clientId)?.last_name}` : 
+                           'Not specified'}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    Project
-                  </Label>
-                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                    {loadingProjects ? (
-                      <div className="flex items-center">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading...
-                      </div>
-                    ) : (
-                      <div className="flex items-center">
-                        <Package className="h-4 w-4 mr-2 text-gray-500" />
-                        {availableProjects.find(p => p.id === publishFormData.projectId)?.name || 'Not specified'}
-                      </div>
-                    )}
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Project
+                    </Label>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                      {loadingProjects ? (
+                        <div className="flex items-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </div>
+                      ) : (
+                        <div className="flex items-center">
+                          <Package className="h-4 w-4 mr-2 text-gray-500" />
+                          {availableProjects.find(p => p.id === publishFormData.projectId)?.name || 'Not specified'}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                // Editable dropdowns when not from project details
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Client
+                    </Label>
+                    <Select
+                      value={publishFormData.clientId || "none"}
+                      onValueChange={(value) => {
+                        setPublishFormData(prev => ({
+                          ...prev,
+                          clientId: value === "none" ? "" : value,
+                          projectId: "" // Reset project when client changes
+                        }))
+                        setAvailableProjects([])
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a client" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No client</SelectItem>
+                        {clients.map((client) => (
+                          <SelectItem key={client.id} value={client.id}>
+                            {client.company || `${client.first_name} ${client.last_name}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Project
+                    </Label>
+                    <Select
+                      value={publishFormData.projectId || "none"}
+                      onValueChange={(value) => {
+                        setPublishFormData(prev => ({
+                          ...prev,
+                          projectId: value === "none" ? "" : value
+                        }))
+                      }}
+                      disabled={!publishFormData.clientId || publishFormData.clientId === "none"}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {availableProjects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Email Notifications */}

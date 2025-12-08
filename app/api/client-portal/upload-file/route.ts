@@ -44,22 +44,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
-    if (!companySlug) {
-      return NextResponse.json(
-        { success: false, message: 'No company slug provided' },
-        { status: 400 }
-      )
-    }
-    
-    if (!clientSlug) {
-      return NextResponse.json(
-        { success: false, message: 'No client slug provided' },
-        { status: 400 }
-      )
-    }
 
-    // Handle preview mode - use passed client data
+    // Handle preview mode - use passed client data (no slugs or session token needed)
     if (isPreview) {
       console.log('Processing preview mode upload')
       
@@ -162,61 +148,91 @@ export async function POST(request: NextRequest) {
     }
 
     // Regular session validation for non-preview uploads
-    if (!sessionToken) {
+    // For non-preview mode, we can use session token if provided, but also support direct clientId/accountId
+    // If session token is provided, validate it; otherwise use clientId/accountId directly
+    let allowlistData: any = null
+    let clientData: any = null
+    let uploadedByName = 'Client'
+
+    if (sessionToken && companySlug && clientSlug) {
+      // Validate session token if provided
+      const { data, error } = await supabaseAdmin.rpc('validate_client_session', {
+        p_session_token: sessionToken,
+        p_company_slug: companySlug,
+        p_client_slug: clientSlug
+      })
+
+      if (error || !data || !data[0]?.is_valid) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            message: 'Invalid or expired session' 
+          },
+          { status: 401 }
+        )
+      }
+
+      const email = data[0].email
+
+      // Get user info from allowlist
+      const { data: allowlist, error: allowlistError } = await supabaseAdmin
+        .from('client_allowlist')
+        .select('email, name, role, account_id')
+        .eq('email', email)
+        .eq('company_slug', companySlug)
+        .eq('client_slug', clientSlug)
+        .eq('is_active', true)
+        .single()
+
+      if (allowlistError || !allowlist) {
+        return NextResponse.json(
+          { success: false, message: 'User not found in allowlist' },
+          { status: 404 }
+        )
+      }
+
+      allowlistData = allowlist
+      uploadedByName = allowlist.name || email
+
+      // Get client ID from client slug
+      const { data: client, error: clientError } = await supabaseAdmin
+        .from('clients')
+        .select('id')
+        .eq('slug', clientSlug)
+        .eq('account_id', allowlistData.account_id)
+        .single()
+
+      if (clientError || !client) {
+        return NextResponse.json(
+          { success: false, message: 'Client not found' },
+          { status: 404 }
+        )
+      }
+
+      clientData = client
+    } else if (clientId && accountId) {
+      // Use direct clientId and accountId if provided (no session validation needed)
+      allowlistData = { account_id: accountId }
+      
+      const { data: client, error: clientError } = await supabaseAdmin
+        .from('clients')
+        .select('id')
+        .eq('id', clientId)
+        .eq('account_id', accountId)
+        .single()
+
+      if (clientError || !client) {
+        return NextResponse.json(
+          { success: false, message: 'Client not found' },
+          { status: 404 }
+        )
+      }
+
+      clientData = client
+    } else {
       return NextResponse.json(
-        { success: false, message: 'No session token provided' },
+        { success: false, message: 'Either session token with slugs, or clientId and accountId are required' },
         { status: 400 }
-      )
-    }
-
-    // Validate session token
-    const { data, error } = await supabaseAdmin.rpc('validate_client_session', {
-      p_session_token: sessionToken,
-      p_company_slug: companySlug,
-      p_client_slug: clientSlug
-    })
-
-    if (error || !data || !data[0]?.is_valid) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Invalid or expired session' 
-        },
-        { status: 401 }
-      )
-    }
-
-    const email = data[0].email
-
-    // Get user info from allowlist
-    const { data: allowlistData, error: allowlistError } = await supabaseAdmin
-      .from('client_allowlist')
-      .select('email, name, role, account_id')
-      .eq('email', email)
-      .eq('company_slug', companySlug)
-      .eq('client_slug', clientSlug)
-      .eq('is_active', true)
-      .single()
-
-    if (allowlistError || !allowlistData) {
-      return NextResponse.json(
-        { success: false, message: 'User not found in allowlist' },
-        { status: 404 }
-      )
-    }
-
-    // Get client ID from client slug
-    const { data: clientData, error: clientError } = await supabaseAdmin
-      .from('clients')
-      .select('id')
-      .eq('slug', clientSlug)
-      .eq('account_id', allowlistData.account_id)
-      .single()
-
-    if (clientError || !clientData) {
-      return NextResponse.json(
-        { success: false, message: 'Client not found' },
-        { status: 404 }
       )
     }
 
@@ -282,7 +298,7 @@ export async function POST(request: NextRequest) {
         client_id: clientData.id,
         project_id: projectId || null,
         uploaded_by: null, // Client uploads don't have a user_id
-        uploaded_by_name: allowlistData.name || email,
+        uploaded_by_name: uploadedByName,
         description: description || null,
         tags: [{ name: 'uploaded by client', color: '#10B981' }], // Green tag for client uploads
         access_level: 'client',

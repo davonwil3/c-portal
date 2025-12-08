@@ -1,0 +1,1098 @@
+/**
+ * Dummy data to show during tours to make the UI look full and realistic
+ * This data is displayed when isTourRunning is true
+ */
+
+// Automations Page Dummy Data
+export const dummyAutomations = [
+  {
+    id: "auto-1",
+    name: "Welcome New Clients",
+    description: "Automatically send a welcome email and create a portal when a new client is added",
+    trigger: "client_created",
+    triggerGroup: "clients",
+    conditions: [],
+    filters: [],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["{{client.email}}"],
+          emailSubject: "Welcome to Our Service!",
+          emailBody: "Hi {{client.name}}, we're excited to work with you!",
+        },
+      },
+      {
+        type: "portal_notice" as const,
+        config: {
+          noticeType: "notice" as const,
+          noticeTitle: "Welcome!",
+          noticeMessage: "Your portal is now active. Feel free to explore!",
+        },
+      },
+    ],
+    scope: "global" as const,
+    enabled: true,
+    lastRun: "2024-01-15T10:30:00Z",
+    successRate: 98,
+    totalRuns: 45,
+  },
+  {
+    id: "auto-2",
+    name: "Project Completion Follow-up",
+    description: "Send a thank you email and request feedback when a project is completed",
+    trigger: "project_completed",
+    triggerGroup: "projects",
+    conditions: [],
+    filters: [],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["{{project.client.email}}"],
+          emailSubject: "Thank you for your trust!",
+          emailBody: "We'd love to hear your feedback about {{project.name}}",
+        },
+      },
+      {
+        type: "create_task" as const,
+        config: {
+          taskTitle: "Request testimonial from {{project.client.name}}",
+          taskAssignee: "me",
+          taskDueInDays: 7,
+        },
+      },
+    ],
+    scope: "global" as const,
+    enabled: true,
+    lastRun: "2024-01-14T15:45:00Z",
+    successRate: 100,
+    totalRuns: 12,
+  },
+  {
+    id: "auto-3",
+    name: "Invoice Payment Reminder",
+    description: "Remind clients about unpaid invoices 3 days before due date",
+    trigger: "invoice_due_soon",
+    triggerGroup: "invoices",
+    conditions: ["Due in 3 days", "Status is unpaid"],
+    filters: [
+      { field: "due_date", operator: "is_in_next", value: "3 days" },
+      { field: "status", operator: "equals", value: "unpaid" },
+    ],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["{{invoice.client.email}}"],
+          emailSubject: "Friendly Reminder: Invoice Due Soon",
+          emailBody: "Your invoice #{{invoice.number}} is due in 3 days.",
+        },
+      },
+      {
+        type: "portal_notice" as const,
+        config: {
+          noticeType: "action_needed" as const,
+          noticeTitle: "Invoice Due Soon",
+          noticeMessage: "Invoice #{{invoice.number}} is due on {{invoice.due_date}}",
+          noticeButtonLabel: "View Invoice",
+          noticeDeepLink: "/invoices/{{invoice.id}}",
+        },
+      },
+    ],
+    scope: "global" as const,
+    enabled: true,
+    lastRun: "2024-01-16T09:00:00Z",
+    successRate: 95,
+    totalRuns: 28,
+  },
+  {
+    id: "auto-4",
+    name: "Overdue Invoice Alert",
+    description: "Send urgent notice when invoice becomes overdue",
+    trigger: "invoice_overdue",
+    triggerGroup: "invoices",
+    conditions: ["Status is overdue"],
+    filters: [{ field: "status", operator: "equals", value: "overdue" }],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["{{invoice.client.email}}"],
+          emailSubject: "Urgent: Overdue Invoice",
+          emailBody: "Invoice #{{invoice.number}} is now overdue. Please remit payment.",
+        },
+      },
+      {
+        type: "action_needed" as const,
+        config: {
+          noticeType: "action_needed" as const,
+          noticeTitle: "Payment Overdue",
+          noticeMessage: "Please submit payment for invoice #{{invoice.number}}",
+          noticeButtonLabel: "Pay Now",
+          noticeDeepLink: "/invoices/{{invoice.id}}/pay",
+        },
+      },
+      {
+        type: "create_task" as const,
+        config: {
+          taskTitle: "Follow up on overdue invoice #{{invoice.number}}",
+          taskAssignee: "me",
+          taskDueInDays: 1,
+        },
+      },
+    ],
+    scope: "global" as const,
+    enabled: false,
+    lastRun: "2024-01-10T08:00:00Z",
+    successRate: 88,
+    totalRuns: 8,
+  },
+  {
+    id: "auto-5",
+    name: "Contract Signature Reminder",
+    description: "Remind clients to sign pending contracts",
+    trigger: "contract_pending",
+    triggerGroup: "contracts",
+    conditions: ["Status is pending", "Sent more than 2 days ago"],
+    filters: [
+      { field: "status", operator: "equals", value: "pending" },
+      { field: "sent_at", operator: "is_before", value: "2 days ago" },
+    ],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["{{contract.client.email}}"],
+          emailSubject: "Reminder: Contract Awaiting Signature",
+          emailBody: "Please review and sign the contract for {{contract.title}}",
+        },
+      },
+      {
+        type: "portal_notice" as const,
+        config: {
+          noticeType: "action_needed" as const,
+          noticeTitle: "Contract Awaiting Your Signature",
+          noticeMessage: "Please sign the contract: {{contract.title}}",
+          noticeButtonLabel: "Review Contract",
+          noticeDeepLink: "/contracts/{{contract.id}}",
+        },
+      },
+    ],
+    scope: "global" as const,
+    enabled: true,
+    lastRun: "2024-01-15T14:20:00Z",
+    successRate: 92,
+    totalRuns: 18,
+  },
+  {
+    id: "auto-6",
+    name: "Monthly Project Update - Acme Corp",
+    description: "Send monthly progress report to Acme Corp",
+    trigger: "scheduled_monthly",
+    triggerGroup: "schedule",
+    conditions: ["1st of every month"],
+    filters: [],
+    actions: [
+      {
+        type: "email" as const,
+        config: {
+          emailTo: ["client@acmecorp.com"],
+          emailSubject: "Monthly Project Update",
+          emailBody: "Here's your monthly progress report...",
+          emailTemplate: "monthly_report",
+        },
+      },
+    ],
+    scope: "client" as const,
+    targetId: "client-acme",
+    targetName: "Acme Corp",
+    enabled: true,
+    lastRun: "2024-01-01T00:00:00Z",
+    successRate: 100,
+    totalRuns: 6,
+  },
+]
+
+// Automation Run Logs Dummy Data
+export const dummyRunLogs = [
+  {
+    id: "r1",
+    automationName: "Overdue Invoice Reminder",
+    timestamp: "2024-01-15T14:32:15Z",
+    target: "Acme Corp",
+    status: "success" as const,
+    duration: "1.2s",
+    details: "Email sent successfully",
+  },
+  {
+    id: "r2",
+    automationName: "New Message Alert",
+    timestamp: "2024-01-15T14:15:42Z",
+    target: "TechStart Inc",
+    status: "success" as const,
+    duration: "0.8s",
+    details: "Notification delivered",
+  },
+  {
+    id: "r3",
+    automationName: "Task Assignment",
+    timestamp: "2024-01-15T12:05:33Z",
+    target: "Global",
+    status: "failed" as const,
+    duration: "2.1s",
+    details: "Failed to create task: Invalid assignee",
+  },
+  {
+    id: "r4",
+    automationName: "Welcome New Clients",
+    timestamp: "2024-01-15T10:30:00Z",
+    target: "Innovate Labs",
+    status: "success" as const,
+    duration: "0.5s",
+    details: "Welcome email and portal notice sent",
+  },
+  {
+    id: "r5",
+    automationName: "Project Completion Follow-up",
+    timestamp: "2024-01-14T15:45:00Z",
+    target: "Acme Corp",
+    status: "success" as const,
+    duration: "1.0s",
+    details: "Thank you email sent and task created",
+  },
+]
+
+// Clients Page Dummy Data
+export const dummyClients = [
+  {
+    id: "client-1",
+    name: "Acme Corporation",
+    email: "contact@acmecorp.com",
+    company: "Acme Corp",
+    status: "active",
+    projects: 3,
+    revenue: 45000,
+    avatar: "/placeholder-user.jpg",
+    joined: "2023-06-15",
+  },
+  {
+    id: "client-2",
+    name: "TechStart Inc",
+    email: "hello@techstart.io",
+    company: "TechStart",
+    status: "active",
+    projects: 5,
+    revenue: 78000,
+    avatar: "/placeholder-user.jpg",
+    joined: "2023-08-22",
+  },
+  {
+    id: "client-3",
+    name: "Global Industries",
+    email: "info@globalind.com",
+    company: "Global Industries",
+    status: "active",
+    projects: 2,
+    revenue: 32000,
+    avatar: "/placeholder-user.jpg",
+    joined: "2023-11-05",
+  },
+  {
+    id: "client-4",
+    name: "Innovate Labs",
+    email: "team@innovatelabs.com",
+    company: "Innovate Labs",
+    status: "active",
+    projects: 1,
+    revenue: 15000,
+    avatar: "/placeholder-user.jpg",
+    joined: "2024-01-10",
+  },
+]
+
+// Projects Page Dummy Data
+export const dummyProjects = [
+  {
+    id: "proj-1",
+    name: "Website Redesign",
+    client: "Acme Corporation",
+    status: "active",
+    progress: 65,
+    budget: 15000,
+    spent: 9750,
+    dueDate: "2024-02-28",
+    team: 3,
+  },
+  {
+    id: "proj-2",
+    name: "Mobile App Development",
+    client: "TechStart Inc",
+    status: "active",
+    progress: 42,
+    budget: 50000,
+    spent: 21000,
+    dueDate: "2024-04-15",
+    team: 5,
+  },
+  {
+    id: "proj-3",
+    name: "Brand Identity",
+    client: "Global Industries",
+    status: "completed",
+    progress: 100,
+    budget: 8000,
+    spent: 7800,
+    dueDate: "2024-01-10",
+    team: 2,
+  },
+  {
+    id: "proj-4",
+    name: "E-commerce Platform",
+    client: "TechStart Inc",
+    status: "active",
+    progress: 28,
+    budget: 35000,
+    spent: 9800,
+    dueDate: "2024-05-20",
+    team: 4,
+  },
+]
+
+// Contracts Page Dummy Data
+export const dummyContracts = [
+  {
+    id: "contract-1",
+    title: "Website Design & Development Agreement",
+    client: "Acme Corporation",
+    status: "signed",
+    value: 15000,
+    createdAt: "2023-06-10",
+    signedAt: "2023-06-14",
+  },
+  {
+    id: "contract-2",
+    title: "Mobile App Development Contract",
+    client: "TechStart Inc",
+    status: "pending",
+    value: 50000,
+    createdAt: "2024-01-05",
+    signedAt: null,
+  },
+  {
+    id: "contract-3",
+    title: "Ongoing Retainer Agreement",
+    client: "Global Industries",
+    status: "signed",
+    value: 5000,
+    createdAt: "2023-11-01",
+    signedAt: "2023-11-03",
+  },
+]
+
+// Messages/Chat Dummy Data
+export const dummyMessages = [
+  {
+    id: "msg-1",
+    client: "Acme Corporation",
+    lastMessage: "Thanks for the update! Looking forward to the next milestone.",
+    timestamp: "2024-01-16T10:30:00Z",
+    unread: false,
+  },
+  {
+    id: "msg-2",
+    client: "TechStart Inc",
+    lastMessage: "Can we schedule a call to discuss the mobile app features?",
+    timestamp: "2024-01-16T14:15:00Z",
+    unread: true,
+  },
+  {
+    id: "msg-3",
+    client: "Global Industries",
+    lastMessage: "The logo looks perfect! Approved.",
+    timestamp: "2024-01-15T16:45:00Z",
+    unread: false,
+  },
+]
+
+// Portals Page Dummy Data
+export const dummyPortals = [
+  {
+    id: "portal-1",
+    client: "Acme Corporation",
+    slug: "acme-corp",
+    projects: 3,
+    files: 24,
+    messages: 18,
+    lastActivity: "2024-01-16T09:30:00Z",
+    status: "active",
+  },
+  {
+    id: "portal-2",
+    client: "TechStart Inc",
+    slug: "techstart",
+    projects: 5,
+    files: 42,
+    messages: 35,
+    lastActivity: "2024-01-16T14:20:00Z",
+    status: "active",
+  },
+  {
+    id: "portal-3",
+    client: "Global Industries",
+    slug: "global-industries",
+    projects: 2,
+    files: 16,
+    messages: 12,
+    lastActivity: "2024-01-15T16:45:00Z",
+    status: "active",
+  },
+]
+
+// Forms Page Dummy Data
+export const dummyForms = [
+  {
+    id: "form-1",
+    name: "Client Onboarding",
+    submissions: 12,
+    lastSubmission: "2024-01-15T11:20:00Z",
+    status: "active",
+  },
+  {
+    id: "form-2",
+    name: "Project Brief",
+    submissions: 8,
+    lastSubmission: "2024-01-14T09:15:00Z",
+    status: "active",
+  },
+  {
+    id: "form-3",
+    name: "Feedback Survey",
+    submissions: 24,
+    lastSubmission: "2024-01-16T15:30:00Z",
+    status: "active",
+  },
+]
+
+// Analytics/Dashboard Dummy Data
+export const dummyAnalytics = {
+  revenue: {
+    total: 170000,
+    monthly: 28500,
+    growth: 15.5,
+  },
+  clients: {
+    total: 12,
+    active: 8,
+    new: 2,
+  },
+  projects: {
+    total: 18,
+    active: 7,
+    completed: 11,
+  },
+  invoices: {
+    outstanding: 15000,
+    overdue: 3200,
+    paid: 155000,
+  },
+}
+
+// Time Tracking Dummy Data
+// Time Entries Dummy Data (matching TimeEntry interface)
+export const dummyTimeEntries = [
+  {
+    id: "time-1",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-1",
+    project_name: "Website Redesign",
+    start_time: "2024-01-16T09:00:00Z",
+    end_time: "2024-01-16T12:30:00Z",
+    duration_seconds: 12600, // 3.5 hours
+    is_running: false,
+    hourly_rate: 150,
+    billable_amount: 525,
+    note: "Homepage design mockups and wireframes",
+    created_at: "2024-01-16T09:00:00Z",
+    updated_at: "2024-01-16T12:30:00Z",
+  },
+  {
+    id: "time-2",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-2",
+    project_name: "Mobile App Development",
+    start_time: "2024-01-16T13:00:00Z",
+    end_time: "2024-01-16T18:00:00Z",
+    duration_seconds: 18000, // 5 hours
+    is_running: false,
+    hourly_rate: 175,
+    billable_amount: 875,
+    note: "API integration and backend development",
+    created_at: "2024-01-16T13:00:00Z",
+    updated_at: "2024-01-16T18:00:00Z",
+  },
+  {
+    id: "time-3",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-1",
+    project_name: "Website Redesign",
+    start_time: "2024-01-15T14:00:00Z",
+    end_time: "2024-01-15T15:00:00Z",
+    duration_seconds: 3600, // 1 hour
+    is_running: false,
+    hourly_rate: 150,
+    billable_amount: 0, // Non-billable
+    note: "Client meeting and requirements gathering",
+    created_at: "2024-01-15T14:00:00Z",
+    updated_at: "2024-01-15T15:00:00Z",
+  },
+  {
+    id: "time-4",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-3",
+    project_name: "Brand Identity",
+    start_time: "2024-01-15T10:00:00Z",
+    end_time: "2024-01-15T13:30:00Z",
+    duration_seconds: 12600, // 3.5 hours
+    is_running: false,
+    hourly_rate: 125,
+    billable_amount: 437.5,
+    note: "Logo design and brand guidelines",
+    created_at: "2024-01-15T10:00:00Z",
+    updated_at: "2024-01-15T13:30:00Z",
+  },
+  {
+    id: "time-5",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-2",
+    project_name: "Mobile App Development",
+    start_time: "2024-01-14T09:30:00Z",
+    end_time: "2024-01-14T12:00:00Z",
+    duration_seconds: 9000, // 2.5 hours
+    is_running: false,
+    hourly_rate: 175,
+    billable_amount: 437.5,
+    note: "Frontend React Native components",
+    created_at: "2024-01-14T09:30:00Z",
+    updated_at: "2024-01-14T12:00:00Z",
+  },
+  {
+    id: "time-6",
+    account_id: "tour-account",
+    user_id: "tour-user",
+    project_id: "proj-4",
+    project_name: "E-commerce Platform",
+    start_time: "2024-01-14T14:00:00Z",
+    end_time: "2024-01-14T17:00:00Z",
+    duration_seconds: 10800, // 3 hours
+    is_running: false,
+    hourly_rate: 200,
+    billable_amount: 600,
+    note: "Payment gateway integration",
+    created_at: "2024-01-14T14:00:00Z",
+    updated_at: "2024-01-14T17:00:00Z",
+  },
+]
+
+// Leads Dummy Data
+export const dummyLeads = [
+  {
+    id: "lead-1",
+    name: "Sarah Johnson",
+    email: "sarah@example.com",
+    company: "StartupXYZ",
+    status: "new",
+    source: "website",
+    value: 25000,
+    createdAt: "2024-01-15T10:00:00Z",
+  },
+  {
+    id: "lead-2",
+    name: "Michael Chen",
+    email: "michael@example.com",
+    company: "Enterprise Co",
+    status: "contacted",
+    source: "referral",
+    value: 75000,
+    createdAt: "2024-01-14T14:30:00Z",
+  },
+  {
+    id: "lead-3",
+    name: "Emily Davis",
+    email: "emily@example.com",
+    company: "Design Studio",
+    status: "qualified",
+    source: "linkedin",
+    value: 15000,
+    createdAt: "2024-01-13T09:15:00Z",
+  },
+]
+
+// Proposals Dummy Data
+export const dummyProposals = [
+  {
+    id: "proposal-1",
+    title: "E-commerce Platform Development",
+    client: "TechStart Inc",
+    status: "sent",
+    value: 35000,
+    createdAt: "2024-01-12T11:00:00Z",
+    expiresAt: "2024-02-12T11:00:00Z",
+  },
+  {
+    id: "proposal-2",
+    title: "Brand Refresh Package",
+    client: "StartupXYZ",
+    status: "draft",
+    value: 25000,
+    createdAt: "2024-01-15T16:30:00Z",
+    expiresAt: null,
+  },
+  {
+    id: "proposal-3",
+    title: "Website & SEO Services",
+    client: "Enterprise Co",
+    status: "accepted",
+    value: 45000,
+    createdAt: "2024-01-10T09:00:00Z",
+    expiresAt: "2024-02-10T09:00:00Z",
+  },
+]
+
+// Invoices Dummy Data
+export const dummyInvoices = [
+  {
+    id: "inv-1",
+    number: "INV-2024-001",
+    client: "Acme Corporation",
+    clientId: "client-1",
+    amount: 5000,
+    paid: 5000,
+    status: "paid",
+    dueDate: "2024-01-15",
+    paidDate: "2024-01-14",
+    issuedDate: "2024-01-01",
+    items: [
+      { description: "Website Design", quantity: 1, rate: 3000, amount: 3000 },
+      { description: "Development Hours", quantity: 20, rate: 100, amount: 2000 },
+    ],
+  },
+  {
+    id: "inv-2",
+    number: "INV-2024-002",
+    client: "TechStart Inc",
+    clientId: "client-2",
+    amount: 8500,
+    paid: 0,
+    status: "sent",
+    dueDate: "2024-02-01",
+    paidDate: null,
+    issuedDate: "2024-01-18",
+    items: [
+      { description: "Mobile App Development", quantity: 1, rate: 8500, amount: 8500 },
+    ],
+  },
+  {
+    id: "inv-3",
+    number: "INV-2024-003",
+    client: "Global Industries",
+    clientId: "client-3",
+    amount: 3200,
+    paid: 0,
+    status: "overdue",
+    dueDate: "2024-01-10",
+    paidDate: null,
+    issuedDate: "2023-12-27",
+    items: [
+      { description: "Branding Package", quantity: 1, rate: 3200, amount: 3200 },
+    ],
+  },
+  {
+    id: "inv-4",
+    number: "INV-2024-004",
+    client: "TechStart Inc",
+    clientId: "client-2",
+    amount: 12000,
+    paid: 6000,
+    status: "partially_paid",
+    dueDate: "2024-02-15",
+    paidDate: null,
+    issuedDate: "2024-01-15",
+    items: [
+      { description: "Ongoing Development", quantity: 1, rate: 12000, amount: 12000 },
+    ],
+  },
+]
+
+// Tasks Dummy Data
+export const dummyTasks = [
+  {
+    id: "task-1",
+    title: "Design homepage mockups",
+    project: "Website Redesign",
+    projectId: "proj-1",
+    assignee: "John Doe",
+    status: "in_progress",
+    priority: "high",
+    dueDate: "2024-01-20",
+    completed: false,
+    description: "Create initial homepage design concepts",
+  },
+  {
+    id: "task-2",
+    title: "Set up API endpoints",
+    project: "Mobile App Development",
+    projectId: "proj-2",
+    assignee: "Jane Smith",
+    status: "in_progress",
+    priority: "high",
+    dueDate: "2024-01-22",
+    completed: false,
+    description: "Build REST API for mobile app",
+  },
+  {
+    id: "task-3",
+    title: "Client feedback review",
+    project: "Website Redesign",
+    projectId: "proj-1",
+    assignee: "John Doe",
+    status: "review",
+    priority: "medium",
+    dueDate: "2024-01-18",
+    completed: false,
+    description: "Review and implement client feedback",
+  },
+  {
+    id: "task-4",
+    title: "Logo finalization",
+    project: "Brand Identity",
+    projectId: "proj-3",
+    assignee: "Sarah Wilson",
+    status: "completed",
+    priority: "high",
+    dueDate: "2024-01-05",
+    completed: true,
+    description: "Finalize logo design with client approval",
+  },
+  {
+    id: "task-5",
+    title: "Write documentation",
+    project: "E-commerce Platform",
+    projectId: "proj-4",
+    assignee: "Mike Johnson",
+    status: "todo",
+    priority: "low",
+    dueDate: "2024-01-25",
+    completed: false,
+    description: "Create user and technical documentation",
+  },
+]
+
+// Schedule/Meetings Dummy Data
+export const dummyMeetings = [
+  {
+    id: "meeting-1",
+    title: "Project Kickoff Meeting",
+    client: "Acme Corporation",
+    clientId: "client-1",
+    type: "video_call",
+    date: "2024-01-18",
+    time: "10:00 AM",
+    duration: 60,
+    status: "confirmed",
+    location: "Zoom",
+    notes: "Discuss project scope and timeline",
+  },
+  {
+    id: "meeting-2",
+    title: "Design Review",
+    client: "TechStart Inc",
+    clientId: "client-2",
+    type: "in_person",
+    date: "2024-01-19",
+    time: "2:00 PM",
+    duration: 90,
+    status: "confirmed",
+    location: "Client Office",
+    notes: "Review design concepts and gather feedback",
+  },
+  {
+    id: "meeting-3",
+    title: "Weekly Check-in",
+    client: "Global Industries",
+    clientId: "client-3",
+    type: "phone_call",
+    date: "2024-01-20",
+    time: "11:00 AM",
+    duration: 30,
+    status: "pending",
+    location: "Phone",
+    notes: "Status update and next steps",
+  },
+  {
+    id: "meeting-4",
+    title: "Final Deliverable Presentation",
+    client: "Innovate Labs",
+    clientId: "client-4",
+    type: "video_call",
+    date: "2024-01-22",
+    time: "3:00 PM",
+    duration: 120,
+    status: "confirmed",
+    location: "Google Meet",
+    notes: "Present final deliverables and handoff",
+  },
+]
+
+// Files Dummy Data
+export const dummyFiles = [
+  {
+    id: "file-1",
+    name: "Brand Guidelines.pdf",
+    type: "pdf",
+    size: "2.4 MB",
+    uploadedBy: "You",
+    uploadedAt: "2024-01-15T10:30:00Z",
+    client: "Acme Corporation",
+    clientId: "client-1",
+    project: "Website Redesign",
+    projectId: "proj-1",
+    status: "approved",
+  },
+  {
+    id: "file-2",
+    name: "Wireframes_v2.sketch",
+    type: "sketch",
+    size: "8.7 MB",
+    uploadedBy: "You",
+    uploadedAt: "2024-01-16T14:20:00Z",
+    client: "TechStart Inc",
+    clientId: "client-2",
+    project: "Mobile App Development",
+    projectId: "proj-2",
+    status: "pending",
+  },
+  {
+    id: "file-3",
+    name: "Contract_Signed.pdf",
+    type: "pdf",
+    size: "156 KB",
+    uploadedBy: "Client",
+    uploadedAt: "2024-01-14T09:15:00Z",
+    client: "Global Industries",
+    clientId: "client-3",
+    project: "Brand Identity",
+    projectId: "proj-3",
+    status: "approved",
+  },
+  {
+    id: "file-4",
+    name: "Logo_Final.ai",
+    type: "ai",
+    size: "3.2 MB",
+    uploadedBy: "You",
+    uploadedAt: "2024-01-17T16:45:00Z",
+    client: "Innovate Labs",
+    clientId: "client-4",
+    project: null,
+    projectId: null,
+    status: "approved",
+  },
+]
+
+// Activity Log Dummy Data
+export const dummyActivities = [
+  {
+    id: "activity-1",
+    type: "file_upload",
+    description: "uploaded Brand Guidelines.pdf",
+    client: "Acme Corporation",
+    timestamp: "2 hours ago",
+    icon: "FileText",
+  },
+  {
+    id: "activity-2",
+    type: "message",
+    description: "sent a message",
+    client: "TechStart Inc",
+    timestamp: "3 hours ago",
+    icon: "MessageSquare",
+  },
+  {
+    id: "activity-3",
+    type: "invoice_paid",
+    description: "paid invoice INV-2024-001",
+    client: "Acme Corporation",
+    timestamp: "5 hours ago",
+    icon: "DollarSign",
+  },
+  {
+    id: "activity-4",
+    type: "contract_signed",
+    description: "signed the contract",
+    client: "Global Industries",
+    timestamp: "1 day ago",
+    icon: "CheckCircle",
+  },
+  {
+    id: "activity-5",
+    type: "project_update",
+    description: "completed milestone: Design Phase",
+    client: "TechStart Inc",
+    timestamp: "2 days ago",
+    icon: "Target",
+  },
+]
+
+// Notifications Dummy Data
+export const dummyNotifications = [
+  {
+    id: "notif-1",
+    title: "New message from TechStart Inc",
+    message: "Client has replied to your message",
+    type: "message",
+    read: false,
+    timestamp: "5 minutes ago",
+    link: "/dashboard/messages",
+  },
+  {
+    id: "notif-2",
+    title: "Invoice payment received",
+    message: "Acme Corporation paid invoice INV-2024-001",
+    type: "payment",
+    read: false,
+    timestamp: "2 hours ago",
+    link: "/dashboard/billing",
+  },
+  {
+    id: "notif-3",
+    title: "Contract signed",
+    message: "Global Industries signed the project contract",
+    type: "contract",
+    read: true,
+    timestamp: "1 day ago",
+    link: "/dashboard/contracts",
+  },
+  {
+    id: "notif-4",
+    title: "Form submission received",
+    message: "New submission for Client Onboarding form",
+    type: "form",
+    read: true,
+    timestamp: "2 days ago",
+    link: "/dashboard/forms",
+  },
+]
+
+// Pipeline/Kanban Dummy Data
+export const dummyPipelineLeads = {
+  new: [
+    { id: "lead-1", name: "Sarah Johnson", company: "StartupXYZ", value: 25000, source: "website" },
+    { id: "lead-2", name: "Michael Chen", company: "Enterprise Co", value: 75000, source: "referral" },
+  ],
+  contacted: [
+    { id: "lead-3", name: "Emily Davis", company: "Design Studio", value: 15000, source: "linkedin" },
+  ],
+  qualified: [
+    { id: "lead-4", name: "Robert Smith", company: "Tech Solutions", value: 40000, source: "cold_email" },
+    { id: "lead-5", name: "Lisa Anderson", company: "Marketing Pro", value: 18000, source: "referral" },
+  ],
+  proposal: [
+    { id: "lead-6", name: "David Wilson", company: "Innovation Inc", value: 55000, source: "website" },
+  ],
+  negotiation: [
+    { id: "lead-7", name: "Jennifer Lee", company: "Growth Agency", value: 32000, source: "linkedin" },
+  ],
+  won: [
+    { id: "lead-8", name: "James Brown", company: "Success Corp", value: 28000, source: "referral" },
+  ],
+  lost: [
+    { id: "lead-9", name: "Patricia Martinez", company: "Budget Ltd", value: 12000, source: "cold_email" },
+  ],
+}
+
+// Team Members Dummy Data (for collaboration features)
+export const dummyTeamMembers = [
+  {
+    id: "member-1",
+    name: "John Doe",
+    email: "john@company.com",
+    role: "Owner",
+    avatar: "/placeholder-user.jpg",
+    status: "active",
+    joinedAt: "2023-01-15",
+  },
+  {
+    id: "member-2",
+    name: "Jane Smith",
+    email: "jane@company.com",
+    role: "Admin",
+    avatar: "/placeholder-user.jpg",
+    status: "active",
+    joinedAt: "2023-03-20",
+  },
+  {
+    id: "member-3",
+    name: "Mike Johnson",
+    email: "mike@company.com",
+    role: "Member",
+    avatar: "/placeholder-user.jpg",
+    status: "active",
+    joinedAt: "2023-06-10",
+  },
+]
+
+// Services Dummy Data
+export const dummyServices = [
+  {
+    id: "service-1",
+    name: "Web Design",
+    description: "Custom website design and prototyping",
+    rate: 150,
+    rate_type: "hourly" as const,
+    is_active: true,
+    created_at: "2023-12-01T10:00:00Z",
+  },
+  {
+    id: "service-2",
+    name: "Brand Identity Package",
+    description: "Complete brand identity including logo, colors, and style guide",
+    rate: 5000,
+    rate_type: "fixed" as const,
+    is_active: true,
+    created_at: "2023-11-15T14:30:00Z",
+  },
+  {
+    id: "service-3",
+    name: "SEO Optimization",
+    description: "Monthly SEO services and reporting",
+    rate: 1200,
+    rate_type: "monthly" as const,
+    is_active: true,
+    created_at: "2023-10-20T09:15:00Z",
+  },
+  {
+    id: "service-4",
+    name: "Web Development",
+    description: "Full-stack web application development",
+    rate: 175,
+    rate_type: "hourly" as const,
+    is_active: true,
+    created_at: "2023-09-10T11:45:00Z",
+  },
+  {
+    id: "service-5",
+    name: "Maintenance & Support",
+    description: "Website maintenance and technical support",
+    rate: 500,
+    rate_type: "monthly" as const,
+    is_active: false,
+    created_at: "2023-08-05T16:20:00Z",
+  },
+]
+

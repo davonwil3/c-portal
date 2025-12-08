@@ -52,7 +52,7 @@ export function buildAuraMockData(): PortfolioData {
     modules: { hero: true, about: true, services: true, projects: true, testimonials: true, contact: true, footer: true },
     modulesOrder: ["hero", "about", "services", "projects", "testimonials", "contact", "footer"],
     branding: {},
-    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads" },
+    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads", showBookMeetingButton: true },
     seo: { metaTitle: "My Portfolio - Aura", metaDescription: "Explore my work and services" }
   }
 }
@@ -109,7 +109,7 @@ export function buildMinimalistMockData(): PortfolioData {
     modules: { hero: true, about: true, services: true, projects: true, testimonials: true, contact: true, footer: true },
     modulesOrder: ["hero", "about", "services", "projects", "testimonials", "contact", "footer"],
     branding: {},
-    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads" },
+    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads", showBookMeetingButton: true },
     seo: { metaTitle: "My Portfolio - Minimalist", metaDescription: "Explore my work and services" }
   }
 }
@@ -243,7 +243,7 @@ export function buildShiftMockData(): PortfolioData {
     modules: { hero: true, about: true, services: true, projects: true, testimonials: true, contact: true, footer: true },
     modulesOrder: ["hero", "about", "services", "projects", "testimonials", "contact", "footer"],
     branding: {},
-    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads" },
+    behavior: { isPublic: false, enableHireMe: true, enableBookCall: false, enableViewServices: true, contactDestination: "leads", showBookMeetingButton: true },
     seo: { metaTitle: "My Portfolio - Shift", metaDescription: "Creative designer portfolio" }
   }
 }

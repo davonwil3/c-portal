@@ -1,7 +1,11 @@
+"use client"
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Check,
   ArrowRight,
@@ -20,6 +24,7 @@ import {
   Globe,
   ChevronRight,
   Bell,
+  Info,
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -28,6 +33,7 @@ import JoinWaitlistModalButton from "@/components/JoinWaitlistModalButton"
 import LoomVideoEmbed from "@/components/LoomVideoEmbed"
 
 export default function JolixLanding() {
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly")
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 w-full max-w-full overflow-x-hidden">
       {/* Header */}
@@ -897,6 +903,33 @@ export default function JolixLanding() {
               </p>
                   </div>
 
+            {/* Billing Period Toggle */}
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setBillingPeriod("monthly")}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    billingPeriod === "monthly"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setBillingPeriod("yearly")}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
+                    billingPeriod === "yearly"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Yearly
+                  <span className="ml-1 text-xs text-[#3C3CFF] font-normal">Save 2 months</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {/* Free */}
               <Card className="border-2 border-gray-200 hover:border-[#3C3CFF] transition-all">
@@ -909,18 +942,33 @@ export default function JolixLanding() {
                     </div>
                   <ul className="space-y-3 mb-8">
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Full access to core tools</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">3 active clients/projects per month</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">3 contracts, proposals, and invoices</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">3 forms</span></li>
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-gray-700">2 active clients/projects per month</span>
+                        <TooltipProvider delayDuration={100}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 text-gray-600 hover:text-gray-700 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Archived clients and completed projects don't count toward your limit.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited contracts, proposals, and invoices</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">3 live forms</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Scheduler + time tracking</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Client Portal with Jolix branding</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">1 editable portfolio (with Jolix branding)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">10 lead credits / month (AI-sourced warm leads)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">10 scheduled posts / month (X only)</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Brand Growth Chatbot — 5 prompts / day</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Basic analytics dashboard</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">1 automation rule</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">1 GB file storage</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Tax tools (basic)</span></li>
                   </ul>
                   {/* <Link href="/auth">
                     <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white">
@@ -940,23 +988,48 @@ export default function JolixLanding() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">Pro</h3>
                   <p className="text-gray-600 mb-6">Best for growing freelancers</p>
                   <div className="mb-6">
-                    <span className="text-5xl font-bold text-gray-900">$19</span>
-                    <span className="text-gray-600">/month</span>
+                    {billingPeriod === "monthly" ? (
+                      <>
+                        <span className="text-5xl font-bold text-gray-900">$25</span>
+                        <span className="text-gray-600">/month</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-5xl font-bold text-gray-900">$21</span>
+                        <span className="text-gray-600">/mo billed yearly</span>
+                        <div className="text-sm text-gray-500 mt-1">$250 total</div>
+                      </>
+                    )}
                     </div>
                   <ul className="space-y-3 mb-8">
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Everything in Free</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">20 active clients/projects per month</span></li>
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-gray-700">Manage up to 20 active clients/projects simultaneously</span>
+                        <TooltipProvider delayDuration={100}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-6 w-6 text-gray-600 hover:text-gray-700 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Archived clients and completed projects don't count toward your limit.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited contracts, proposals, and invoices</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">3 forms</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Client Portal (no Jolix branding)</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">10 live forms</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Client Portal with custom domain (no Jolix branding)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">1 editable portfolio (custom domain support)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">100 lead credits / month</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">100 scheduled posts / month (X + LinkedIn)</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Brand Growth Chatbot — 20 prompts / day</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Full analytics dashboard (revenue + engagement)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">5 automation rules</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">10 GB file storage</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Priority email support</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">QuickBooks integration</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Tax tools (pro)</span></li>
                   </ul>
                   {/* <Link href="/auth">
                     <Button className="w-full bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
@@ -967,14 +1040,24 @@ export default function JolixLanding() {
                 </CardContent>
               </Card>
 
-              {/* Studio */}
+              {/* Premium */}
               <Card className="border-2 border-gray-200 hover:border-[#3C3CFF] transition-all">
                 <CardContent className="p-8">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Studio</h3>
-                  <p className="text-gray-600 mb-6">For freelancers ready to grow into a brand</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Premium</h3>
+                  <p className="text-gray-600 mb-6">Everything you need to build a professional brand with unlimited scale and white-label solutions</p>
                   <div className="mb-6">
-                    <span className="text-5xl font-bold text-gray-900">$39</span>
-                    <span className="text-gray-600">/month</span>
+                    {billingPeriod === "monthly" ? (
+                      <>
+                        <span className="text-5xl font-bold text-gray-900">$39</span>
+                        <span className="text-gray-600">/month</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-5xl font-bold text-gray-900">$33</span>
+                        <span className="text-gray-600">/mo billed yearly</span>
+                        <div className="text-sm text-gray-500 mt-1">$390 total</div>
+                      </>
+                    )}
                     </div>
                   <ul className="space-y-3 mb-8">
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Everything in Pro</span></li>
@@ -983,18 +1066,19 @@ export default function JolixLanding() {
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Up to 5 team members</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited scheduled posts (X + LinkedIn)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited contracts, proposals & invoices</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Client Portal (custom domain + no branding)</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Brand Growth Chatbot (unlimited prompts)</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited forms</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">White label Client Portal with custom domain</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Advanced analytics + brand performance insights</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Portfolio analytics + engagement tracking</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Unlimited automations</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">100 GB file storage</span></li>
-                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Early access to automation tools (coming soon)</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">QuickBooks integration</span></li>
+                    <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Tax tools (premium)</span></li>
                     <li className="flex items-start"><Check className="h-5 w-5 text-[#3C3CFF] mr-2 flex-shrink-0 mt-0.5" /><span className="text-gray-700">Priority support</span></li>
                   </ul>
                   {/* <Link href="/auth">
                     <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white">
-                      Go Studio
+                      Go Premium
                     </Button>
                   </Link> */}
                   <JoinWaitlistModalButton className="w-full bg-gray-900 hover:bg-gray-800 text-white" />
@@ -1028,7 +1112,7 @@ export default function JolixLanding() {
                   Is Jolix for freelancers or studios?
                 </AccordionTrigger>
                 <AccordionContent className="text-gray-600">
-                  Jolix is designed for both. The Free and Pro plans are perfect for independent freelancers, while the Studio plan is built for growing teams that need collaboration tools, extra seats, and unlimited scale.
+                  Jolix is designed for both. The Free and Pro plans are perfect for independent freelancers, while the Premium plan is built for growing teams that need collaboration tools, extra seats, and unlimited scale.
                 </AccordionContent>
               </AccordionItem>
 
@@ -1056,7 +1140,7 @@ export default function JolixLanding() {
                   What's included in the client portal?
                 </AccordionTrigger>
                 <AccordionContent className="text-gray-600">
-                  Every user gets a beautiful client portal to manage projects, proposals, invoices, and shared files. Free users will see subtle Jolix branding, while Pro and Studio users can remove it or connect their own custom domain for a fully white-labeled experience.
+                  Every user gets a beautiful client portal to manage projects, proposals, invoices, and shared files. Free users will see subtle Jolix branding, while Pro and Premium users can remove it or connect their own custom domain for a fully white-labeled experience.
                 </AccordionContent>
               </AccordionItem>
 
@@ -1074,7 +1158,7 @@ export default function JolixLanding() {
                   Can I post to social media from Jolix?
                 </AccordionTrigger>
                 <AccordionContent className="text-gray-600">
-                  Yes! You can schedule and publish posts directly from Jolix. Free users can post to X (Twitter), while Pro and Studio plans also unlock LinkedIn scheduling — perfect for building your audience and showcasing your portfolio.
+                  Yes! You can schedule and publish posts directly from Jolix. Free users can post to X (Twitter), while Pro and Premium plans also unlock LinkedIn scheduling — perfect for building your audience and showcasing your portfolio.
                 </AccordionContent>
               </AccordionItem>
             </Accordion>

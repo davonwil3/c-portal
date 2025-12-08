@@ -263,7 +263,7 @@ export function ProposalsSection() {
               <Download className="mr-2 h-4 w-4" />
               Export CSV
             </Button>
-            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => setLeadPickerOpen(true)}>
+            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" data-help="btn-new-proposal" onClick={() => setLeadPickerOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Proposal
             </Button>
@@ -272,9 +272,10 @@ export function ProposalsSection() {
       </div>
 
       {/* Search Bar */}
-      <div className="relative">
+      <div className="relative" data-help="proposals-search-bar">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
+          data-help="input-search-proposals"
           placeholder="Search title, recipient, ID…"
           className="pl-10"
           value={searchQuery}
@@ -283,7 +284,7 @@ export function ProposalsSection() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+      <Tabs value={statusFilter} onValueChange={setStatusFilter} data-help="proposals-status-tabs">
         <TabsList className="w-full justify-start">
           <TabsTrigger value="all" className="gap-2">
             All
@@ -449,7 +450,7 @@ export function ProposalsSection() {
       )}
 
       {/* Proposals Table */}
-      <Card>
+      <Card data-help="proposals-table">
         <CardContent className="p-0">
           {filteredProposals.length === 0 ? (
             <div className="text-center py-16">
@@ -754,7 +755,7 @@ export function ProposalsSection() {
 
       {/* Lead Picker Modal */}
       <Dialog open={leadPickerOpen} onOpenChange={setLeadPickerOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl" data-help="lead-picker-modal">
           <DialogHeader>
             <DialogTitle>Select a lead to start a proposal</DialogTitle>
           </DialogHeader>
@@ -763,6 +764,7 @@ export function ProposalsSection() {
               <div className={`relative ${useCustomLead ? 'opacity-50 pointer-events-none' : ''} flex-1`}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
+                  data-help="input-search-leads-modal"
                   placeholder="Search leads by name, company, or email"
                   className="pl-10"
                   value={leadSearch}
@@ -776,7 +778,7 @@ export function ProposalsSection() {
             </div>
 
             {!useCustomLead ? (
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden" data-help="leads-selection-table">
                 <div className="max-h-96 overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
@@ -805,6 +807,7 @@ export function ProposalsSection() {
                               <input
                                 type="radio"
                                 name="leadSelect"
+                                data-help={`radio-lead-${i}`}
                                 checked={selectedLeadId === id}
                                 onChange={() => {
                                   setSelectedLeadId(id)
@@ -849,6 +852,7 @@ export function ProposalsSection() {
             <Button variant="outline" onClick={() => setLeadPickerOpen(false)}>Cancel</Button>
             <Button
               className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+              data-help="btn-continue-lead-picker"
               onClick={() => {
                 if (useCustomLead) {
                   router.push(`/dashboard/proposals/create?template=professional&clientName=${encodeURIComponent(customLeadName)}&clientCompany=${encodeURIComponent(customLeadCompany)}&clientEmail=${encodeURIComponent(customLeadEmail)}`)

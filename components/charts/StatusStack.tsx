@@ -32,9 +32,8 @@ export function StatusStack({ data }: StatusStackProps) {
   try {
     console.log('StatusStack received data:', data)
     
-    // Add fallback test data
-    const testData = { paid: 25, pending: 15, overdue: 8, void: 2 }
-    const safeData = data || testData
+    // Use actual data, show empty state if no data
+    const safeData = data || { paid: 0, pending: 0, overdue: 0, void: 0 }
     
     const chartData = [
       { status: 'Paid', count: safeData.paid, color: 'hsl(142, 71%, 45%)' }, // Green
@@ -46,6 +45,22 @@ export function StatusStack({ data }: StatusStackProps) {
     console.log('StatusStack chartData:', chartData)
 
     const total = Object.values(safeData).reduce((sum, count) => sum + count, 0)
+    
+    if (total === 0) {
+      return (
+        <Card className="bg-white border-0 shadow-sm rounded-2xl">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900">Payment Status</CardTitle>
+            <CardDescription>Distribution of invoice payment statuses</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 text-gray-500">
+              <p>No payment status data available</p>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
 
   return (
     <Card className="bg-white border-0 shadow-sm rounded-2xl">

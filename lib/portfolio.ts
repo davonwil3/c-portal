@@ -107,8 +107,9 @@ interface SocialLinkRecord {
 }
 
 // Convert PortfolioData to database format
-function convertToDatabaseFormat(data: PortfolioData, userId: string, status: 'draft' | 'published', existingDomain?: string): PortfolioRecord {
-  const slug = data.hero.name.toLowerCase().replace(/\s+/g, '-')
+function convertToDatabaseFormat(data: PortfolioData, userId: string, status: 'draft' | 'published', existingDomain?: string, existingSlug?: string): PortfolioRecord {
+  // Use existing slug if updating, otherwise generate from hero name
+  const slug = existingSlug || data.hero.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
   // Generate subdomain from hero name - sanitize it to be URL-safe
   const domain = existingDomain || slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
   
@@ -197,60 +198,147 @@ export async function savePortfolio(
       return { success: false, error: 'User not authenticated' }
     }
     
-    // Get existing analytics domain if updating
+    // ALWAYS check if user has an existing portfolio first
+    // This prevents creating duplicates if portfolioId state is not set
+    let existingPortfolioId: string | undefined = portfolioId
+    
+    if (!existingPortfolioId) {
+      // Check if user already has a portfolio
+      const { data: existingPortfolios } = await supabase
+        .from('portfolios')
+        .select('id, slug')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      if (existingPortfolios && existingPortfolios.length > 0) {
+        existingPortfolioId = existingPortfolios[0].id
+        console.log('📋 Found existing portfolio, will update instead of create:', existingPortfolioId)
+      }
+    }
+    
+    // Get existing analytics domain and slug if updating
     let existingDomain: string | undefined
-    if (portfolioId) {
+    let existingSlug: string | undefined
+    if (existingPortfolioId) {
+      const { data: existingPortfolio } = await supabase
+        .from('portfolios')
+        .select('slug')
+        .eq('id', existingPortfolioId)
+        .eq('user_id', user.id)
+        .single()
+      
+      if (existingPortfolio) {
+        existingSlug = existingPortfolio.slug
+      }
+      
       const { data: analytics } = await supabase
         .from('portfolio_analytics')
         .select('domain')
-        .eq('portfolio_id', portfolioId)
-        .single()
+        .eq('portfolio_id', existingPortfolioId)
+        .maybeSingle()
       existingDomain = analytics?.domain
     }
     
     // Convert data to database format
-    const portfolioData = convertToDatabaseFormat(data, user.id, status, existingDomain)
+    const portfolioData = convertToDatabaseFormat(data, user.id, status, existingDomain, existingSlug)
+    
+    // Log what we're saving for debugging
+    console.log('💾 Saving portfolio:', {
+      portfolioId,
+      template_style: portfolioData.template_style,
+      layoutStyle: data.appearance.layoutStyle,
+      hasBranding: !!data.branding,
+      hasFooter: !!data.footer,
+      servicesCount: data.services?.length || 0,
+      projectsCount: data.projects?.length || 0,
+      testimonialsCount: data.testimonials?.length || 0
+    })
     
     // Extract domain from public URL for analytics
     const domain = portfolioData.public_url?.replace('https://', '').replace('.jolix.io', '') || 
                    data.hero.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '-')
     
+    // If creating a new portfolio (not updating), check if domain already exists
+    if (!existingPortfolioId && status === 'published') {
+      const { data: existingDomain } = await supabase
+        .from('portfolio_analytics')
+        .select('domain')
+        .eq('domain', domain)
+        .maybeSingle()
+      
+      if (existingDomain) {
+        return { 
+          success: false, 
+          error: 'Name already taken. Please choose a different portfolio name.' 
+        }
+      }
+    }
+    
     // Save or update main portfolio record
     let portfolioRecordId: string
     
-    if (portfolioId) {
-      // Update existing portfolio
+    if (existingPortfolioId) {
+      // Update existing portfolio - ensure all fields are included
+      console.log('🔄 Updating existing portfolio:', existingPortfolioId)
       const { error: updateError } = await supabase
         .from('portfolios')
-        .update(portfolioData)
-        .eq('id', portfolioId)
+        .update({
+          ...portfolioData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingPortfolioId)
         .eq('user_id', user.id)
       
       if (updateError) {
+        console.error('❌ Error updating portfolio:', updateError)
         return { success: false, error: updateError.message }
       }
       
-      portfolioRecordId = portfolioId
+      portfolioRecordId = existingPortfolioId
+      console.log('✅ Portfolio updated successfully')
       
       // Delete existing related records
       await deletePortfolioRelatedRecords(portfolioRecordId)
     } else {
-      // Create new portfolio
-      const { data: insertData, error: insertError } = await supabase
+      // Create new portfolio (only if no existing portfolio found)
+      console.log('🆕 Creating new portfolio (no existing portfolio found)')
+      
+      // Try to insert - if conflict, return error instead of auto-adding numbers
+      const result = await supabase
         .from('portfolios')
-        .insert(portfolioData)
+        .insert({ ...portfolioData })
         .select('id')
         .single()
       
-      if (insertError) {
-        return { success: false, error: insertError.message }
+      if (result.error) {
+        console.error('❌ Error creating portfolio:', result.error)
+        // Check if it's a unique constraint violation
+        if (result.error.code === '23505') {
+          if (result.error.message.includes('unique_user_slug') || 
+              result.error.message.includes('portfolios_slug_key') ||
+              result.error.message.includes('unique constraint') ||
+              result.error.message.includes('duplicate key')) {
+            return { 
+              success: false, 
+              error: 'Name already taken. Please choose a different portfolio name.' 
+            }
+          }
+        }
+        return { 
+          success: false, 
+          error: result.error.message || 'Failed to create portfolio. Please try a different portfolio name.' 
+        }
       }
       
-      portfolioRecordId = insertData.id
+      portfolioRecordId = result.data.id
+      console.log(`✅ Successfully created portfolio with slug: ${portfolioData.slug}`)
     }
     
     // Save related records
+    console.log('💾 Saving related records...')
     await saveRelatedRecords(supabase, portfolioRecordId, data)
+    console.log('✅ Related records saved')
     
     // If publishing, create or update analytics record
     if (status === 'published') {
@@ -269,7 +357,7 @@ export async function savePortfolio(
         .from('portfolio_analytics')
         .select('id, view_count, leads, conversion_rate')
         .eq('portfolio_id', portfolioRecordId)
-        .single()
+        .maybeSingle()
       
       if (existingAnalytics) {
         // Update existing analytics (preserve view_count and other stats)
@@ -292,6 +380,7 @@ export async function savePortfolio(
       }
     }
     
+    console.log('✅ Portfolio saved successfully:', portfolioRecordId)
     return { success: true, portfolioId: portfolioRecordId }
   } catch (error: any) {
     console.error('Error saving portfolio:', error)
@@ -342,6 +431,7 @@ async function saveRelatedRecords(supabase: any, portfolioId: string, data: Port
       author: testimonial.author,
       role: testimonial.role,
       quote: testimonial.quote,
+      avatar: (testimonial as any).avatar || null,
       display_order: index
     }))
     
@@ -485,7 +575,8 @@ function convertFromDatabaseFormat(
       id: t.id,
       author: t.author,
       role: t.role,
-      quote: t.quote
+      quote: t.quote,
+      avatar: t.avatar || undefined
     })),
     contact: {
       title: portfolio.contact_title || '',
@@ -608,14 +699,28 @@ export async function getPortfolioAnalytics(portfolioId: string): Promise<any | 
       return null
     }
     
-    // Get analytics
+    // Get analytics - use maybeSingle() instead of single() to handle missing records gracefully
     const { data: analytics, error } = await supabase
       .from('portfolio_analytics')
       .select('*')
       .eq('portfolio_id', portfolioId)
-      .single()
+      .maybeSingle()
     
-    if (error || !analytics) {
+    if (error) {
+      console.error('Error fetching analytics:', error)
+      // Return default values if error (not a critical failure)
+      return {
+        view_count: 0,
+        leads: 0,
+        conversion_rate: 0.00,
+        domain: '',
+        title: '',
+        meta_description: ''
+      }
+    }
+    
+    if (!analytics) {
+      // No analytics record exists yet - return defaults
       return {
         view_count: 0,
         leads: 0,
@@ -720,7 +825,7 @@ export async function updatePortfolioAnalytics(
       .from('portfolio_analytics')
       .select('id, view_count, leads, conversion_rate')
       .eq('portfolio_id', portfolioId)
-      .single()
+      .maybeSingle()
     
     const updateData: any = {}
     if (updates.domain !== undefined) updateData.domain = updates.domain

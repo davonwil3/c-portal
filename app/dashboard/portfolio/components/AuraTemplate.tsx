@@ -8,7 +8,7 @@ import { IconPicker } from "./IconPicker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowRight, Mail, Phone, MapPin, Send, ExternalLink, Trash2, Edit2, X, RotateCcw } from "lucide-react"
+import { ArrowRight, Mail, Phone, MapPin, Send, ExternalLink, Trash2, Edit2, X, RotateCcw, Calendar } from "lucide-react"
 import { useState } from "react"
 
 interface TemplateProps {
@@ -69,6 +69,13 @@ export function AuraTemplate({
 
   const handleContactChange = (field: string, value: string) => {
     onDataChange({ contact: { ...data.contact, [field]: value } })
+  }
+
+  const handleContactItemChange = (itemId: string, field: 'label' | 'value', value: string) => {
+    const updatedItems = data.contactItems.map(item =>
+      item.id === itemId ? { ...item, [field]: value } : item
+    )
+    onDataChange({ contactItems: updatedItems })
   }
 
   const handleSectionHeaderChange = (section: string, value: string) => {
@@ -195,62 +202,79 @@ export function AuraTemplate({
       {data.modules.hero && (
         <section id="hero" className="container mx-auto px-8 md:px-16 lg:px-24 py-20">
           <div className="mb-16 pt-16">
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold leading-tight mb-8">
-              <div 
-                className="relative inline-block"
-                onMouseEnter={() => setIsHoveringPrefix(true)}
-                onMouseLeave={() => setIsHoveringPrefix(false)}
-              >
-                {data.hero.prefix && data.hero.prefix.trim() !== '' ? (
-                  <>
-                    <span style={{ color: data.appearance.secondaryColor || '#9CA3AF' }}>
-                      <InlineText
-                        value={data.hero.prefix}
-                        onChange={(val) => handleHeroChange('prefix', val)}
-                        editMode={editMode}
-                        style={{ color: data.appearance.secondaryColor || '#9CA3AF' }}
-                        placeholder="About me,"
-                      />
-                    </span>
-                    {editMode && isHoveringPrefix && (
-                      <button
-                        onClick={handleDeletePrefix}
-                        className="absolute -top-2 -right-6 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 transition-all shadow-lg z-10"
-                        title="Delete special headline"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </>
-                ) : editMode ? (
-                  <button
-                    onClick={handleRestorePrefix}
-                    className="inline-flex items-center justify-center w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full transition-all text-gray-600"
-                    title="Restore special headline"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                ) : null}
+            <div>
+              <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold leading-tight mb-8">
+                <div 
+                  className="relative inline-block mb-2"
+                  onMouseEnter={() => setIsHoveringPrefix(true)}
+                  onMouseLeave={() => setIsHoveringPrefix(false)}
+                >
+                  {data.hero.prefix && data.hero.prefix.trim() !== '' ? (
+                    <>
+                      <span className="text-5xl md:text-7xl lg:text-8xl font-bold" style={{ color: data.appearance.secondaryColor || '#9CA3AF' }}>
+                        <InlineText
+                          value={data.hero.prefix}
+                          onChange={(val) => handleHeroChange('prefix', val)}
+                          editMode={editMode}
+                          style={{ color: data.appearance.secondaryColor || '#9CA3AF' }}
+                          placeholder="About me,"
+                        />
+                      </span>
+                      {editMode && isHoveringPrefix && (
+                        <button
+                          onClick={handleDeletePrefix}
+                          className="absolute -top-2 -right-6 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 transition-all shadow-lg z-10"
+                          title="Delete special headline"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </>
+                  ) : editMode ? (
+                    <button
+                      onClick={handleRestorePrefix}
+                      className="inline-flex items-center justify-center w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full transition-all text-gray-600"
+                      title="Restore special headline"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  ) : null}
+                </div>
+                {data.hero.prefix && data.hero.prefix.trim() !== '' && <br />}
+                <InlineText
+                  value={data.hero.tagline}
+                  onChange={(val) => handleHeroChange('tagline', val)}
+                  editMode={editMode}
+                  className="text-black block"
+                  placeholder="a Visual Designer living in Munich"
+                />
+              </h1>
+              <div className="text-xl md:text-2xl max-w-4xl mb-8" style={{ color: textColor, marginLeft: 0, paddingLeft: 0 }}>
+                <InlineText
+                  value={data.hero.bio}
+                  onChange={(val) => handleHeroChange('bio', val)}
+                  editMode={editMode}
+                  className="text-xl md:text-2xl block"
+                  style={{ color: textColor }}
+                  placeholder="As a Senior Designer with over 10 years of experience..."
+                />
               </div>
-              {data.hero.prefix && data.hero.prefix.trim() !== '' && <br />}
-              <InlineText
-                value={data.hero.tagline}
-                onChange={(val) => handleHeroChange('tagline', val)}
-                editMode={editMode}
-                className="text-black"
-                placeholder="a Visual Designer living in Munich"
-              />
-            </h1>
-            <p className="text-xl md:text-2xl max-w-4xl" style={{ color: textColor }}>
-              <InlineText
-                value={data.hero.bio}
-                onChange={(val) => handleHeroChange('bio', val)}
-                editMode={editMode}
-                className="text-xl md:text-2xl"
-                style={{ color: textColor }}
-                placeholder="As a Senior Designer with over 10 years of experience..."
-              />
-            </p>
+            </div>
+            {data.modules.contact && (
+              <Button
+                size="lg"
+                className="h-14 px-8 text-base font-semibold"
+                style={{ backgroundColor: data.appearance.primaryColor }}
+                data-cta="Get in Contact"
+                onClick={(e) => {
+                  e.preventDefault()
+                  document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              >
+                Get in Contact
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            )}
           </div>
 
           <div className="mb-20">
@@ -276,7 +300,7 @@ export function AuraTemplate({
                 value={data.about?.heading || "I'm the UI/UX and brand designer you need to take your digital presence to the next level"}
                 onChange={(val) => onDataChange({ about: { ...data.about, heading: val } })}
                 editMode={editMode}
-                className="text-black"
+                className="text-black block"
                 placeholder="Your value proposition..."
               />
               <span 
@@ -403,15 +427,6 @@ export function AuraTemplate({
                         <span className="text-2xl font-bold" style={{ color: data.appearance.primaryColor }}>
                           {service.priceLabel}
                         </span>
-                        <div 
-                          className="w-12 h-12 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"
-                          style={{ backgroundColor: `${data.appearance.primaryColor}15` }}
-                        >
-                          <ArrowRight 
-                            className="w-6 h-6 group-hover:translate-x-1 transition-transform" 
-                            style={{ color: data.appearance.primaryColor }}
-                          />
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -510,34 +525,21 @@ export function AuraTemplate({
                           ))}
                         </div>
                       )}
-                      {project.link ? (
+                      {project.link && (
                         <Button 
                           variant="outline" 
                           size="lg" 
-                          asChild 
+                          asChild
                           className="group"
                           style={{ 
                             borderColor: data.appearance.primaryColor,
                             color: data.appearance.primaryColor
                           }}
                         >
-                          <a href={project.link} target="_blank" rel="noopener noreferrer">
+                          <a href={project.link || 'https://example.com'} target="_blank" rel="noopener noreferrer">
                             View Project
                             <ExternalLink className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                           </a>
-                        </Button>
-                      ) : (
-                        <Button 
-                          variant="outline" 
-                          size="lg" 
-                          disabled
-                          className="opacity-50 cursor-not-allowed"
-                          style={{ 
-                            borderColor: data.appearance.primaryColor,
-                            color: data.appearance.primaryColor
-                          }}
-                        >
-                          No Link
                         </Button>
                       )}
                     </div>
@@ -653,16 +655,16 @@ export function AuraTemplate({
                     placeholder="Let's Work Together"
                   />
                 </h2>
-                <p className="text-xl mb-12 leading-relaxed" style={{ color: textColor }}>
+                <div className="text-xl mb-12 leading-relaxed" style={{ color: textColor }}>
                   <InlineText
                     value={data.contact.note}
                     onChange={(val) => handleContactChange('note', val)}
                     editMode={editMode}
-                    className="text-xl"
+                    className="text-xl block"
                     style={{ color: textColor }}
                     placeholder="Ready to start your next project?"
                   />
-                </p>
+                </div>
 
                 <div className="space-y-6">
                   {data.contactItems.map((item) => {
@@ -680,8 +682,24 @@ export function AuraTemplate({
                           <IconComponent className="w-6 h-6" style={{ color: data.appearance.primaryColor }} />
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-500">{item.label}</p>
-                          <p className="text-lg font-medium">{item.value}</p>
+                          <div className="text-sm text-gray-500">
+                            <InlineText
+                              value={item.label}
+                              onChange={(val) => handleContactItemChange(item.id, 'label', val)}
+                              editMode={editMode}
+                              className="text-sm text-gray-500"
+                              placeholder="Label"
+                            />
+                          </div>
+                          <div className="text-lg font-medium">
+                            <InlineText
+                              value={item.value}
+                              onChange={(val) => handleContactItemChange(item.id, 'value', val)}
+                              editMode={editMode}
+                              className="text-lg font-medium"
+                              placeholder="Value"
+                            />
+                          </div>
                         </div>
                         {editMode && (
                           <Edit2 className="w-4 h-4 text-gray-400 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -693,7 +711,7 @@ export function AuraTemplate({
               </div>
 
               <div>
-                <form onSubmit={handleContactSubmit} className="space-y-6">
+                <form id="contact-form" data-form-type="contact" onSubmit={handleContactSubmit} className="space-y-6">
                   <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
                       Your Name *
@@ -739,22 +757,38 @@ export function AuraTemplate({
                     />
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    size="lg" 
-                    className="w-full h-12 text-base"
-                    style={{ backgroundColor: data.appearance.primaryColor }}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      "Sending..."
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Send Message
-                      </>
+                  <div className="flex gap-3">
+                    <Button 
+                      type="submit" 
+                      size="lg" 
+                      className="flex-1 h-12 text-base"
+                      style={{ backgroundColor: data.appearance.primaryColor }}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        "Sending..."
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Send Message
+                        </>
+                      )}
+                    </Button>
+                    {data.behavior.showBookMeetingButton !== false && (
+                      <Button 
+                        type="button"
+                        size="lg" 
+                        variant="outline"
+                        className="flex-1 h-12 text-base"
+                        style={{ borderColor: data.appearance.primaryColor, color: data.appearance.primaryColor }}
+                        data-cta="Book a Meeting"
+                        onClick={() => window.open('/book-meeting', '_blank')}
+                      >
+                        <Calendar className="w-4 h-4 mr-2" />
+                        Book a Meeting
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </form>
               </div>
             </div>

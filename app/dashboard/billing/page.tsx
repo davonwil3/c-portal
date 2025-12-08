@@ -10,8 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { DashboardLayout } from "@/components/dashboard/layout"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Plus,
   Search,
@@ -29,14 +32,20 @@ import {
   Loader2,
   Trash2,
   BarChart3,
+  Package,
+  Repeat,
+  X,
+  Copy,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { getInvoices, getInvoiceStats, type Invoice, markInvoiceAsPaid, deleteInvoice, updateInvoice } from "@/lib/invoices"
-import { Label } from "@/components/ui/label"
+import { useTour } from "@/contexts/TourContext"
+import { dummyInvoices, dummyServices } from "@/lib/tour-dummy-data"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
+import { BillingTaxToolsTab } from "@/components/billing/BillingTaxToolsTab"
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-gray-100 text-gray-700 hover:bg-gray-100" },
@@ -49,8 +58,23 @@ const statusConfig = {
   refunded: { label: "Refunded", color: "bg-gray-100 text-gray-700 hover:bg-gray-100" },
 }
 
-export default function InvoicingPage() {
+// Service interface
+interface Service {
+  id: string
+  name: string
+  description: string
+  rate: number
+  rate_type: 'hourly' | 'fixed' | 'monthly' | 'yearly'
+  is_active: boolean
+  created_at: string
+}
+
+export default function BillingPage() {
+  const { isTourRunning, currentTour } = useTour()
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<"services" | "invoices" | "tax-tools">("services")
+  
+  // Invoice state
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedInvoices, setSelectedInvoices] = useState<string[]>([])
@@ -66,14 +90,118 @@ export default function InvoicingPage() {
   const [changingStatus, setChangingStatus] = useState<string | null>(null)
   const [downloadingPDF, setDownloadingPDF] = useState<string | null>(null)
 
-  // Load invoices from database
+  // Services state
+  const [services, setServices] = useState<Service[]>([])
+  const [servicesLoading, setServicesLoading] = useState(false)
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("")
+  const [serviceModalOpen, setServiceModalOpen] = useState(false)
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  const [deletingService, setDeletingService] = useState<string | null>(null)
+  const [newService, setNewService] = useState({
+    name: "",
+    description: "",
+    rate: "" as number | "",
+    rate_type: "hourly" as 'hourly' | 'fixed' | 'monthly' | 'yearly',
+    is_active: true
+  })
+
+  // Helper function to map dummy invoices to Invoice type
+  const mapDummyInvoices = (): Invoice[] => {
+    return dummyInvoices.map(di => ({
+      id: di.id,
+      invoice_number: di.number,
+      client_name: di.client,
+      client_id: di.clientId,
+      project_name: undefined,
+      project_id: undefined,
+      title: `Invoice for ${di.client}`,
+      issue_date: di.issuedDate,
+      due_date: di.dueDate,
+      paid_date: di.paidDate,
+      status: di.status as any,
+      total_amount: di.amount,
+      subtotal: di.amount,
+      tax_rate: 0,
+      tax_amount: 0,
+      discount_amount: di.status === 'partially_paid' ? di.amount / 2 : 0,
+      discount_value: di.status === 'partially_paid' ? di.amount / 2 : 0,
+      discount_type: 'fixed' as any,
+      currency: 'USD',
+      payment_terms: 'net-30',
+      po_number: undefined,
+      notes: '',
+      is_recurring: false,
+      invoice_type: 'standard' as const,
+      allow_online_payment: true,
+      reminder_schedule: '3-days',
+      auto_reminder: true,
+      line_items: di.items.map((item, idx) => ({
+        id: `${di.id}-item-${idx}`,
+        name: item.description,
+        description: '',
+        item_type: 'service' as any,
+        quantity: item.quantity,
+        unit_rate: item.rate,
+        total_amount: item.amount,
+        is_taxable: true,
+        sort_order: idx + 1,
+      })),
+      created_at: di.issuedDate,
+      updated_at: di.issuedDate,
+      account_id: 'tour-account',
+    } as Invoice))
+  }
+
+  // Auto-switch to appropriate tab and pre-load dummy data when tour is running
   useEffect(() => {
-    loadInvoices()
-  }, [])
+    if (isTourRunning) {
+      // Switch to services tab for create-service tour, invoices tab for others
+      if (currentTour?.id === "create-service") {
+        setActiveTab("services")
+        // Pre-load dummy services for create-service tour
+        setServices(dummyServices as Service[])
+        setServicesLoading(false)
+      } else {
+        setActiveTab("invoices")
+        // Pre-load dummy invoices for other tours
+        setInvoices(mapDummyInvoices())
+        setLoading(false)
+      }
+    } else {
+      // When tour ends, reload real data
+      if (activeTab === "invoices") {
+        loadInvoices()
+      } else if (activeTab === "services") {
+        loadServices()
+      }
+    }
+  }, [isTourRunning, currentTour])
+
+  // Load invoices from database (only when not in tour mode)
+  useEffect(() => {
+    if (activeTab === "invoices" && !isTourRunning) {
+      loadInvoices()
+    }
+  }, [activeTab, isTourRunning])
+
+  // Load services (only when not in tour mode)
+  useEffect(() => {
+    if (activeTab === "services" && !isTourRunning) {
+      loadServices()
+    }
+  }, [activeTab, isTourRunning])
 
   const loadInvoices = async () => {
     try {
       setLoading(true)
+      
+      // Use dummy data during tours
+      if (isTourRunning) {
+        setInvoices(mapDummyInvoices())
+        setLoading(false)
+        return
+      }
+      
       const data = await getInvoices()
       setInvoices(data)
     } catch (error) {
@@ -81,6 +209,37 @@ export default function InvoicingPage() {
       toast.error('Failed to load invoices')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadServices = async () => {
+    try {
+      setServicesLoading(true)
+      
+      // Use dummy data during tours
+      if (isTourRunning) {
+        setServices(dummyServices as Service[])
+        setServicesLoading(false)
+        return
+      }
+      
+      // Fetch services from API
+      const response = await fetch('/api/services')
+      const result = await response.json()
+      
+      if (result.success) {
+        setServices(result.data || [])
+      } else {
+        console.error('Error loading services:', result.error)
+        toast.error('Failed to load services')
+        setServices([])
+      }
+    } catch (error) {
+      console.error('Error loading services:', error)
+      toast.error('Failed to load services')
+      setServices([])
+    } finally {
+      setServicesLoading(false)
     }
   }
 
@@ -106,6 +265,14 @@ export default function InvoicingPage() {
     const matchesClient = clientFilter === "all" || invoice.client_name === clientFilter
 
     return matchesSearch && matchesStatus && matchesClient
+  })
+
+  // Filter services
+  const filteredServices = services.filter((service) => {
+    const matchesSearch = 
+      service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase()) ||
+      service.description.toLowerCase().includes(serviceSearchQuery.toLowerCase())
+    return matchesSearch
   })
 
   const handleSelectAll = (checked: boolean) => {
@@ -140,6 +307,13 @@ export default function InvoicingPage() {
   }
 
   const handleMarkAsPaid = async (invoiceId: string) => {
+    // During tours, don't perform real operations - just show dummy data
+    if (isTourRunning) {
+      toast.success('Invoice marked as paid successfully')
+      setMarkingAsPaid(null)
+      return
+    }
+
     try {
       setMarkingAsPaid(invoiceId)
       await markInvoiceAsPaid(invoiceId)
@@ -163,6 +337,16 @@ export default function InvoicingPage() {
   }
 
   const handleDeleteInvoice = async (invoiceId: string) => {
+    // During tours, don't perform real operations - just show dummy data
+    if (isTourRunning) {
+      if (confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+        toast.success('Invoice deleted successfully')
+        // Reset to dummy data to maintain tour experience
+        setInvoices(mapDummyInvoices())
+      }
+      return
+    }
+
     if (confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
       try {
         setDeletingInvoice(invoiceId)
@@ -198,6 +382,17 @@ export default function InvoicingPage() {
 
   const handleChangeStatus = async () => {
     if (!changingStatusInvoice || !changingStatus) return
+
+    // During tours, don't perform real operations - just show dummy data
+    if (isTourRunning) {
+      toast.success('Invoice status updated successfully')
+      setStatusChangeModalOpen(false)
+      setChangingStatusInvoice(null)
+      setChangingStatus(null)
+      // Reset to dummy data to maintain tour experience
+      setInvoices(mapDummyInvoices())
+      return
+    }
 
     try {
       setChangingStatus(null)
@@ -350,8 +545,8 @@ export default function InvoicingPage() {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; color: #6B7280; border-top: 1px solid #E5E7EB; padding-top: 20px;">
             <div>
               <span style="font-weight: 600; color: #374151;">Status:</span>
-              <span style="margin-left: 8px; padding: 4px 8px; background-color: ${statusConfig[invoice.status].color.includes('bg-green') ? '#D1FAE5' : statusConfig[invoice.status].color.includes('bg-red') ? '#FEE2E2' : statusConfig[invoice.status].color.includes('bg-yellow') ? '#FEF3C7' : statusConfig[invoice.status].color.includes('bg-blue') ? '#DBEAFE' : '#F3F4F6'}; color: ${statusConfig[invoice.status].color.includes('text-green') ? '#065F46' : statusConfig[invoice.status].color.includes('text-red') ? '#991B1B' : statusConfig[invoice.status].color.includes('text-yellow') ? '#92400E' : statusConfig[invoice.status].color.includes('text-blue') ? '#1E40AF' : '#374151'}; border-radius: 4px; font-size: 12px;">
-                ${statusConfig[invoice.status].label}
+              <span style="margin-left: 8px; padding: 4px 8px; background-color: ${(statusConfig[invoice.status] || statusConfig.draft).color.includes('bg-green') ? '#D1FAE5' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('bg-red') ? '#FEE2E2' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('bg-yellow') ? '#FEF3C7' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('bg-blue') ? '#DBEAFE' : '#F3F4F6'}; color: ${(statusConfig[invoice.status] || statusConfig.draft).color.includes('text-green') ? '#065F46' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('text-red') ? '#991B1B' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('text-yellow') ? '#92400E' : (statusConfig[invoice.status] || statusConfig.draft).color.includes('text-blue') ? '#1E40AF' : '#374151'}; border-radius: 4px; font-size: 12px;">
+                ${(statusConfig[invoice.status] || statusConfig.draft).label}
               </span>
             </div>
             <div>
@@ -420,103 +615,178 @@ export default function InvoicingPage() {
     }
   }
 
+  // Service handlers
+  const handleEditService = (service: Service) => {
+    setEditingService(service)
+    setNewService({
+      name: service.name,
+      description: service.description,
+      rate: service.rate,
+      rate_type: service.rate_type,
+      is_active: service.is_active
+    })
+    setServiceModalOpen(true)
+  }
+
+  const handleAddService = () => {
+    setEditingService(null)
+    setNewService({
+      name: "",
+      description: "",
+      rate: "",
+      rate_type: "hourly",
+      is_active: true
+    })
+    setServiceModalOpen(true)
+  }
+
+  const handleSaveService = async () => {
+    if (!newService.name || newService.rate === "" || (typeof newService.rate === 'number' && newService.rate <= 0)) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    // During tours, don't perform real operations - just show dummy data
+    if (isTourRunning) {
+      toast.success(editingService ? 'Service updated successfully' : 'Service created successfully')
+      setServiceModalOpen(false)
+      setEditingService(null)
+      // Reset to dummy data to maintain tour experience
+      setServices(dummyServices as Service[])
+      return
+    }
+
+    try {
+      if (editingService) {
+        // Update existing service
+        const response = await fetch(`/api/services/${editingService.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...newService,
+            rate: typeof newService.rate === 'number' ? newService.rate : parseFloat(newService.rate as string) || 0
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setServices(prevServices =>
+            prevServices.map(service =>
+              service.id === editingService.id
+                ? result.data
+                : service
+            )
+          )
+          toast.success('Service updated successfully')
+        } else {
+          toast.error(result.error || 'Failed to update service')
+          return
+        }
+      } else {
+        // Create new service
+        const response = await fetch('/api/services', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...newService,
+            rate: typeof newService.rate === 'number' ? newService.rate : parseFloat(newService.rate as string) || 0
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setServices(prevServices => [result.data, ...prevServices])
+          toast.success('Service created successfully')
+        } else {
+          toast.error(result.error || 'Failed to create service')
+          return
+        }
+      }
+
+      setServiceModalOpen(false)
+      setEditingService(null)
+    } catch (error) {
+      console.error('Error saving service:', error)
+      toast.error('Failed to save service')
+    }
+  }
+
+  const handleDeleteService = async (serviceId: string) => {
+    // During tours, don't perform real operations - just show dummy data
+    if (isTourRunning) {
+      if (confirm('Are you sure you want to delete this service?')) {
+        toast.success('Service deleted successfully')
+        // Reset to dummy data to maintain tour experience
+        setServices(dummyServices as Service[])
+      }
+      return
+    }
+
+    if (!confirm('Are you sure you want to delete this service?')) {
+      return
+    }
+
+    try {
+      setDeletingService(serviceId)
+      const response = await fetch(`/api/services/${serviceId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setServices(prevServices => prevServices.filter(service => service.id !== serviceId))
+        toast.success('Service deleted successfully')
+      } else {
+        toast.error(result.error || 'Failed to delete service')
+      }
+    } catch (error) {
+      console.error('Error deleting service:', error)
+      toast.error('Failed to delete service')
+    } finally {
+      setDeletingService(null)
+    }
+  }
+
   // Get unique clients for filter dropdown
   const uniqueClients = Array.from(new Set(invoices.map((invoice) => invoice.client_name).filter(Boolean) as string[]))
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen -m-6 p-6">
-          {/* Header */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white">
-            <div className="absolute inset-0 bg-black/10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold mb-2">
-                    Invoice Management 💰
-                  </h1>
-                  <p className="text-blue-100 text-lg">
-                    Track payments, manage billing, and grow your revenue
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                  <DollarSign className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  if (invoices.length === 0) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen -m-6 p-6">
-          {/* Header */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white">
-            <div className="absolute inset-0 bg-black/10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold mb-2">
-                    Invoice Management 💰
-                  </h1>
-                  <p className="text-blue-100 text-lg">
-                    Track payments, manage billing, and grow your revenue
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                  <DollarSign className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-16 h-16 bg-[#F0F2FF] rounded-full flex items-center justify-center mb-6">
-              <Receipt className="h-8 w-8 text-[#3C3CFF]" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No invoices created yet</h3>
-            <p className="text-gray-600 mb-8 text-center max-w-md">
-              Start by creating your first invoice to track payments and manage your client billing.
-            </p>
-            <Link href="/dashboard/invoicing/create">
-              <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Your First Invoice
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
+  const getRateTypeLabel = (rateType: string) => {
+    switch (rateType) {
+      case 'hourly': return '/hr'
+      case 'fixed': return 'fixed'
+      case 'monthly': return '/mo'
+      case 'yearly': return '/yr'
+      default: return ''
+    }
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen -m-6 p-6">
-        {/* Header */}
+        {/* Header Banner */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#3C3CFF] to-[#6366F1] p-8 text-white">
           <div className="absolute inset-0 bg-black/10"></div>
           <div className="relative z-10">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-4xl font-bold mb-2">
-                  Invoice Management 💰
+                  Billing & Services 💰
                 </h1>
                 <p className="text-blue-100 text-lg">
-                  Track payments, manage billing, and grow your revenue
+                  Manage your services catalog and track invoices all in one place
                 </p>
               </div>
               <div className="hidden md:flex items-center space-x-4">
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{formatCurrency(totalInvoiced)}</div>
-                  <div className="text-blue-100 text-sm">Total Invoiced</div>
+                  <div className="text-2xl font-bold">{services.filter(s => s.is_active).length}</div>
+                  <div className="text-blue-100 text-sm">Active Services</div>
                 </div>
                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
                   <DollarSign className="h-6 w-6" />
@@ -529,268 +799,573 @@ export default function InvoicingPage() {
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-12 -translate-x-12"></div>
         </div>
 
-        {/* Dashboard Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Invoiced</CardTitle>
-              <DollarSign className="h-4 w-4 text-[#3C3CFF]" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalInvoiced)}</div>
-              <p className="text-xs text-gray-600 mt-1">{invoices.length} total invoices</p>
-            </CardContent>
-          </Card>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "services" | "invoices" | "tax-tools")} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger 
+              value="services"
+              className="data-[state=active]:bg-[#3C3CFF] data-[state=active]:text-white"
+              data-help="services-tab"
+            >
+              Services
+            </TabsTrigger>
+            <TabsTrigger 
+              value="invoices"
+              className="data-[state=active]:bg-[#3C3CFF] data-[state=active]:text-white"
+              data-help="invoices-tab"
+            >
+              Invoices
+            </TabsTrigger>
+            <TabsTrigger 
+              value="tax-tools"
+              className="data-[state=active]:bg-[#3C3CFF] data-[state=active]:text-white"
+            >
+              Tax Tools
+            </TabsTrigger>
+          </TabsList>
 
-          <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalCollected)}</div>
-              <p className="text-xs text-gray-600 mt-1">
-                {invoices.filter((i) => i.status === "paid").length} paid invoices
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Outstanding Balance</CardTitle>
-              <Clock className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{formatCurrency(outstandingBalance)}</div>
-              <p className="text-xs text-gray-600 mt-1">
-                {invoices.filter((i) => i.status === "sent" || i.status === "viewed" || i.status === "overdue").length} pending
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Overdue Invoices</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{overdueCount}</div>
-              <p className="text-xs text-gray-600 mt-1">Require immediate attention</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Controls and Filters */}
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          <div className="flex flex-col sm:flex-row gap-4 flex-1">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search invoices, clients, projects..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 rounded-xl border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
-              />
-            </div>
-
-            {/* Filters */}
-            <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-32 rounded-xl border-gray-200">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="sent">Sent</SelectItem>
-                  <SelectItem value="viewed">Viewed</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="partially_paid">Partially Paid</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                  <SelectItem value="refunded">Refunded</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={clientFilter} onValueChange={setClientFilter}>
-                <SelectTrigger className="w-40 rounded-xl border-gray-200">
-                  <SelectValue placeholder="Client" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Clients</SelectItem>
-                  {uniqueClients.map((client) => (
-                    <SelectItem key={client} value={client}>
-                      {client}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Link href="/dashboard/billing/create">
-              <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white rounded-xl">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Invoice
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Bulk Actions Bar */}
-        {selectedInvoices.length > 0 && (
-          <div className="bg-[#F0F2FF] border border-[#3C3CFF]/20 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-900">
-                {selectedInvoices.length} invoice{selectedInvoices.length > 1 ? "s" : ""} selected
-              </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
-                  <Mail className="mr-2 h-4 w-4" />
-                  Send Reminders
-                </Button>
-                <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Mark as Paid
-                </Button>
-                <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Selected
-                </Button>
+          {/* Services Tab */}
+          <TabsContent value="services" className="space-y-6">
+            {/* Services Controls */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="relative w-[28rem]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search services..."
+                  value={serviceSearchQuery}
+                  onChange={(e) => setServiceSearchQuery(e.target.value)}
+                  className="pl-10 rounded-xl border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
+                />
               </div>
+              <Button 
+                onClick={handleAddService}
+                className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white rounded-xl whitespace-nowrap"
+                data-help="btn-add-service"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Service
+              </Button>
             </div>
-          </div>
-        )}
 
-        {/* Invoices Table */}
-        <Card className="bg-white border-0 shadow-sm rounded-2xl">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b border-gray-100">
-                  <tr>
-                    <th className="text-left p-4 w-12">
-                      <Checkbox
-                        checked={selectedInvoices.length === filteredInvoices.length && filteredInvoices.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Invoice #</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Client</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Project</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Amount</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Issue Date</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Due Date</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600">Status</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-600 w-20">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="p-4">
-                        <Checkbox
-                          checked={selectedInvoices.includes(invoice.id)}
-                          onCheckedChange={(checked) => handleSelectInvoice(invoice.id, checked as boolean)}
-                        />
-                      </td>
-                      <td className="p-4">
-                        <span className="font-medium text-gray-900">{invoice.invoice_number}</span>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-gray-900">{invoice.client_name}</span>
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`text-sm ${!invoice.project_name ? "text-gray-500 italic" : "text-gray-900"}`}
-                        >
-                          {invoice.project_name || "Unassigned"}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <span className="font-medium text-gray-900">{formatCurrency(invoice.total_amount)}</span>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-gray-600">{formatDate(invoice.issue_date)}</span>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-gray-600">{invoice.due_date ? formatDate(invoice.due_date) : 'No due date'}</span>
-                      </td>
-                      <td className="p-4">
-                        <Badge className={statusConfig[invoice.status].color}>
-                          {statusConfig[invoice.status].label}
-                        </Badge>
-                      </td>
-                      <td className="p-4">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => handleViewInvoice(invoice)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Invoice
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditInvoice(invoice.id)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit Invoice
-                            </DropdownMenuItem>
-                            {invoice.status !== "paid" && (
-                              <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice.id)}>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Mark as Paid
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => openStatusChangeModal(invoice)}>
-                              <AlertTriangle className="mr-2 h-4 w-4" />
-                              Change Status
-                            </DropdownMenuItem>
-                            {(invoice.status === "sent" || invoice.status === "viewed" || invoice.status === "overdue") && (
-                              <DropdownMenuItem>
-                                <Mail className="mr-2 h-4 w-4" />
-                                Send Reminder
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => handleDeleteInvoice(invoice.id)}>
-                              <Trash2 className="mr-2 h-4 w-4 text-red-500" />
-                              Delete Invoice
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDownloadPDF(invoice)}
-                              disabled={downloadingPDF === invoice.id}
-                            >
-                              {downloadingPDF === invoice.id ? (
+            {/* Services Grid */}
+            {servicesLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-help="services-grid">
+              {filteredServices.map((service) => (
+                <Card key={service.id} className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg font-semibold text-gray-900">{service.name}</CardTitle>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => handleEditService(service)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteService(service.id)}
+                            className="text-red-600"
+                            disabled={deletingService === service.id}
+                          >
+                            {deletingService === service.id ? (
+                              <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <Download className="mr-2 h-4 w-4" />
-                              )}
-                              {downloadingPDF === invoice.id ? "Generating PDF..." : "Download PDF"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                                Deleting...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-gray-600 mb-4 min-h-[40px]">{service.description}</p>
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-2xl font-bold text-[#3C3CFF]">
+                          {formatCurrency(service.rate)}
+                        </span>
+                        <span className="text-sm text-gray-600 ml-1">
+                          {getRateTypeLabel(service.rate_type)}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+            )}
 
-            {filteredInvoices.length === 0 && (
-              <div className="text-center py-12">
-                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
-                <p className="text-gray-600">Try adjusting your search or filter criteria.</p>
+            {!servicesLoading && filteredServices.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-16 h-16 bg-[#F0F2FF] rounded-full flex items-center justify-center mb-6">
+                  <Package className="h-8 w-8 text-[#3C3CFF]" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No services found</h3>
+                <p className="text-gray-600 mb-8 text-center max-w-md">
+                  {serviceSearchQuery ? 'Try adjusting your search.' : 'Start by adding your first service to your catalog.'}
+                </p>
+                {!serviceSearchQuery && (
+                  <Button 
+                    onClick={handleAddService}
+                    className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Your First Service
+                  </Button>
+                )}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
+
+          {/* Invoices Tab */}
+          <TabsContent value="invoices" className="space-y-6">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+              </div>
+            ) : invoices.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-16 h-16 bg-[#F0F2FF] rounded-full flex items-center justify-center mb-6">
+                  <Receipt className="h-8 w-8 text-[#3C3CFF]" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No invoices created yet</h3>
+                <p className="text-gray-600 mb-8 text-center max-w-md">
+                  Start by creating your first invoice to track payments and manage your client billing.
+                </p>
+                <Link href="/dashboard/billing/create">
+                  <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Your First Invoice
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                {/* Dashboard Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Total Invoiced</CardTitle>
+                      <DollarSign className="h-4 w-4 text-[#3C3CFF]" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalInvoiced)}</div>
+                      <p className="text-xs text-gray-600 mt-1">{invoices.length} total invoices</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Total Collected</CardTitle>
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(totalCollected)}</div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {invoices.filter((i) => i.status === "paid").length} paid invoices
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Outstanding Balance</CardTitle>
+                      <Clock className="h-4 w-4 text-yellow-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(outstandingBalance)}</div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {invoices.filter((i) => i.status === "sent" || i.status === "viewed" || i.status === "overdue").length} pending
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-gray-600">Overdue Invoices</CardTitle>
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-900">{overdueCount}</div>
+                      <p className="text-xs text-gray-600 mt-1">Require immediate attention</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Controls and Filters */}
+                <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
+                  <div className="flex flex-col sm:flex-row gap-4 flex-1 w-full">
+                    {/* Search */}
+                    <div className="relative flex-1 w-full">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search invoices, clients, projects..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 rounded-xl border-gray-200 focus:border-[#3C3CFF] focus:ring-[#3C3CFF]"
+                      />
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex gap-2">
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-32 rounded-xl border-gray-200">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="sent">Sent</SelectItem>
+                          <SelectItem value="viewed">Viewed</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                          <SelectItem value="refunded">Refunded</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={clientFilter} onValueChange={setClientFilter}>
+                        <SelectTrigger className="w-40 rounded-xl border-gray-200">
+                          <SelectValue placeholder="Client" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Clients</SelectItem>
+                          {uniqueClients.map((client) => (
+                            <SelectItem key={client} value={client}>
+                              {client}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Link href="/dashboard/billing/create">
+                      <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white rounded-xl" data-help="btn-create-invoice">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Invoice
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Bulk Actions Bar */}
+                {selectedInvoices.length > 0 && (
+                  <div className="bg-[#F0F2FF] border border-[#3C3CFF]/20 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">
+                        {selectedInvoices.length} invoice{selectedInvoices.length > 1 ? "s" : ""} selected
+                      </span>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
+                          <Mail className="mr-2 h-4 w-4" />
+                          Send Reminders
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Mark as Paid
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-lg bg-transparent">
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Selected
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Invoices Table */}
+                <Card className="bg-white border-0 shadow-sm rounded-2xl" data-help="invoices-table">
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b border-gray-100">
+                          <tr>
+                            <th className="text-left p-4 w-12">
+                              <Checkbox
+                                checked={selectedInvoices.length === filteredInvoices.length && filteredInvoices.length > 0}
+                                onCheckedChange={handleSelectAll}
+                              />
+                            </th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Invoice #</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Title</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Client</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Project</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Amount</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Issue Date</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Due Date</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Status</th>
+                            <th className="text-center p-4 text-sm font-medium text-gray-600">Recurring</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600">Share Link</th>
+                            <th className="text-left p-4 text-sm font-medium text-gray-600 w-20">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredInvoices.map((invoice) => (
+                            <tr key={invoice.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                              <td className="p-4">
+                                <Checkbox
+                                  checked={selectedInvoices.includes(invoice.id)}
+                                  onCheckedChange={(checked) => handleSelectInvoice(invoice.id, checked as boolean)}
+                                />
+                              </td>
+                              <td className="p-4">
+                                <span className="font-medium text-gray-900">{invoice.invoice_number}</span>
+                              </td>
+                              <td className="p-4">
+                                <span className="text-gray-900">{invoice.title || "(Untitled Invoice)"}</span>
+                              </td>
+                              <td className="p-4">
+                                <span className="text-gray-900">{invoice.client_name}</span>
+                              </td>
+                              <td className="p-4">
+                                <span
+                                  className={`text-sm ${!invoice.project_name ? "text-gray-500 italic" : "text-gray-900"}`}
+                                >
+                                  {invoice.project_name || "Unassigned"}
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <span className="font-medium text-gray-900">{formatCurrency(invoice.total_amount)}</span>
+                              </td>
+                              <td className="p-4">
+                                <span className="text-gray-600">{formatDate(invoice.issue_date)}</span>
+                              </td>
+                              <td className="p-4">
+                                <span className="text-gray-600">{invoice.due_date ? formatDate(invoice.due_date) : 'No due date'}</span>
+                              </td>
+                              <td className="p-4">
+                                <Badge className={statusConfig[invoice.status]?.color || statusConfig.draft.color}>
+                                  {statusConfig[invoice.status]?.label || statusConfig.draft.label}
+                                </Badge>
+                              </td>
+                              <td className="p-4 text-center">
+                                {invoice.is_recurring ? (
+                                  <CheckCircle className="h-5 w-5 text-green-600 mx-auto" />
+                                ) : (
+                                  <X className="h-5 w-5 text-gray-400 mx-auto" />
+                                )}
+                              </td>
+                              <td className="p-4">
+                                {invoice.status !== 'draft' && invoice.share_token ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={async () => {
+                                      try {
+                                        // Get account info to build the share URL
+                                        const response = await fetch(`/api/invoices/${invoice.id}/share-token`, {
+                                          method: 'POST',
+                                        })
+                                        if (response.ok) {
+                                          const data = await response.json()
+                                          await navigator.clipboard.writeText(data.share_url)
+                                          toast.success('Share link copied to clipboard!')
+                                        } else {
+                                          // Fallback: build URL from token
+                                          const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
+                                          const baseDomain = isProduction ? 'jolix.io' : 'localhost:3000'
+                                          const protocol = isProduction ? 'https' : 'http'
+                                          // We need company slug - for now, use a placeholder or fetch it
+                                          const shareUrl = `${protocol}://company/invoice/${invoice.share_token}.${baseDomain}`
+                                          await navigator.clipboard.writeText(shareUrl)
+                                          toast.success('Share link copied to clipboard!')
+                                        }
+                                      } catch (error) {
+                                        console.error('Error copying share link:', error)
+                                        toast.error('Failed to copy share link')
+                                      }
+                                    }}
+                                    className="gap-2 h-8"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                    Copy
+                                  </Button>
+                                ) : (
+                                  <span className="text-sm text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-4">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onClick={() => handleViewInvoice(invoice)}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      View Invoice
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleEditInvoice(invoice.id)}>
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit Invoice
+                                    </DropdownMenuItem>
+                                    {invoice.status !== "paid" && (
+                                      <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice.id)}>
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                        Mark as Paid
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem onClick={() => openStatusChangeModal(invoice)}>
+                                      <AlertTriangle className="mr-2 h-4 w-4" />
+                                      Change Status
+                                    </DropdownMenuItem>
+                                    {(invoice.status === "sent" || invoice.status === "viewed" || invoice.status === "overdue") && (
+                                      <DropdownMenuItem>
+                                        <Mail className="mr-2 h-4 w-4" />
+                                        Send Reminder
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem onClick={() => handleDeleteInvoice(invoice.id)}>
+                                      <Trash2 className="mr-2 h-4 w-4 text-red-500" />
+                                      Delete Invoice
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleDownloadPDF(invoice)}
+                                      disabled={downloadingPDF === invoice.id}
+                                    >
+                                      {downloadingPDF === invoice.id ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Download className="mr-2 h-4 w-4" />
+                                      )}
+                                      {downloadingPDF === invoice.id ? "Generating PDF..." : "Download PDF"}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {filteredInvoices.length === 0 && (
+                      <div className="text-center py-12">
+                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
+                        <p className="text-gray-600">Try adjusting your search or filter criteria.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+          {/* Tax Tools Tab */}
+          <TabsContent value="tax-tools" className="space-y-6">
+            <BillingTaxToolsTab />
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* Preview Modal */}
+      {/* Service Modal */}
+      <Dialog open={serviceModalOpen} onOpenChange={setServiceModalOpen}>
+        <DialogContent className="sm:max-w-md" data-help="service-modal">
+          <DialogHeader>
+            <DialogTitle data-help="service-modal-title">{editingService ? 'Edit Service' : 'Add New Service'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="serviceName">Service Name *</Label>
+              <Input
+                id="serviceName"
+                data-help="input-service-name"
+                value={newService.name}
+                onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                placeholder="e.g., Web Design"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serviceDescription">Description *</Label>
+              <Textarea
+                id="serviceDescription"
+                data-help="input-service-description"
+                value={newService.description}
+                onChange={(e) => setNewService({ ...newService, description: e.target.value })}
+                placeholder="Describe what this service includes..."
+                rows={3}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="serviceRate">Rate *</Label>
+                <Input
+                  id="serviceRate"
+                  type="number"
+                  data-help="input-service-rate"
+                  value={newService.rate === "" ? "" : newService.rate}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setNewService({ ...newService, rate: value === "" ? "" : parseFloat(value) || "" })
+                  }}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rateType">Rate Type *</Label>
+                <Select
+                  value={newService.rate_type}
+                  onValueChange={(value: any) => setNewService({ ...newService, rate_type: value })}
+                >
+                  <SelectTrigger data-help="select-rate-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hourly">Hourly</SelectItem>
+                    <SelectItem value="fixed">Fixed</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setServiceModalOpen(false)
+                setEditingService(null)
+              }}
+              data-help="btn-cancel-service"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveService}
+              className="bg-[#3C3CFF] hover:bg-[#2D2DCC] text-white"
+              data-help="btn-save-service"
+            >
+              {editingService ? 'Update Service' : 'Add Service'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Preview Modal */}
       <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -895,8 +1470,8 @@ export default function InvoicingPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                   <div>
                     <span className="font-medium">Status:</span>
-                    <Badge className={`ml-2 ${statusConfig[previewInvoice.status].color}`}>
-                      {statusConfig[previewInvoice.status].label}
+                    <Badge className={`ml-2 ${statusConfig[previewInvoice.status]?.color || statusConfig.draft.color}`}>
+                      {statusConfig[previewInvoice.status]?.label || statusConfig.draft.label}
                     </Badge>
                   </div>
                   <div>
@@ -930,8 +1505,8 @@ export default function InvoicingPage() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600 mb-2">
-                  Current Status: <Badge className={statusConfig[changingStatusInvoice.status].color}>
-                    {statusConfig[changingStatusInvoice.status].label}
+                  Current Status: <Badge className={statusConfig[changingStatusInvoice.status]?.color || statusConfig.draft.color}>
+                    {statusConfig[changingStatusInvoice.status]?.label || statusConfig.draft.label}
                   </Badge>
                 </p>
                 <p className="text-sm text-gray-600">

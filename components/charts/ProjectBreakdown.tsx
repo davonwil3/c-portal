@@ -27,17 +27,27 @@ const COLORS = [
 export function ProjectBreakdown({ data }: ProjectBreakdownProps) {
   console.log('ProjectBreakdown received data:', data)
   
-  // Add fallback test data
-  const testData = [
-    { project: 'Website Design', total: 5000 },
-    { project: 'Mobile App', total: 8000 },
-    { project: 'SEO', total: 3000 },
-    { project: 'Marketing', total: 4000 }
-  ]
-  const safeData = data && data.length > 0 ? data : testData
+  // Use actual data, show empty state if no data
+  const safeData = data && data.length > 0 ? data : []
   
   const topProjects = safeData.slice(0, 7)
   const totalRevenue = topProjects.reduce((sum, item) => sum + item.total, 0)
+  
+  if (safeData.length === 0) {
+    return (
+      <Card className="bg-white border-0 shadow-sm rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900">Revenue by Project</CardTitle>
+          <CardDescription>Top projects by revenue</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <p>No project data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="bg-white border-0 shadow-sm rounded-2xl">
