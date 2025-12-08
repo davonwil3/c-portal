@@ -1737,19 +1737,19 @@ export default function ClientWorkflowPage() {
     }
   }, [currentTour?.id, activeStep])
 
-  // Load projects when projects step is active
+  // Load projects when projects step is active or when relevant tour starts
   useEffect(() => {
     if (activeStep === "projects") {
       loadProjects()
     }
-  }, [activeStep])
+  }, [activeStep, currentTour?.id, isTourRunning])
 
-  // Load portals when portals step is active
+  // Load portals when portals step is active or when portals tour starts
   useEffect(() => {
     if (activeStep === "portals") {
       loadPortals()
     }
-  }, [activeStep])
+  }, [activeStep, currentTour?.id, isTourRunning])
 
   const loadClients = async () => {
     try {
@@ -2157,29 +2157,35 @@ export default function ClientWorkflowPage() {
       
       // Use dummy data during tours (projects, contracts, and tasks tours)
       if (isTourRunning || currentTour?.id === "projects" || currentTour?.id === "contracts" || currentTour?.id === "tasks") {
-        const tourProjects: Project[] = dummyProjects.map(dp => ({
-          id: dp.id,
-          name: dp.name,
-          client_id: dp.client.toLowerCase().replace(/\s+/g, '-'),
-          description: `${dp.name} for ${dp.client}`,
-          status: dp.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
-          due_date: dp.dueDate,
-          start_date: '2024-01-01',
-          completed_date: dp.status === 'completed' ? '2024-01-15' : null,
-          portal_id: null,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-15',
-          account_id: 'tour-account',
-          budget: dp.budget,
-          spent: dp.spent,
-          progress: dp.progress,
-          total_messages: 12,
-          total_files: 8,
-          total_invoices: 2,
-          last_activity_at: '2024-01-15',
-          total_milestones: 3,
-          completed_milestones: dp.status === 'completed' ? 3 : 1
-        }))
+        const tourProjects: Project[] = dummyProjects.map(dp => {
+          // Find the matching client by name to get the correct client_id
+          const matchingClient = tourDummyClients.find(dc => dc.name === dp.client)
+          const clientId = matchingClient?.id || 'client-1'
+          
+          return {
+            id: dp.id,
+            name: dp.name,
+            client_id: clientId,
+            description: `${dp.name} for ${dp.client}`,
+            status: dp.status as 'draft' | 'active' | 'on-hold' | 'completed' | 'archived',
+            due_date: dp.dueDate,
+            start_date: '2024-01-01',
+            completed_date: dp.status === 'completed' ? '2024-01-15' : null,
+            portal_id: null,
+            created_at: '2024-01-01',
+            updated_at: '2024-01-15',
+            account_id: 'tour-account',
+            budget: dp.budget,
+            spent: dp.spent,
+            progress: dp.progress,
+            total_messages: 12,
+            total_files: 8,
+            total_invoices: 2,
+            last_activity_at: '2024-01-15',
+            total_milestones: 3,
+            completed_milestones: dp.status === 'completed' ? 3 : 1
+          }
+        })
         
         const tourClients = tourDummyClients.map(dc => ({
           id: dc.id,

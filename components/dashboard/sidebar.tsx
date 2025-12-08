@@ -73,16 +73,17 @@ export function AppSidebar({ onHoverChange }: { onHoverChange?: (isHovered: bool
 
   return (
     <div 
-      className="fixed left-0 top-20 bg-[#3C3CFF] rounded-r-3xl flex flex-col items-center py-8 shadow-xl z-50 overflow-visible"
+      className="fixed left-0 top-20 bottom-4 bg-[#3C3CFF] rounded-r-3xl flex flex-col items-center py-6 shadow-xl z-50 overflow-hidden"
       style={{
         width: isHovered ? '180px' : '64px',
         transition: 'width 150ms cubic-bezier(0.4, 0, 0.2, 1)',
+        maxHeight: 'calc(100vh - 6rem)',
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Navigation Items */}
-      <div className="flex flex-col space-y-4 w-full items-center">
+      <div className="flex flex-col space-y-3 w-full items-center overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent px-1">
         {navigationItems.map((item) => {
           const isActive = pathname === item.href
 

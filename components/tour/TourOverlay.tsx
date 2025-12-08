@@ -134,37 +134,39 @@ export function TourOverlay({
       const viewportHeight = window.innerHeight
       const viewportWidth = window.innerWidth
       
-      // Check if element is fully visible (with some padding)
-      const padding = 100
+      // Check if element top is visible with some padding (for tooltip space)
+      const topPadding = 120 // Space from top for tooltip
+      const bottomPadding = 100 // Minimum space at bottom
+      const sidePadding = 20
       const isFullyVisible = 
-        rect.top >= padding &&
-        rect.left >= padding &&
-        rect.bottom <= viewportHeight - padding &&
-        rect.right <= viewportWidth - padding
+        rect.top >= topPadding &&
+        rect.left >= sidePadding &&
+        rect.bottom <= viewportHeight - bottomPadding &&
+        rect.right <= viewportWidth - sidePadding
       
       if (!isFullyVisible) {
-        // Temporarily allow scrolling for programmatic scroll
-        const scrollContainer = element.closest('[data-scroll-container]') || window
-        const scrollY = window.scrollY
-        const scrollX = window.scrollX
+        // Scroll so element top is near the top of viewport with padding
+        const currentScrollY = window.scrollY || window.pageYOffset
+        const currentScrollX = window.scrollX || window.pageXOffset
+        const elementTop = rect.top + currentScrollY
+        const elementLeft = rect.left + currentScrollX
         
-        // Calculate needed scroll
-        const elementTop = rect.top + scrollY
-        const elementLeft = rect.left + scrollX
-        const targetY = elementTop - viewportHeight / 2
-        const targetX = elementLeft - viewportWidth / 2
+        // Calculate target scroll position: element top minus padding
+        const targetScrollY = elementTop - topPadding
+        const targetScrollX = elementLeft - sidePadding
         
-        // Use window.scrollTo for programmatic scrolling
         window.scrollTo({
-          top: Math.max(0, targetY),
-          left: Math.max(0, targetX),
-          behavior: 'auto'
+          top: Math.max(0, targetScrollY),
+          left: Math.max(0, targetScrollX),
+          behavior: 'smooth'
         })
       }
     }
     
-    // Scroll into view after a brief delay to ensure element is rendered
-    setTimeout(scrollIntoView, 200)
+    // Scroll into view immediately, then again after elements settle
+    scrollIntoView()
+    setTimeout(scrollIntoView, 100)
+    setTimeout(scrollIntoView, 300)
 
     const updatePosition = () => {
       // Get the bounding rect in viewport coordinates (for fixed positioning)

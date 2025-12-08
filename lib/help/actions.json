@@ -549,6 +549,10 @@
         "optional": true
       },
       {
+        "type": "route",
+        "path": "/dashboard/lead-workflow?active=proposals"
+      },
+      {
         "type": "waitForRoute",
         "path": "/dashboard/lead-workflow"
       },
@@ -1585,14 +1589,12 @@
       {
         "type": "hint",
         "target": "[data-help='project-card-first']",
-        "content": "This is an example project card. It displays key project information at a glance. We're going to click this project to view its full details.",
+        "content": "This is an example project card. It displays key project information at a glance. We're going to view this project to see its full details.",
         "optional": true
       },
       {
-        "type": "click",
-        "target": "[data-help='project-card-first']",
-        "optional": false,
-        "timeout": 5000
+        "type": "route",
+        "path": "/dashboard/projects/proj-1"
       },
       {
         "type": "waitForRoute",
@@ -1673,14 +1675,12 @@
       {
         "type": "hint",
         "target": "[data-help='project-card-first']",
-        "content": "We're going to view a project so we can create a contract for it. Let's click on this project.",
+        "content": "We're going to view a project so we can create a contract for it. Let's navigate to this project.",
         "optional": true
       },
       {
-        "type": "click",
-        "target": "[data-help='project-card-first']",
-        "optional": false,
-        "timeout": 5000
+        "type": "route",
+        "path": "/dashboard/projects/proj-1"
       },
       {
         "type": "waitForRoute",
@@ -1814,14 +1814,12 @@
       {
         "type": "hint",
         "target": "[data-help='project-card-first']",
-        "content": "We're going to view a project to explore its tasks. Let's click on this project.",
+        "content": "We're going to view a project to explore its tasks. Let's navigate to this project.",
         "optional": true
       },
       {
-        "type": "click",
-        "target": "[data-help='project-card-first']",
-        "optional": false,
-        "timeout": 5000
+        "type": "route",
+        "path": "/dashboard/projects/proj-1"
       },
       {
         "type": "waitForRoute",

@@ -571,7 +571,7 @@ export default function MessagesPage() {
 
   return (
     <DashboardLayout>
-      <div className="h-screen flex flex-col bg-gray-50 overflow-hidden -m-6">
+      <div className="flex flex-col bg-gray-50 overflow-hidden -m-6" style={{ height: 'calc(100vh - 5rem)', maxHeight: 'calc(100vh - 5rem)' }}>
         {/* Header */}
         <div className="flex-none mx-6 mt-6 mb-4" data-help="messages-header">
           <div className="flex items-center justify-between">
@@ -767,7 +767,7 @@ export default function MessagesPage() {
                   </div>
 
                   {/* Middle Column - Thread */}
-                  <div className="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden h-full min-h-[700px]" data-help="portal-thread-view">
+                  <div className="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden h-full" style={{ maxHeight: 'calc(100vh - 12rem)' }} data-help="portal-thread-view">
                     {/* Thread Header */}
                     <div className="p-4 border-b border-gray-100 flex items-center justify-end gap-2" data-help="portal-thread-header">
                       <Button 
@@ -1187,7 +1187,7 @@ export default function MessagesPage() {
                   </div>
 
                   {/* Middle Column - Email Thread View */}
-                  <div className="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden h-full min-h-[700px]" data-help="email-thread-view">
+                  <div className="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden h-full" style={{ maxHeight: 'calc(100vh - 12rem)' }} data-help="email-thread-view">
                     {/* Toolbar */}
                     {!isNewEmail && selectedEmail && (
                       <div className="p-4 border-b border-gray-100 flex items-center justify-between" data-help="email-thread-toolbar">

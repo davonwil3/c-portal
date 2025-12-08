@@ -57,12 +57,34 @@ export async function processTourStep(
       // Wait for route to match
       if (step.path) {
         const targetPath = step.path.split("?")[0] // Remove query params
+        
+        // Convert dynamic route patterns to regex
+        // e.g., /dashboard/projects/[id] becomes /^\/dashboard\/projects\/[^\/]+$/
+        const isDynamicRoute = targetPath.includes('[')
+        const regexPattern = isDynamicRoute
+          ? targetPath
+              .replace(/\[.*?\]/g, '[^/]+') // Replace [id], [slug], etc. with regex pattern
+              .replace(/\//g, '\\/') // Escape forward slashes
+          : null
+        
         return new Promise((resolve) => {
           let attempts = 0
           const maxAttempts = 100 // 10 seconds max
           const checkRoute = () => {
             attempts++
-            if (window.location.pathname.startsWith(targetPath)) {
+            const currentPath = window.location.pathname
+            
+            let matches = false
+            if (isDynamicRoute && regexPattern) {
+              // For dynamic routes, use regex matching
+              const regex = new RegExp(`^${regexPattern}$`)
+              matches = regex.test(currentPath)
+            } else {
+              // For static routes, use startsWith
+              matches = currentPath.startsWith(targetPath)
+            }
+            
+            if (matches) {
               resolve(true)
             } else if (attempts >= maxAttempts) {
               resolve(false) // Timeout
