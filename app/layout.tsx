@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -9,16 +9,17 @@ export const metadata: Metadata = {
   title: 'Jolix',
   description: 'Your entire freelance business, in one place',
   generator: 'v0.dev',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 5,
-  },
   icons: {
     icon: '/jolixlogo.png',
     shortcut: '/jolixlogo.png',
     apple: '/jolixlogo.png',
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 }
 
 export default function RootLayout({
@@ -29,7 +30,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/jolixlogo.png" type="image/png" />
         <link rel="shortcut icon" href="/jolixlogo.png" type="image/png" />
         <link rel="apple-touch-icon" href="/jolixlogo.png" />
