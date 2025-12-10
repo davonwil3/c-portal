@@ -12,20 +12,70 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(request: NextRequest) {
   try {
-    const { token, companySlug, clientSlug } = await request.json()
+    const { token, slug } = await request.json()
 
-    if (!token || !companySlug || !clientSlug) {
+    if (!token || !slug) {
       return NextResponse.json(
-        { success: false, message: 'Missing required fields' },
+        { success: false, message: 'Missing required fields: token and slug' },
         { status: 400 }
       )
     }
 
-    // Validate magic link token
+    // Find account by slug
+    const { data: accounts } = await supabaseAdmin
+      .from('accounts')
+      .select('id, company_name')
+    
+    let accountId = null
+    let companySlug = slug
+    
+    if (accounts) {
+      const matchingAccount = accounts.find(a => {
+        if (!a.company_name) return false
+        const accountSlug = a.company_name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+        return accountSlug === slug
+      })
+      accountId = matchingAccount?.id
+    }
+
+    if (!accountId) {
+      // Try matching by user name
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('account_id, first_name, last_name')
+      
+      if (profiles) {
+        const matchingProfile = profiles.find(p => {
+          const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim()
+          if (!fullName) return false
+          const nameSlug = fullName
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim()
+          return nameSlug === slug
+        })
+        accountId = matchingProfile?.account_id || null
+      }
+    }
+
+    if (!accountId) {
+      return NextResponse.json(
+        { success: false, message: 'Account not found' },
+        { status: 404 }
+      )
+    }
+
+    // Validate magic link token (using updated function without client_slug)
     const { data: validationData, error: validationError } = await supabaseAdmin.rpc('validate_magic_link_token', {
       p_token: token,
-      p_company_slug: companySlug,
-      p_client_slug: clientSlug
+      p_company_slug: companySlug
     })
 
     if (validationError || !validationData || !validationData[0]?.is_valid) {
@@ -37,28 +87,12 @@ export async function POST(request: NextRequest) {
 
     const email = validationData[0].email
 
-    // Get user info from allowlist - find by email and account
-    // First, find the account by company slug
-    const { data: accountData, error: accountError } = await supabaseAdmin
-      .from('accounts')
-      .select('id, company_name')
-      .ilike('company_name', `%${companySlug.replace(/-/g, '%')}%`)
-      .single()
-
-    if (accountError || !accountData) {
-      console.log('Company not found for slug:', companySlug)
-      return NextResponse.json(
-        { success: false, message: 'Company not found' },
-        { status: 404 }
-      )
-    }
-
     // Find allowlist entries for this email and account
     const { data: allowlistEntries, error: allowlistError } = await supabaseAdmin
       .from('client_allowlist')
-      .select('email, name, role, company_slug, client_slug')
+      .select('email, name, role, company_slug')
       .eq('email', email)
-      .eq('account_id', accountData.id)
+      .eq('account_id', accountId)
       .eq('is_active', true)
 
     if (allowlistError) {
@@ -79,11 +113,10 @@ export async function POST(request: NextRequest) {
     // Use the first allowlist entry if multiple exist
     const allowlistData = allowlistEntries[0]
 
-    // Create session
+    // Create session (without client_slug)
     const { data: sessionData, error: sessionError } = await supabaseAdmin.rpc('create_client_session', {
       p_email: email,
-      p_company_slug: companySlug,
-      p_client_slug: clientSlug
+      p_company_slug: companySlug
     })
 
     if (sessionError || !sessionData || !sessionData[0]) {
@@ -107,7 +140,6 @@ export async function POST(request: NextRequest) {
         name: allowlistData.name,
         role: allowlistData.role,
         companySlug,
-        clientSlug,
         sessionToken: session.session_token,
         refreshToken: session.refresh_token,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()

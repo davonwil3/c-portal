@@ -1347,7 +1347,7 @@ function PortalsSection({
                         variant="ghost"
                         size="sm"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-gray-600 hover:text-gray-800 bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
@@ -1408,7 +1408,7 @@ function PortalsSection({
                   )}
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-3 border-t border-gray-100">
+                  <div className="flex gap-2 pt-3 border-t border-gray-100 -mx-6 -mb-6 px-6 pb-6 rounded-b-2xl">
                     <Button
                       variant="outline"
                       size="sm"
@@ -1448,7 +1448,7 @@ function PortalsSection({
           {filteredPortals.map((portal) => (
             <Card
               key={portal.id}
-              className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 rounded-2xl cursor-pointer group"
+              className="bg-white border-0 shadow-sm hover:shadow-md hover:bg-gray-50 transition-all duration-200 rounded-2xl cursor-pointer group"
             >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -1487,7 +1487,7 @@ function PortalsSection({
                           variant="ghost"
                           size="sm"
                           onClick={(e) => e.stopPropagation()}
-                          className="text-gray-400 hover:text-gray-600"
+                        className="text-gray-600 hover:text-gray-800 bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
@@ -1562,6 +1562,7 @@ function PortalsSection({
 interface Portal {
   id: string
   name: string
+  account_id?: string
   client: {
     id: string
     name: string
@@ -1694,11 +1695,31 @@ export default function ClientWorkflowPage() {
   const [portalViewMode, setPortalViewMode] = useState<"grid" | "list">("grid")
   const [showAddMembersModal, setShowAddMembersModal] = useState(false)
   const [selectedPortalForMembers, setSelectedPortalForMembers] = useState<Portal | null>(null)
+  const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [showViewMembersModal, setShowViewMembersModal] = useState(false)
   const [selectedPortalForView, setSelectedPortalForView] = useState<Portal | null>(null)
   
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Load current account_id
+  useEffect(() => {
+    const loadAccountId = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_id')
+          .eq('user_id', user.id)
+          .single()
+        if (profile?.account_id) {
+          setCurrentAccountId(profile.account_id)
+        }
+      }
+    }
+    loadAccountId()
+  }, [])
 
   // Check for active query parameter to set initial step
   useEffect(() => {
@@ -3883,7 +3904,7 @@ export default function ClientWorkflowPage() {
         </Dialog>
 
         {/* Add Members Modal */}
-        {showAddMembersModal && selectedPortalForMembers && (
+        {showAddMembersModal && selectedPortalForMembers && currentAccountId && (
           <AddMembersModal
             isOpen={showAddMembersModal}
             onClose={() => {
@@ -3892,8 +3913,7 @@ export default function ClientWorkflowPage() {
             }}
             clientId={selectedPortalForMembers.client.id}
             clientName={selectedPortalForMembers.client.name}
-            companySlug={selectedPortalForMembers.url.split('.')[0]}
-            clientSlug={selectedPortalForMembers.url.split('.').length >= 3 ? selectedPortalForMembers.url.split('.')[1] : selectedPortalForMembers.client.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}
+            accountId={currentAccountId}
           />
         )}
 

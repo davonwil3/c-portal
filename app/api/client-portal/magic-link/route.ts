@@ -11,97 +11,143 @@ if (!supabaseServiceKey) {
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(request: NextRequest) {
-  let email: string = '', companySlug: string = '', clientSlug: string = ''
+  let email: string = '', slug: string = ''
   
   try {
     const body = await request.json()
     email = body.email || ''
-    companySlug = body.companySlug || ''
-    clientSlug = body.clientSlug || ''
+    slug = body.slug || body.companySlug || '' // Support both for backward compatibility
 
-    if (!email || !companySlug || !clientSlug) {
+    if (!email || !slug) {
       return NextResponse.json(
-        { success: false, message: 'Missing required fields' },
+        { success: false, message: 'Missing required fields: email and slug' },
         { status: 400 }
       )
     }
 
-    // Check if email is in allowlist (including the client themselves)
-    // First get the account_id from the company_slug
-    console.log('🔍 Looking up company:', companySlug)
+    // Find account by matching slug to company name or user name
+    console.log('🔍 Looking up account for slug:', slug)
     
-    const { data: accountData, error: accountError } = await supabaseAdmin
+    // First try matching by company name
+    const { data: accounts } = await supabaseAdmin
       .from('accounts')
       .select('id, company_name')
-      .ilike('company_name', `%${companySlug.replace(/-/g, '%')}%`)
-      .single()
+    
+    let accountData = null
+    if (accounts) {
+      accountData = accounts.find(a => {
+        if (!a.company_name) return false
+        const accountSlug = a.company_name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+        return accountSlug === slug
+      })
+    }
 
-    if (accountError || !accountData) {
-      console.log('❌ Company not found for slug:', companySlug)
+    // If not found, try matching by user name
+    if (!accountData) {
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('account_id, first_name, last_name')
+      
+      if (profiles) {
+        const matchingProfile = profiles.find(p => {
+          const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim()
+          if (!fullName) return false
+          const nameSlug = fullName
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim()
+          return nameSlug === slug
+        })
+        
+        if (matchingProfile) {
+          const { data: account } = await supabaseAdmin
+            .from('accounts')
+            .select('id, company_name')
+            .eq('id', matchingProfile.account_id)
+      .single()
+          accountData = account
+        }
+      }
+    }
+
+    if (!accountData) {
+      console.log('❌ Account not found for slug:', slug)
       return NextResponse.json(
-        { success: false, message: 'Company not found' },
+        { success: false, message: 'Account not found' },
         { status: 404 }
       )
     }
 
-    console.log('✅ Company found:', {
+    // Generate company slug from account
+    let companySlug = slug
+    if (accountData.company_name) {
+      companySlug = accountData.company_name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim()
+    }
+
+    console.log('✅ Account found:', {
       id: accountData.id,
       name: accountData.company_name,
       slug: companySlug
     })
 
     // Check if email is in allowlist for this account
-    const { data: allowlistEntries, error: allowlistError } = await supabaseAdmin
+    const { data: allowlistData, error: allowlistError } = await supabaseAdmin
       .from('client_allowlist')
-      .select('email, name, role, company_slug, client_slug')
+      .select('email, name, role, is_active')
       .eq('account_id', accountData.id)
       .eq('email', email.toLowerCase())
       .eq('is_active', true)
+      .single()
 
-    if (allowlistError) {
-      console.error('❌ Allowlist query error:', allowlistError)
-      return NextResponse.json(
-        { success: false, message: 'Database error checking authorization' },
-        { status: 500 }
-      )
-    }
-
-    if (!allowlistEntries || allowlistEntries.length === 0) {
-      console.log('❌ Email not found in allowlist:', {
+    if (allowlistError || !allowlistData) {
+      console.log('❌ Email not in allowlist:', {
         email: email.toLowerCase(),
-        companySlug,
-        clientSlug,
         accountId: accountData.id
       })
-      
-      // Debug: Show what's actually in the allowlist for this account
-      const { data: debugData, error: debugError } = await supabaseAdmin
-        .from('client_allowlist')
-        .select('email, company_slug, client_slug, is_active')
-        .eq('account_id', accountData.id)
-        .eq('is_active', true)
-      
-      if (!debugError && debugData) {
-        console.log('🔍 Current allowlist entries for this account:', debugData)
-      }
-      
       return NextResponse.json(
-        { success: false, message: 'Email not authorized for this portal. Please contact your administrator to be added to the access list.' },
+        { success: false, message: 'Email not authorized for this portal. Please contact your administrator.' },
         { status: 403 }
       )
     }
 
-    // Use the first allowlist entry if multiple exist
-    const allowlistData = allowlistEntries[0]
-    console.log('✅ Email authorized:', allowlistData)
+    console.log('✅ Email authorized in allowlist:', allowlistData)
+
+    // Get account holder's name if no company name
+    let accountHolderName = null
+    if (!accountData.company_name) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('account_id', accountData.id)
+        .limit(1)
+        .single()
+      
+      if (profile) {
+        const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+        if (fullName) {
+          accountHolderName = fullName
+        }
+      }
+    }
 
     // Generate magic link token
     let tokenData: string
     try {
       const { data, error: tokenError } = await supabaseAdmin.rpc('generate_magic_link_token', {
         p_email: email.toLowerCase(),
-        p_company_slug: companySlug,
-        p_client_slug: clientSlug
+        p_company_slug: slug
       })
 
       if (tokenError) {
@@ -134,12 +180,12 @@ export async function POST(request: NextRequest) {
     
     let magicLink: string
     if (isProduction) {
-      // Production: Use your custom domain (set PORTAL_DOMAIN env var)
-      const portalDomain = process.env.PORTAL_DOMAIN || 'clientportalhq.com'
-      magicLink = `https://${companySlug}.${clientSlug}.${portalDomain}?token=${tokenData}`
+      // Production: Use clientportal.[slug].jolix.io format
+      // Middleware will rewrite this to /portal/[slug]/login
+      magicLink = `https://clientportal.${companySlug}.jolix.io/login?token=${tokenData}`
     } else {
-      // Development: Use localhost with slug structure
-      magicLink = `${baseUrl}/${companySlug}?client=${clientSlug}&token=${tokenData}`
+      // Development: Use localhost with direct path
+      magicLink = `${baseUrl}/portal/${companySlug}/login?token=${tokenData}`
     }
     
     console.log('🔗 Generated magic link:', magicLink)
@@ -148,11 +194,20 @@ export async function POST(request: NextRequest) {
       // Import the email service
       const { sendMagicLinkEmail } = await import('@/lib/email-service')
       
+      // Prepare portal name for email
+      let portalName = accountData.company_name
+      if (!portalName && accountHolderName) {
+        // Format name with proper apostrophe (e.g., "Davon Wilson's client portal")
+        portalName = `${accountHolderName}'s client portal`
+      } else if (!portalName) {
+        portalName = 'your client portal'
+      }
+      
       // Send the magic link email via Resend
       await sendMagicLinkEmail({
         to: email.toLowerCase(),
         recipientName: allowlistData.name || 'there',
-        companyName: companySlug,
+        companyName: portalName,
         magicLink,
         from: process.env.FROM_EMAIL || 'noreply@yourdomain.com' // Update with your verified domain
       })
@@ -183,8 +238,7 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       email,
-      companySlug,
-      clientSlug
+      slug
     })
     return NextResponse.json(
       { success: false, message: 'Internal server error: ' + (error instanceof Error ? error.message : 'Unknown error') },

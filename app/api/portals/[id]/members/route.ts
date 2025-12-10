@@ -57,7 +57,6 @@ export async function GET(
         role,
         is_active,
         created_at,
-        client_slug,
         company_slug
       `)
       .eq('account_id', profile.account_id)
@@ -88,11 +87,11 @@ export async function GET(
       id: member.id,
       email: member.email,
       name: member.name,
-      role: member.role || 'client',
+      role: member.role || 'view only',
       is_active: member.is_active,
       created_at: member.created_at,
       is_main_client: member.email === mainClient?.email,
-      portal_access: `${member.company_slug}/${member.client_slug}`
+      portal_access: member.company_slug || ''
     })) || []
 
     return NextResponse.json({

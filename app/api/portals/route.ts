@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
     const transformedPortals = portals.map(portal => ({
       id: portal.id,
       name: portal.name,
+      account_id: portal.account_id || profileData.account_id,
       client: {
         id: portal.client_id || 'no-client',
         name: portal.client ? 

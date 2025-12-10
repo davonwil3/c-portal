@@ -432,8 +432,6 @@ export default function FormBuilderPage() {
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateName, setTemplateName] = useState("")
   const [templateDescription, setTemplateDescription] = useState("")
-  const [isAutoSaving, setIsAutoSaving] = useState(false)
-  const [lastSaved, setLastSaved] = useState<Date>(new Date())
   const [draggedField, setDraggedField] = useState<string | null>(null)
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -468,8 +466,7 @@ export default function FormBuilderPage() {
   const [loadingClients, setLoadingClients] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [editingFormId, setEditingFormId] = useState<string | null>(null) // Track if we're editing an existing form
-  const [draftFormId, setDraftFormId] = useState<string | null>(null) // Track the draft form ID for auto-save
-  const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [draftFormId, setDraftFormId] = useState<string | null>(null) // Track the draft form ID
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState("Your Company Name")
   const [companyAddress, setCompanyAddress] = useState("123 Business Street, City, State 12345")
@@ -588,8 +585,7 @@ export default function FormBuilderPage() {
         
         toast.success("Form loaded for editing")
         
-        // Small delay to ensure all state is set before allowing auto-save
-        setTimeout(() => setIsFormInitialized(true), 100)
+        setIsFormInitialized(true)
       } catch (error) {
         console.error("Error parsing form data:", error)
         toast.error("Failed to load form data")
@@ -614,8 +610,7 @@ export default function FormBuilderPage() {
         
         toast.success(`Template "${template.title}" loaded successfully`)
         
-        // Small delay to ensure all state is set before allowing auto-save
-        setTimeout(() => setIsFormInitialized(true), 100)
+        setIsFormInitialized(true)
       } catch (error) {
         console.error("Error parsing template data:", error)
         toast.error("Failed to load template")
@@ -961,7 +956,6 @@ export default function FormBuilderPage() {
       }
 
       if (result.success) {
-        setLastSaved(new Date())
         toast.success("Draft saved successfully!")
       }
       
@@ -1051,156 +1045,6 @@ export default function FormBuilderPage() {
     }
   }
 
-  // Auto-save function
-  const autoSave = async () => {
-    // Don't save if no title or if title is just whitespace
-    if (!formTitle.trim()) return
-    
-    // Don't save if form is not initialized
-    if (!isFormInitialized) {
-      console.log("Auto-save skipped: Form not initialized yet")
-      return
-    }
-    
-    console.log("Auto-save triggered:", { 
-      formTitle: formTitle.trim(), 
-      fieldsCount: fields.length, 
-      editingFormId, 
-      draftFormId,
-      isFormInitialized 
-    })
-    
-    setIsAutoSaving(true)
-    try {
-      let result
-      
-      if (editingFormId) {
-        // Update existing form (edit mode) - only save form structure
-        console.log("Auto-save: Updating existing form", editingFormId)
-        result = await updateFormDraft(
-          editingFormId,
-          formTitle.trim(),
-          fields,
-          null, // Don't save client_id in auto-save
-          null, // Don't save project_id in auto-save
-          undefined, // Don't save notify_on_submission in auto-save
-          null, // Don't save submission_deadline in auto-save
-          publishFormData.instructions,
-          true, // silent for auto-save
-          brandColor,
-          logoUrl,
-          companyName,
-          companyAddress,
-          companyPhone,
-          companyEmail,
-          formDate,
-          footerLine1,
-          footerLine2
-        )
-      } else if (draftFormId) {
-        // Update existing draft - only save form structure
-        console.log("Auto-save: Updating existing draft", draftFormId)
-        result = await updateFormDraft(
-          draftFormId,
-          formTitle.trim(),
-          fields,
-          null, // Don't save client_id in auto-save
-          null, // Don't save project_id in auto-save
-          undefined, // Don't save notify_on_submission in auto-save
-          null, // Don't save submission_deadline in auto-save
-          publishFormData.instructions,
-          true, // silent for auto-save
-          brandColor,
-          logoUrl,
-          companyName,
-          companyAddress,
-          companyPhone,
-          companyEmail,
-          formDate,
-          footerLine1,
-          footerLine2
-        )
-      } else {
-        // Create new draft only if we don't have one AND have a proper title
-        console.log("Auto-save: Creating new draft")
-        result = await saveFormDraft(
-          formTitle.trim(),
-          fields,
-          null, // Don't save client_id in auto-save
-          null, // Don't save project_id in auto-save
-          undefined, // Don't save notify_on_submission in auto-save
-          null, // Don't save submission_deadline in auto-save
-          publishFormData.instructions,
-          true, // silent for auto-save
-          brandColor,
-          logoUrl,
-          companyName,
-          companyAddress,
-          companyPhone,
-          companyEmail,
-          formDate,
-          footerLine1,
-          footerLine2
-        )
-        
-        // Store the draft ID for future auto-saves
-        if (result.success && result.data) {
-          setDraftFormId(result.data.id)
-          console.log("Auto-save: New draft created", result.data.id)
-        }
-      }
-
-      if (result.success) {
-        setLastSaved(new Date())
-        console.log("Auto-save: Success")
-      }
-      
-    } catch (error) {
-      console.error("Error auto-saving:", error)
-      // Don't show toast for auto-save errors to avoid spam
-    } finally {
-      setIsAutoSaving(false)
-    }
-  }
-
-  // Debounced auto-save
-  const debouncedAutoSave = () => {
-    // Clear existing timeout
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout)
-    }
-    
-    // Set new timeout
-    const timeout = setTimeout(() => {
-      autoSave()
-    }, 2000) // Wait 2 seconds after user stops typing
-    
-    setAutoSaveTimeout(timeout)
-  }
-
-  // Auto-save when form title, description, or fields change
-  useEffect(() => {
-    // Only auto-save if form is initialized and we have a proper title
-    if (isFormInitialized && formTitle.trim()) {
-      debouncedAutoSave()
-    }
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (autoSaveTimeout) {
-        clearTimeout(autoSaveTimeout)
-      }
-    }
-  }, [formTitle, publishFormData.instructions, fields, isFormInitialized])
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimeout) {
-        clearTimeout(autoSaveTimeout)
-      }
-    }
-  }, [])
 
   // Global drag end handler to reset drag state
   useEffect(() => {
@@ -1244,19 +1088,6 @@ export default function FormBuilderPage() {
                 <span>Back</span>
               </Button>
 
-              <div className="flex items-center text-sm text-gray-500">
-                {isAutoSaving ? (
-                  <div className="flex items-center">
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    Saving...
-                  </div>
-                ) : (
-                  <div className="flex items-center">
-                    <Check className="h-3 w-3 text-green-500 mr-1" />
-                    All changes saved
-                  </div>
-                )}
-              </div>
             </div>
 
             <div className="flex items-center space-x-3">

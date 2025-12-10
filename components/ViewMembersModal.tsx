@@ -81,6 +81,59 @@ export default function ViewMembersModal({
     }
   }
 
+  const handleRoleChange = async (memberId: string, newRole: string) => {
+    try {
+      const response = await fetch(`/api/portals/${portalId}/members/${memberId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: newRole }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Role updated successfully')
+        // Update local state
+        setMembers(members.map(m => 
+          m.id === memberId ? { ...m, role: newRole } : m
+        ))
+      } else {
+        toast.error(result.message || 'Failed to update role')
+      }
+    } catch (error) {
+      console.error('Error updating role:', error)
+      toast.error('Failed to update role')
+    }
+  }
+
+  const handleDeleteMember = async (memberId: string, memberName: string) => {
+    if (!confirm(`Are you sure you want to remove ${memberName} from this portal?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/portals/${portalId}/members/${memberId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Member removed successfully')
+        // Remove from local state
+        setMembers(members.filter(m => m.id !== memberId))
+        setTotalCount(totalCount - 1)
+      } else {
+        toast.error(result.message || 'Failed to remove member')
+      }
+    } catch (error) {
+      console.error('Error deleting member:', error)
+      toast.error('Failed to remove member')
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -93,9 +146,11 @@ export default function ViewMembersModal({
     if (isMainClient) {
       return "bg-purple-100 text-purple-700 border-purple-200"
     }
-    switch (role.toLowerCase()) {
+    switch (role?.toLowerCase()) {
       case 'admin':
         return "bg-red-100 text-red-700 border-red-200"
+      case 'view only':
+        return "bg-gray-100 text-gray-700 border-gray-200"
       case 'manager':
         return "bg-blue-100 text-blue-700 border-blue-200"
       case 'client':
@@ -216,12 +271,27 @@ export default function ViewMembersModal({
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {member.is_main_client ? (
                               <Badge 
                                 variant="outline" 
                                 className={getRoleBadgeColor(member.role, member.is_main_client)}
                               >
-                                {member.is_main_client ? 'Main Client' : member.role}
+                                  Main Client
                               </Badge>
+                              ) : (
+                                <Select
+                                  value={member.role || "view only"}
+                                  onValueChange={(value) => handleRoleChange(member.id, value)}
+                                >
+                                  <SelectTrigger className="w-32 h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="view only">View Only</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
                               <Badge 
                                 variant="outline" 
                                 className={member.is_active ? 
@@ -231,6 +301,28 @@ export default function ViewMembersModal({
                               >
                                 {member.is_active ? 'Active' : 'Inactive'}
                               </Badge>
+                              {!member.is_main_client && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => handleDeleteMember(member.id, member.name)}
+                                      className="text-red-600 focus:text-red-600"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Remove Member
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
                             </div>
                           </div>
                         </CardContent>

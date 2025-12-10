@@ -276,21 +276,44 @@ export async function createClient(clientData: {
         .eq('id', userProfile.account_id)
         .single()
 
+      // Generate company slug from account owner's company name or user name
+      let companySlug = ''
       if (account?.company_name) {
-        // Generate a company slug from the company name
-        const companySlug = account.company_name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+        companySlug = account.company_name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+      } else {
+        // Fall back to user name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('user_id', user.id)
+          .single()
         
-        // Generate a client slug from the client's name
-        const clientSlug = `${clientData.first_name.toLowerCase()}-${clientData.last_name.toLowerCase()}`
-        
-        // Add client to allowlist for their own portal access
+        if (profile) {
+          const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+          if (fullName) {
+            companySlug = fullName
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '')
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-')
+              .trim()
+          }
+        }
+      }
+      
+      if (companySlug) {
+        // Add client to allowlist for their own portal access (no client_slug)
         const { error: allowlistError } = await supabase
           .from('client_allowlist')
           .insert({
             account_id: userProfile.account_id,
-            client_id: client.id, // Add the client_id here!
+            client_id: client.id,
             company_slug: companySlug,
-            client_slug: clientSlug,
             email: clientData.email.toLowerCase(),
             name: `${clientData.first_name} ${clientData.last_name}`,
             role: 'Client',
@@ -305,12 +328,11 @@ export async function createClient(clientData: {
           console.log('📋 Allowlist entry:', {
             account_id: userProfile.account_id,
             company_slug: companySlug,
-            client_slug: clientSlug,
             email: clientData.email.toLowerCase()
           })
         }
       } else {
-        console.error('❌ No company name found for account:', userProfile.account_id)
+        console.error('❌ Could not generate company slug for account:', userProfile.account_id)
       }
     } else {
       console.error('❌ No account_id found for user:', user.id)

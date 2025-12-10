@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -21,8 +28,7 @@ interface AddMembersModalProps {
   onClose: () => void
   clientId: string
   clientName: string
-  companySlug: string
-  clientSlug: string
+  accountId: string
 }
 
 interface MemberData {
@@ -36,11 +42,10 @@ export default function AddMembersModal({
   onClose,
   clientId,
   clientName,
-  companySlug,
-  clientSlug,
+  accountId,
 }: AddMembersModalProps) {
   const [members, setMembers] = useState<MemberData[]>([
-    { email: "", name: "", role: "" }
+    { email: "", name: "", role: "view only" }
   ])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -85,8 +90,7 @@ export default function AddMembersModal({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          companySlug,
-          clientSlug,
+          accountId,
           clientId, // Pass the clientId to the API
           members: validMembers
         }),
@@ -97,7 +101,7 @@ export default function AddMembersModal({
       if (result.success) {
         toast.success(`Added ${validMembers.length} member(s) to ${clientName}`)
         onClose()
-        setMembers([{ email: "", name: "", role: "" }])
+        setMembers([{ email: "", name: "", role: "view only" }])
         setError("")
       } else {
         setError(result.message || "Failed to add members")
@@ -174,14 +178,18 @@ export default function AddMembersModal({
                   <Label htmlFor={`role-${index}`} className="text-sm font-medium">
                     Role
                   </Label>
-                  <Input
-                    id={`role-${index}`}
-                    type="text"
-                    placeholder="Role"
-                    value={member.role}
-                    onChange={(e) => updateMember(index, 'role', e.target.value)}
-                    className="mt-1"
-                  />
+                  <Select
+                    value={member.role || "view only"}
+                    onValueChange={(value) => updateMember(index, 'role', value)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="view only">View Only</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 
                 <div className="col-span-1 flex items-end">

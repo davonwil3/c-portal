@@ -2,11 +2,17 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { DashboardLayout } from "@/components/dashboard/layout"
-import { RevenueTrend } from "@/components/charts/RevenueTrend"
+// import { RevenueTrend } from "@/components/charts/RevenueTrend"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 import { 
   Plus, 
   ChevronRight, 
@@ -50,6 +56,23 @@ const revenueData = [
   { month: 'May', revenue: 25000, clients: 22 },
   { month: 'Jun', revenue: 28000, clients: 25 },
 ]
+
+// Mock revenue trend data showing upward growth month over month
+const mockRevenueTrendData = [
+  { month: 'Jul', paidRevenue: 8500, createdCount: 5 },
+  { month: 'Aug', paidRevenue: 11200, createdCount: 7 },
+  { month: 'Sep', paidRevenue: 14500, createdCount: 9 },
+  { month: 'Oct', paidRevenue: 18200, createdCount: 11 },
+  { month: 'Nov', paidRevenue: 22100, createdCount: 13 },
+  { month: 'Dec', paidRevenue: 26400, createdCount: 15 },
+]
+
+const mockChartConfig = {
+  paidRevenue: {
+    label: "Paid Revenue",
+    color: "hsl(var(--chart-1))",
+  },
+} satisfies ChartConfig
 
 const kpiData = [
   { 
@@ -447,7 +470,48 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Revenue Chart - Takes up 2 columns */}
           <div className="lg:col-span-2 space-y-6">
-            <RevenueTrend data={revenueChartData} />
+            {/* <RevenueTrend data={revenueChartData} /> */}
+            
+            {/* Mock Revenue Trend Graph */}
+            <Card className="bg-white border-0 shadow-sm rounded-2xl">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold text-gray-900">Revenue Trend</CardTitle>
+                <CardDescription>Monthly revenue and invoice creation trends</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={mockChartConfig} className="h-[350px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart 
+                      data={mockRevenueTrendData} 
+                      accessibilityLayer
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200" />
+                      <XAxis 
+                        dataKey="month" 
+                        className="text-xs fill-gray-600"
+                      />
+                      <YAxis 
+                        className="text-xs fill-gray-600"
+                        tickFormatter={(value) => `$${value.toLocaleString()}`}
+                      />
+                      <Tooltip 
+                        content={<ChartTooltipContent />}
+                        formatter={(value: any) => [`$${value.toLocaleString()}`, "Paid Revenue"]}
+                      />
+                      <Area
+                        type="linear"
+                        dataKey="paidRevenue"
+                        stroke="hsl(var(--chart-1))"
+                        fill="hsl(var(--chart-1))"
+                        fillOpacity={0.2}
+                        strokeWidth={2.5}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
             
             {/* Quick Stats under chart */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

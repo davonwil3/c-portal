@@ -8,54 +8,82 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(request: NextRequest) {
   try {
-    const { companySlug, clientSlug, clientId, members } = await request.json()
+    const { accountId, clientId, members } = await request.json()
 
-    if (!companySlug || !clientSlug || !members || !Array.isArray(members)) {
+    if (!accountId || !clientId || !members || !Array.isArray(members)) {
       return NextResponse.json(
-        { success: false, message: 'Invalid request data' },
+        { success: false, message: 'Invalid request data: accountId, clientId, and members are required' },
         { status: 400 }
       )
     }
 
-    // Get the client_id and account_id - either from provided clientId or by looking it up
-    let clientIdToUse = clientId
-    let accountIdToUse: string
-
-    if (clientId) {
-      // If clientId is provided, get the account_id from the client record
-      const { data: clientRecord, error: clientError } = await supabaseAdmin
-        .from('clients')
-        .select('account_id')
-        .eq('id', clientId)
+    // Get account info to generate company slug
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('accounts')
+      .select('company_name')
+      .eq('id', accountId)
         .single()
 
-      if (clientError || !clientRecord) {
-        console.error('Error looking up client:', clientError)
+    if (accountError || !account) {
+      console.error('Error looking up account:', accountError)
         return NextResponse.json(
-          { success: false, message: 'Client not found' },
+        { success: false, message: 'Account not found' },
           { status: 404 }
         )
       }
-      accountIdToUse = clientRecord.account_id
+
+    // Generate company slug from account owner's company name or user name
+    let companySlug = ''
+    if (account.company_name) {
+      companySlug = account.company_name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim()
     } else {
-      // Fall back to looking up from allowlist
-      const { data: existingAllowlistEntry, error: lookupError } = await supabaseAdmin
-        .from('client_allowlist')
-        .select('client_id, account_id')
-        .eq('company_slug', companySlug)
-        .eq('client_slug', clientSlug)
-        .eq('is_active', true)
+      // Fall back to user name
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('account_id', accountId)
+        .limit(1)
         .single()
 
-      if (lookupError || !existingAllowlistEntry) {
-        console.error('Error looking up client in allowlist:', lookupError)
+      if (profile) {
+        const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+        if (fullName) {
+          companySlug = fullName
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim()
+        }
+      }
+    }
+
+    if (!companySlug) {
+      return NextResponse.json(
+        { success: false, message: 'Could not determine company slug' },
+        { status: 400 }
+      )
+    }
+
+    // Verify client belongs to this account
+    const { data: clientRecord, error: clientError } = await supabaseAdmin
+      .from('clients')
+      .select('id, account_id')
+      .eq('id', clientId)
+      .eq('account_id', accountId)
+      .single()
+
+    if (clientError || !clientRecord) {
+      console.error('Error looking up client:', clientError)
         return NextResponse.json(
-          { success: false, message: 'Client not found in allowlist' },
+        { success: false, message: 'Client not found or does not belong to this account' },
           { status: 404 }
         )
-      }
-      clientIdToUse = existingAllowlistEntry.client_id
-      accountIdToUse = existingAllowlistEntry.account_id
     }
 
     // Validate member data
@@ -72,74 +100,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get all portals for this client to add members to all of them
-    const { data: clientPortals, error: portalsError } = await supabaseAdmin
-      .from('portals')
-      .select('id, url, name')
-      .eq('account_id', accountIdToUse)
-      .eq('client_id', clientIdToUse)
-      .eq('status', 'live')
-
-    if (portalsError) {
-      console.error('Error fetching client portals:', portalsError)
-      return NextResponse.json(
-        { success: false, message: 'Failed to fetch client portals' },
-        { status: 500 }
-      )
-    }
-
-    console.log('Found portals for client:', clientPortals)
-
-    // Check if client has any portals
-    if (!clientPortals || clientPortals.length === 0) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'No portals found for this client. Please create a portal first.' 
-        },
-        { status: 400 }
-      )
-    }
-
-    // Prepare data for insertion - add members to ALL portals for this client
+    // Prepare data for insertion - add members to allowlist for this account
     const allowlistData = []
-    
-    for (const portal of clientPortals) {
-      // Extract company and client slug from portal URL
-      const urlParts = portal.url.split('.')
-      const portalCompanySlug = urlParts[0]
-      const portalClientSlug = urlParts[1]
       
       for (const member of validMembers) {
-        // Check if member already exists for this portal
+      // Check if member already exists for this account
         const { data: existingMember } = await supabaseAdmin
           .from('client_allowlist')
           .select('id')
-          .eq('account_id', accountIdToUse)
-          .eq('company_slug', portalCompanySlug)
-          .eq('client_slug', portalClientSlug)
+        .eq('account_id', accountId)
           .eq('email', member.email.trim().toLowerCase())
           .single()
 
         // Only add if member doesn't already exist
         if (!existingMember) {
           allowlistData.push({
-            account_id: accountIdToUse,
-            client_id: clientIdToUse, // Add the main client's ID
-            company_slug: portalCompanySlug,
-            client_slug: portalClientSlug,
+          account_id: accountId,
+          client_id: clientId,
+          company_slug: companySlug,
             email: member.email.trim().toLowerCase(),
             name: member.name.trim(),
             role: member.role?.trim() || null,
             is_active: true
           })
         }
-      }
     }
 
-    console.log('Adding members to allowlist for all client portals:', {
-      accountId: accountIdToUse,
-      portals: clientPortals?.length || 0,
+    console.log('Adding members to allowlist:', {
+      accountId: accountId,
+      companySlug: companySlug,
       members: allowlistData.length
     })
 
@@ -179,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully added ${allowlistData.length} member(s)`,
+      message: `Successfully added ${allowlistData.length} member(s) to the portal`,
       data: { addedCount: allowlistData.length }
     })
 

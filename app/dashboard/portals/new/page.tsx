@@ -116,27 +116,42 @@ export default function CreatePortalPage() {
         return
       }
 
-      // Generate portal URL using company name and client name
-      const selectedClient = clients.find(c => c.id === formData.clientId)
-      const companySlug = companyName.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      // Get account owner's company name or user name for the slug
+      const { data: account } = await supabase
+        .from('accounts')
+        .select('company_name')
+        .eq('id', profile.account_id)
+        .single()
+
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('user_id', user.id)
+        .single()
       
-      // Use client's company name first, then fallback to full name
-      let clientSlug = 'client'
-      if (selectedClient?.company) {
-        clientSlug = selectedClient.company.toLowerCase().replace(/[^a-z0-9]/g, '-')
-      } else if (selectedClient?.first_name && selectedClient?.last_name) {
-        clientSlug = `${selectedClient.first_name}-${selectedClient.last_name}`.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      // Generate slug from account owner's company name or user name
+      let portalSlug = ''
+      if (account?.company_name) {
+        portalSlug = account.company_name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+      } else if (userProfile?.first_name || userProfile?.last_name) {
+        const fullName = `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim()
+        portalSlug = fullName
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim()
+      } else {
+        portalSlug = 'portal'
       }
       
-      // Create a flexible URL that works in both development and production
-      // In development, this will be used for slug matching
-      // In production, you can configure your actual domain
-      const isProduction = process.env.NODE_ENV === 'production'
-      const baseDomain = isProduction 
-        ? (process.env.PORTAL_DOMAIN || 'clientportalhq.com')
-        : 'localhost:3000'
-      
-      const portalUrl = `${companySlug}.${clientSlug}.${baseDomain}`
+      // Store just the slug (not the full URL) - URL will be generated dynamically
+      const portalUrl = portalSlug
 
       // Check if a portal already exists for this client
       const { data: existingPortal } = await supabase
