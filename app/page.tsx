@@ -947,7 +947,7 @@ export default function JolixLanding() {
                     <li className="flex items-start">
                       <Check className="h-5 w-5 text-[#3C3CFF] mr-3 flex-shrink-0" />
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-600 text-sm">2 active clients/projects per month</span>
+                        <span className="text-slate-600 text-sm">1 active client</span>
                         <TooltipProvider delayDuration={100}>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1016,7 +1016,7 @@ export default function JolixLanding() {
                     <li className="flex items-start">
                       <Check className="h-5 w-5 text-[#3C3CFF] mr-3 flex-shrink-0" />
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-600 text-sm font-semibold">Manage up to 5 active clients/projects simultaneously</span>
+                        <span className="text-slate-600 text-sm font-semibold">Manage up to 5 active clients simultaneously</span>
                         <TooltipProvider delayDuration={100}>
                           <Tooltip>
                             <TooltipTrigger asChild>
