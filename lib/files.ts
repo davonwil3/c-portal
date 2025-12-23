@@ -289,7 +289,7 @@ export async function getFileStats(): Promise<{
   }
 }
 
-// Get file comments
+// Get file comments with proper client names from allowlist
 export async function getFileComments(fileId: string): Promise<FileComment[]> {
   const supabase = createClient()
   
@@ -304,7 +304,70 @@ export async function getFileComments(fileId: string): Promise<FileComment[]> {
     throw error
   }
 
-  return comments || []
+  // Get the file to find its account_id
+  const { data: file } = await supabase
+    .from('files')
+    .select('account_id, client_id')
+    .eq('id', fileId)
+    .single()
+
+  if (!file || !comments || comments.length === 0) {
+    return comments || []
+  }
+
+  // Get allowlist entries for this account to map client emails to names
+  const { data: allowlist } = await supabase
+    .from('client_allowlist')
+    .select('email, name')
+    .eq('account_id', file.account_id)
+    .eq('is_active', true)
+
+  if (!allowlist || allowlist.length === 0) {
+    return comments
+  }
+
+  // Create a map of author_id to allowlist name by checking profiles
+  const authorIds = comments
+    .filter(c => c.author_id)
+    .map(c => c.author_id as string)
+
+  if (authorIds.length === 0) {
+    return comments
+  }
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, email')
+    .in('user_id', authorIds)
+
+  if (!profiles) {
+    return comments
+  }
+
+  // Create email to allowlist name mapping
+  const emailToName = new Map(allowlist.map(entry => [
+    entry.email.toLowerCase(), 
+    entry.name || 'Client'
+  ]))
+
+  // Create author_id to email mapping
+  const authorIdToEmail = new Map(profiles.map(p => [p.user_id, p.email.toLowerCase()]))
+
+  // Update comment author names for clients
+  const updatedComments = comments.map(comment => {
+    if (comment.author_id && authorIdToEmail.has(comment.author_id)) {
+      const email = authorIdToEmail.get(comment.author_id)
+      if (email && emailToName.has(email)) {
+        return {
+          ...comment,
+          author_name: emailToName.get(email) || comment.author_name || 'Client'
+        }
+      }
+    }
+    return comment
+  })
+
+  return updatedComments
 }
 
 // Get file versions

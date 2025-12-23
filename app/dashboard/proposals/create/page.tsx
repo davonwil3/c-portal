@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,15 +41,34 @@ import {
   Pencil,
   Check,
   Image as ImageIcon,
+  Loader2,
+  Package,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
 } from "lucide-react"
 import { toast } from "sonner"
+import Image from "next/image"
+import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
 import { DashboardLayout } from "@/components/dashboard/layout"
+import { createProposal, updateProposal, getProposalById, type ProposalBuilderData } from "@/lib/proposals"
+import { getClients } from "@/lib/clients"
+import { getLeads } from "@/lib/leads"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { createClient } from '@/lib/supabase/client'
+import { JolixFooter } from "@/components/JolixFooter"
 
 type DocumentStatus = "Draft" | "Sent" | "Viewed" | "Accepted"
 
 export default function DocumentSuitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [proposalId, setProposalId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Add loading state
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
   
   // Suite-level state
   const [clientName, setClientName] = useState("")
@@ -74,6 +93,8 @@ export default function DocumentSuitePage() {
   const [companyName, setCompanyName] = useState("")
   const [companyEmail, setCompanyEmail] = useState("")
   const [companyAddress, setCompanyAddress] = useState("")
+  const [showAddress, setShowAddress] = useState(true)
+  const [planTier, setPlanTier] = useState<string>('free')
   
   // Client info
   const [clientEmail, setClientEmail] = useState("")
@@ -115,21 +136,485 @@ export default function DocumentSuitePage() {
   const [labelInvestment, setLabelInvestment] = useState("Investment")
   const [autoTitle, setAutoTitle] = useState(true)
 
+  // Proposal blocks structure for reorderable sections
+  interface ProposalBlock {
+    id: string
+    type: 'goals' | 'success' | 'deliverables' | 'timeline' | 'custom'
+    label: string
+    content: string
+    order: number
+  }
+
+  const [proposalBlocks, setProposalBlocks] = useState<ProposalBlock[]>([
+    { id: '1', type: 'goals', label: 'Your Goals', content: '', order: 0 },
+    { id: '2', type: 'success', label: 'What Success Looks Like', content: '', order: 1 },
+    { id: '3', type: 'deliverables', label: 'Scope & Deliverables', content: '', order: 2 },
+    { id: '4', type: 'timeline', label: 'Project Timeline', content: '', order: 3 },
+  ])
+
   const openLogoPicker = () => {
     const el = document.getElementById("logoUpload") as HTMLInputElement | null
     el?.click()
   }
 
+  // Upload logo to storage
+  const handleLogoUpload = async (file: File) => {
+    try {
+      const supabase = createClient()
+      
+      // Get user's account ID
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Please log in to upload logo')
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (!profile?.account_id) {
+        toast.error('Account not found')
+        return
+      }
+
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop()
+      const fileName = `proposal-logo-${Date.now()}.${fileExt}`
+      const filePath = `${profile.account_id}/${fileName}`
+
+      // Upload to storage (using portal-logos bucket or create proposal-logos)
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('portal-logos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        toast.error('Failed to upload logo')
+        return
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('portal-logos')
+        .getPublicUrl(filePath)
+
+      setLogoUrl(urlData.publicUrl)
+      toast.success('Logo uploaded successfully')
+    } catch (error) {
+      console.error('Error uploading logo:', error)
+      toast.error('Failed to upload logo')
+    }
+  }
+
+  // Block management functions
+  const moveBlockUp = (blockId: string) => {
+    // Ensure we work with sorted blocks
+    const sortedBlocks = [...proposalBlocks].sort((a, b) => a.order - b.order)
+    const blockIndex = sortedBlocks.findIndex(b => b.id === blockId)
+    if (blockIndex <= 0) return // Already at top
+    
+    const newBlocks = [...sortedBlocks]
+    const temp = newBlocks[blockIndex]
+    newBlocks[blockIndex] = newBlocks[blockIndex - 1]
+    newBlocks[blockIndex - 1] = temp
+    
+    // Update order numbers
+    newBlocks.forEach((block, idx) => {
+      block.order = idx
+    })
+    
+    setProposalBlocks(newBlocks)
+  }
+
+  const moveBlockDown = (blockId: string) => {
+    // Ensure we work with sorted blocks
+    const sortedBlocks = [...proposalBlocks].sort((a, b) => a.order - b.order)
+    const blockIndex = sortedBlocks.findIndex(b => b.id === blockId)
+    if (blockIndex < 0 || blockIndex >= sortedBlocks.length - 1) return // Already at bottom
+    
+    const newBlocks = [...sortedBlocks]
+    const temp = newBlocks[blockIndex]
+    newBlocks[blockIndex] = newBlocks[blockIndex + 1]
+    newBlocks[blockIndex + 1] = temp
+    
+    // Update order numbers
+    newBlocks.forEach((block, idx) => {
+      block.order = idx
+    })
+    
+    setProposalBlocks(newBlocks)
+  }
+
+  const deleteBlock = (blockId: string) => {
+    // Ensure we work with sorted blocks
+    const sortedBlocks = [...proposalBlocks].sort((a, b) => a.order - b.order)
+    const newBlocks = sortedBlocks.filter(b => b.id !== blockId)
+    // Update order numbers
+    newBlocks.forEach((block, idx) => {
+      block.order = idx
+    })
+    setProposalBlocks(newBlocks)
+  }
+
+  const addCustomBlock = () => {
+    const newBlock: ProposalBlock = {
+      id: Date.now().toString(),
+      type: 'custom',
+      label: 'New Section',
+      content: '',
+      order: proposalBlocks.length
+    }
+    setProposalBlocks([...proposalBlocks, newBlock])
+  }
+
+  const updateBlockLabel = (blockId: string, newLabel: string) => {
+    const newBlocks = proposalBlocks.map(block =>
+      block.id === blockId ? { ...block, label: newLabel } : block
+    )
+    setProposalBlocks(newBlocks)
+  }
+
+  const updateBlockContent = (blockId: string, newContent: string) => {
+    const newBlocks = proposalBlocks.map(block =>
+      block.id === blockId ? { ...block, content: newContent } : block
+    )
+    setProposalBlocks(newBlocks)
+  }
+
+  // Load existing proposal
+  const loadProposal = useCallback(async (id: string) => {
+    try {
+      setIsLoading(true) // Start loading
+      const proposal = await getProposalById(id)
+      if (!proposal || !proposal.proposal_data) return
+
+      const data = proposal.proposal_data
+      
+      // Load client info
+      if (data.client) {
+        setClientName(data.client.name || '')
+        setClientCompany(data.client.company || '')
+        setClientEmail(data.client.email || '')
+        setClientAddress(data.client.address || '')
+      }
+      
+      // Load company info (only if values exist in saved proposal)
+      if (data.company) {
+        if (data.company.name) setCompanyName(data.company.name)
+        if (data.company.email) setCompanyEmail(data.company.email)
+        if (data.company.address) setCompanyAddress(data.company.address)
+        if (data.company.showAddress !== undefined) {
+          setShowAddress(data.company.showAddress)
+        }
+      }
+      
+      // Load branding (only if values exist in saved proposal)
+      if (data.branding) {
+        if (data.branding.brandColor) setBrandColor(data.branding.brandColor)
+        if (data.branding.accentColor) setAccentColor(data.branding.accentColor)
+        if (data.branding.logoUrl) setLogoUrl(data.branding.logoUrl)
+        if (data.branding.showLogo !== undefined) setShowLogo(data.branding.showLogo)
+      }
+      
+      // Load content
+      if (data.content) {
+        setProposalTitle(data.content.title || '')
+        setProposalSubtitle(data.content.subtitle || '')
+        
+        // Load blocks if available, otherwise create from legacy format
+        if (data.content.blocks && Array.isArray(data.content.blocks)) {
+          // Sort blocks by order to ensure correct sequence
+          const sortedBlocks = [...data.content.blocks].sort((a, b) => a.order - b.order)
+          setProposalBlocks(sortedBlocks)
+        } else {
+          // Create blocks from legacy individual fields
+          const blocks: ProposalBlock[] = []
+          let order = 0
+          
+          if (data.content.goals !== undefined || data.content.labels?.goals) {
+            blocks.push({
+              id: '1',
+              type: 'goals',
+              label: data.content.labels?.goals || 'Your Goals',
+              content: data.content.goals || '',
+              order: order++
+            })
+          }
+          
+          if (data.content.successOutcome !== undefined || data.content.labels?.success) {
+            blocks.push({
+              id: '2',
+              type: 'success',
+              label: data.content.labels?.success || 'What Success Looks Like',
+              content: data.content.successOutcome || '',
+              order: order++
+            })
+          }
+          
+          if (data.content.deliverables !== undefined || data.content.labels?.scope) {
+            blocks.push({
+              id: '3',
+              type: 'deliverables',
+              label: data.content.labels?.scope || 'Scope & Deliverables',
+              content: data.content.deliverables || '',
+              order: order++
+            })
+          }
+          
+          if (data.content.timeline !== undefined || data.content.labels?.timeline) {
+            blocks.push({
+              id: '4',
+              type: 'timeline',
+              label: data.content.labels?.timeline || 'Project Timeline',
+              content: data.content.timeline || '',
+              order: order++
+            })
+          }
+          
+          if (blocks.length > 0) {
+            setProposalBlocks(blocks)
+          }
+        }
+        
+        // Keep legacy states for backward compatibility
+        setClientGoals(data.content.goals || '')
+        setSuccessOutcome(data.content.successOutcome || '')
+        setDeliverables(data.content.deliverables || '')
+        setTimeline(data.content.timeline || '')
+        if (data.content.labels) {
+          setLabelGoals(data.content.labels.goals || 'Your Goals')
+          setLabelSuccess(data.content.labels.success || 'What Success Looks Like')
+          setLabelScope(data.content.labels.scope || 'Scope & Deliverables')
+          setLabelTimeline(data.content.labels.timeline || 'Project Timeline')
+          setLabelInvestment(data.content.labels.investment || 'Investment')
+        }
+      }
+      
+      // Load pricing
+      if (data.pricing) {
+        setPricingItems(data.pricing.items || [])
+        setAddons(data.pricing.addons || [{ id: "1", name: "", description: "", price: "", selected: false }])
+        setCurrency(data.pricing.currency || 'USD')
+        setTaxRate(data.pricing.taxRate || '10')
+      }
+      
+      // Load payment plan
+      if (data.paymentPlan) {
+        setPaymentPlanEnabled(data.paymentPlan.enabled || false)
+        setPaymentPlanType(data.paymentPlan.type || '50-50')
+        setCustomPaymentsCount(data.paymentPlan.customPaymentsCount || 3)
+        setCustomEqualSplit(data.paymentPlan.customEqualSplit !== false)
+        setCustomPaymentAmounts(data.paymentPlan.customPaymentAmounts || ['0', '0', '0'])
+        setMilestonesCount(data.paymentPlan.milestonesCount || 4)
+        setMilestonesEqualSplit(data.paymentPlan.milestonesEqualSplit !== false)
+        setMilestones(data.paymentPlan.milestones || [
+          { id: "m1", name: "Discovery", amount: "0" },
+          { id: "m2", name: "Design", amount: "0" },
+          { id: "m3", name: "Development", amount: "0" },
+          { id: "m4", name: "Launch", amount: "0" },
+        ])
+      }
+      
+      // Load contract
+      if (data.contract) {
+        setProjectName(data.contract.projectName || '')
+        setRevisionCount(data.contract.revisionCount || '2')
+        setHourlyRate(data.contract.hourlyRate || '150')
+        setLateFee(data.contract.lateFee || '5')
+        setLateDays(data.contract.lateDays || '15')
+        setIncludeLateFee(data.contract.includeLateFee !== false)
+        setIncludeHourlyClause(data.contract.includeHourlyClause !== false)
+        setClientSignatureName(data.contract.clientSignatureName || '')
+        // Prioritize database column, then fall back to JSONB
+        const signatureDate = proposal.client_signed_at 
+          ? proposal.client_signed_at.toISOString()
+          : (data.contract.clientSignatureDate || data.contract.clientSignedAt || '')
+        setClientSignatureDate(signatureDate)
+        setYourName(data.contract.yourName || '')
+        setEstimatedCompletionDate(data.contract.estimatedCompletionDate || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      }
+      
+      // Load invoice
+      if (data.invoice) {
+        setInvoiceNumber(data.invoice.number || '')
+        setInvoiceIssueDate(data.invoice.issueDate || new Date().toISOString().split('T')[0])
+        setInvoiceDueDate(data.invoice.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      }
+      
+      // Load document toggles
+      if (data.documents) {
+        setProposalEnabled(data.documents.proposalEnabled !== false)
+        setContractEnabled(data.documents.contractEnabled !== false)
+        setInvoiceEnabled(data.documents.invoiceEnabled !== false)
+      }
+      
+      // Load status
+      setStatus(proposal.status as DocumentStatus)
+    } catch (error: any) {
+      console.error('Error loading proposal:', error)
+      toast.error('Failed to load proposal')
+    }
+  }, [])
+
+  // Load user's name and company info from database
+  useEffect(() => {
+    const loadUserAndCompanyInfo = async () => {
+      try {
+        setIsLoading(true) // Start loading
+        const supabase = createClient()
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError) {
+          console.error('Auth error:', authError)
+          return
+        }
+        
+        if (user) {
+          console.log('Loading user info for:', user.id)
+          
+          // Get user profile
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, account_id')
+            .eq('user_id', user.id)
+            .single()
+          
+          if (profileError) {
+            console.error('Profile error:', profileError)
+            return
+          }
+          
+          console.log('Profile loaded:', profile)
+          
+          if (profile) {
+            // Set user name
+            if (profile.first_name && profile.last_name) {
+              const fullName = `${profile.first_name} ${profile.last_name}`
+              console.log('Setting user name:', fullName)
+              setYourName(fullName)
+            }
+            
+            // Get account info - load ALL fields from accounts table
+            if (profile.account_id) {
+              console.log('Loading account info for:', profile.account_id)
+              
+              const { data: account, error: accountError } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('id', profile.account_id)
+                .single()
+              
+              if (accountError) {
+                console.error('Account error:', accountError)
+                return
+              }
+              
+              console.log('Account loaded:', account)
+              
+              if (account) {
+                if (account.company_name) {
+                  console.log('Setting company name:', account.company_name)
+                  setCompanyName(account.company_name)
+                }
+                if (account.email) {
+                  console.log('Setting company email:', account.email)
+                  setCompanyEmail(account.email)
+                }
+                if (account.address) {
+                  console.log('Setting company address:', account.address)
+                  setCompanyAddress(account.address)
+                }
+                if (account.logo_url) {
+                  console.log('Setting logo URL:', account.logo_url)
+                  setLogoUrl(account.logo_url)
+                }
+                if (account.plan_tier) {
+                  setPlanTier(account.plan_tier)
+                }
+              }
+            } else {
+              console.log('No account_id found in profile')
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user and company info:', error)
+      } finally {
+        setIsLoading(false) // Stop loading when done
+      }
+    }
+    
+    loadUserAndCompanyInfo()
+  }, [])
+
   // Prefill from query params when arriving from lead picker/custom details
-  React.useEffect(() => {
+  useEffect(() => {
     if (!searchParams) return
     const qClientName = searchParams.get("clientName")
     const qClientCompany = searchParams.get("clientCompany")
     const qClientEmail = searchParams.get("clientEmail")
+    const qProposalId = searchParams.get("id")
     if (qClientName) setClientName(qClientName)
     if (qClientCompany) setClientCompany(qClientCompany)
     if (qClientEmail) setClientEmail(qClientEmail)
-  }, [searchParams])
+    if (qProposalId) {
+      setProposalId(qProposalId)
+      loadProposal(qProposalId) // This will handle loading state
+    } else {
+      setIsLoading(false) // No proposal to load, stop loading
+    }
+  }, [searchParams, loadProposal])
+
+  // Load saved services
+  const loadSavedServices = async () => {
+    try {
+      setServicesLoading(true)
+      const response = await fetch('/api/services')
+      const result = await response.json()
+      
+      if (result.success) {
+        setSavedServices(result.data || [])
+      } else {
+        console.error('Error loading services:', result.error)
+        toast.error('Failed to load saved services')
+      }
+    } catch (error) {
+      console.error('Error loading services:', error)
+      toast.error('Failed to load saved services')
+    } finally {
+      setServicesLoading(false)
+    }
+  }
+
+  // Import service as add-on
+  const importService = (service: any) => {
+    const newAddon = {
+      id: `service-${service.id}-${Date.now()}`,
+      name: service.name,
+      description: service.description || "",
+      price: service.rate?.toString() || "0",
+      selected: false,
+    }
+    setAddons([...addons, newAddon])
+    
+    // Also add to pricing items
+    const newPricingItem = {
+      id: `pricing-${service.id}-${Date.now()}`,
+      name: service.name,
+      description: service.description || "",
+      price: service.rate?.toString() || "0",
+    }
+    setPricingItems([...pricingItems, newPricingItem])
+    
+    toast.success(`Added ${service.name} to proposal`)
+    setServiceModalOpen(false)
+  }
 
   // Keep title in sync with clientName until user edits it
   React.useEffect(() => {
@@ -141,7 +626,7 @@ export default function DocumentSuitePage() {
   // Pricing
   const [pricingItems, setPricingItems] = useState<Array<{ id: string; name: string; description: string; price: string }>>([])
   const [addons, setAddons] = useState([
-    { id: "1", name: "", price: "", selected: false },
+    { id: "1", name: "", description: "", price: "", selected: false },
   ])
   
   // Contract
@@ -152,6 +637,7 @@ export default function DocumentSuitePage() {
   const [includeLateFee, setIncludeLateFee] = useState(true)
   const [includeHourlyClause, setIncludeHourlyClause] = useState(true)
   const [clientSignatureName, setClientSignatureName] = useState("")
+  const [clientSignatureDate, setClientSignatureDate] = useState<string>("")
   const [yourName, setYourName] = useState("")
   const [estimatedCompletionDate, setEstimatedCompletionDate] = useState<string>(
     new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -164,6 +650,12 @@ export default function DocumentSuitePage() {
   
   // Edit states
   const [editingField, setEditingField] = useState<string | null>(null)
+  
+  // Service import
+  const [serviceModalOpen, setServiceModalOpen] = useState(false)
+  const [savedServices, setSavedServices] = useState<any[]>([])
+  const [servicesLoading, setServicesLoading] = useState(false)
+  const [serviceSearch, setServiceSearch] = useState("")
   
   // Calculations
   const subtotal = pricingItems.reduce((sum, item) => sum + parseFloat(item.price || "0"), 0) +
@@ -183,7 +675,7 @@ export default function DocumentSuitePage() {
     return amounts
   }
 
-  const getPaymentSchedule = React.useCallback((): number[] => {
+  const getPaymentSchedule = useCallback((): number[] => {
     if (!paymentPlanEnabled) return [total]
     if (paymentPlanType === "50-50") return getEqualAmounts(total, 2)
     if (paymentPlanType === "33-33-33") return getEqualAmounts(total, 3)
@@ -203,6 +695,436 @@ export default function DocumentSuitePage() {
     return schedule[0] || 0
   }, [getPaymentSchedule])
 
+  // Save proposal function
+  const handleSave = async (saveStatus: 'Draft' | 'Sent' = 'Draft') => {
+    try {
+      setIsSaving(true)
+
+      // Validate required fields
+      if (!proposalTitle || !proposalTitle.trim()) {
+        toast.error('Please enter a proposal title before saving')
+        setIsSaving(false)
+        return
+      }
+
+      if (!clientName || !clientName.trim()) {
+        toast.error('Please enter a client/recipient name before saving')
+        setIsSaving(false)
+        return
+      }
+
+      // Only require email when sending, not when saving as draft
+      if (saveStatus === 'Sent' && (!clientEmail || !clientEmail.trim())) {
+        toast.error('Please enter a client/recipient email before sending')
+        setIsSaving(false)
+        return
+      }
+
+      // Try to find client_id or lead_id from URL params or clientName/email
+      let clientId: string | undefined = undefined
+      let leadId: string | undefined = undefined
+      let recipientType: 'Client' | 'Lead' = 'Lead' // Default to Lead
+      
+      // Check URL params first
+      const urlClientId = searchParams?.get('clientId')
+      const urlLeadId = searchParams?.get('leadId')
+      
+      if (urlClientId) {
+        clientId = urlClientId
+        recipientType = 'Client'
+      } else if (urlLeadId) {
+        leadId = urlLeadId
+        recipientType = 'Lead'
+      } else if (clientEmail || clientName) {
+        // Try to match from existing clients/leads
+        try {
+          // First check leads
+          const leads = await getLeads()
+          const matchingLead = leads.find(l => 
+            l.email === clientEmail || 
+            l.name === clientName
+          )
+          if (matchingLead) {
+            leadId = matchingLead.id
+            recipientType = 'Lead'
+          } else {
+            // Then check clients
+            const clients = await getClients()
+            const matchingClient = clients.find(c => 
+              c.email === clientEmail || 
+              `${c.first_name} ${c.last_name}`.trim() === clientName
+            )
+            if (matchingClient) {
+              clientId = matchingClient.id
+              recipientType = 'Client'
+            }
+          }
+        } catch (err) {
+          console.error('Error finding client/lead:', err)
+        }
+      }
+
+      // Build proposal data object
+      // Ensure blocks are sorted by order before saving
+      const sortedBlocks = [...proposalBlocks].sort((a, b) => a.order - b.order)
+      
+      const proposalData: ProposalBuilderData = {
+        client: {
+          name: clientName,
+          email: clientEmail,
+          company: clientCompany,
+          address: clientAddress,
+        },
+        company: {
+          name: companyName,
+          email: companyEmail,
+          address: companyAddress,
+          showAddress,
+        },
+        branding: {
+          brandColor,
+          accentColor,
+          logoUrl,
+          showLogo,
+        },
+        content: {
+          title: proposalTitle,
+          subtitle: proposalSubtitle,
+          goals: clientGoals,
+          successOutcome,
+          deliverables,
+          timeline,
+          blocks: sortedBlocks,
+          labels: {
+            goals: labelGoals,
+            success: labelSuccess,
+            scope: labelScope,
+            timeline: labelTimeline,
+            investment: labelInvestment,
+          },
+        },
+        pricing: {
+          items: pricingItems,
+          addons,
+          currency,
+          taxRate,
+        },
+        paymentPlan: {
+          enabled: paymentPlanEnabled,
+          type: paymentPlanType,
+          customPaymentsCount,
+          customEqualSplit,
+          customPaymentAmounts,
+          milestonesCount,
+          milestonesEqualSplit,
+          milestones,
+          schedule: getPaymentSchedule(),
+        },
+        contract: {
+          projectName,
+          revisionCount,
+          hourlyRate,
+          lateFee,
+          lateDays,
+          includeLateFee,
+          includeHourlyClause,
+          clientSignatureName,
+          clientSignatureDate,
+          yourName,
+          estimatedCompletionDate,
+        },
+        invoice: {
+          number: invoiceNumber,
+          issueDate: invoiceIssueDate,
+          dueDate: invoiceDueDate,
+        },
+        documents: {
+          proposalEnabled,
+          contractEnabled,
+          invoiceEnabled,
+        },
+      }
+
+      let currentProposalId = proposalId
+
+      if (proposalId) {
+        // Update existing proposal
+        console.log('Updating proposal with ID:', proposalId)
+        const updateData: any = {
+          title: proposalTitle.trim(),
+          description: proposalSubtitle?.trim() || undefined,
+          proposal_data: proposalData,
+          recipient_name: clientName.trim(),
+          recipient_email: clientEmail?.trim() || undefined,
+          recipient_company: clientCompany?.trim() || undefined,
+          recipient_type: clientId ? 'Client' : 'Lead',
+          client_id: clientId,
+          lead_id: leadId,
+          status: saveStatus,
+          total_value: total,
+          currency,
+          subtotal,
+          tax_amount: tax,
+        }
+        
+        // If sending, add sent_at timestamp
+        if (saveStatus === 'Sent') {
+          updateData.sent_at = new Date().toISOString()
+        }
+        
+        await updateProposal(proposalId, updateData)
+        
+        toast.success(saveStatus === 'Sent' ? 'Proposal sent!' : 'Proposal updated successfully!')
+      } else {
+        // Create new proposal
+        console.log('Creating new proposal (no proposalId)')
+        const createData: any = {
+          title: proposalTitle.trim(),
+          description: proposalSubtitle?.trim() || undefined,
+          proposal_data: proposalData,
+          recipient_name: clientName.trim(),
+          recipient_email: clientEmail?.trim() || undefined,
+          recipient_company: clientCompany?.trim() || undefined,
+          recipient_type: recipientType,
+          client_id: clientId,
+          lead_id: leadId,
+          status: saveStatus,
+          total_value: total,
+          currency,
+          subtotal,
+          tax_amount: tax,
+        }
+        
+        // If sending, add sent_at timestamp
+        if (saveStatus === 'Sent') {
+          createData.sent_at = new Date().toISOString()
+        }
+        
+        const newProposal = await createProposal(createData)
+        currentProposalId = newProposal.id
+        setProposalId(currentProposalId)
+        
+        toast.success(saveStatus === 'Sent' ? 'Proposal sent!' : 'Proposal saved successfully!')
+      }
+    } catch (error: any) {
+      console.error('Error saving proposal:', error)
+      toast.error('Failed to save proposal: ' + (error?.message || 'Unknown error'))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // PDF Download function
+  const handleDownloadPDF = async () => {
+    try {
+      setDownloadingPDF(true)
+      toast.info('Generating PDF...')
+
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      let isFirstPage = true
+
+      // Helper to capture and add section to PDF
+      const captureSectionForPDF = async (sectionSelector: string) => {
+        const section = document.querySelector(sectionSelector) as HTMLElement
+        if (!section) {
+          console.warn(`Section not found: ${sectionSelector}`)
+          return
+        }
+
+        // Make sure section is visible for capture (should already be visible from previous step)
+        const originalVisibility = section.style.visibility
+        section.style.visibility = 'visible'
+
+        // Clone the section to manipulate without affecting UI
+        const clone = section.cloneNode(true) as HTMLElement
+        
+        // Remove navigation tabs, buttons, and interactive elements
+        const elementsToRemove = clone.querySelectorAll(
+          '[data-help="document-tabs-container"], button, input, textarea, [contenteditable="true"], .absolute.group'
+        )
+        elementsToRemove.forEach(el => el.remove())
+
+        // Replace signature placeholders with lines
+        const signatureFields = clone.querySelectorAll('[data-pdf-signature]')
+        signatureFields.forEach((el) => {
+          const htmlEl = el as HTMLElement
+          if (htmlEl.textContent?.includes('—') || htmlEl.textContent?.includes('sign here')) {
+            htmlEl.textContent = '_______________________________'
+          }
+        })
+
+        // Create temporary container
+        const tempContainer = document.createElement('div')
+        tempContainer.style.position = 'fixed'
+        tempContainer.style.left = '-9999px'
+        tempContainer.style.top = '0'
+        tempContainer.style.width = '210mm'
+        tempContainer.style.backgroundColor = 'white'
+        tempContainer.style.visibility = 'visible'
+        tempContainer.style.opacity = '1'
+        tempContainer.appendChild(clone)
+        document.body.appendChild(tempContainer)
+
+        // Wait for rendering
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // Wait for images to load
+        const images = tempContainer.querySelectorAll('img')
+        await Promise.all(
+          Array.from(images).map((img) => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve()
+            return new Promise((resolve) => {
+              img.onload = () => resolve(undefined)
+              img.onerror = () => resolve(undefined)
+              setTimeout(() => resolve(undefined), 5000)
+            })
+          })
+        )
+
+        // Verify container has content
+        if (tempContainer.offsetHeight === 0 && tempContainer.offsetWidth === 0) {
+          console.warn(`Container has no dimensions for ${sectionSelector}`)
+          document.body.removeChild(tempContainer)
+          section.style.visibility = originalVisibility
+          return
+        }
+
+        // Capture with html2canvas
+        let canvas: HTMLCanvasElement
+        try {
+          canvas = await html2canvas(tempContainer, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+            width: tempContainer.scrollWidth,
+            height: tempContainer.scrollHeight,
+          })
+        } catch (error) {
+          console.error('html2canvas error:', error)
+          document.body.removeChild(tempContainer)
+          section.style.visibility = originalVisibility
+          return
+        }
+
+        // Validate canvas
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+          console.warn(`Invalid canvas for ${sectionSelector}`)
+          document.body.removeChild(tempContainer)
+          section.style.visibility = originalVisibility
+          return
+        }
+
+        // Remove temporary container
+        document.body.removeChild(tempContainer)
+        
+        // Restore original section visibility
+        section.style.visibility = originalVisibility
+
+        // Get image data and validate
+        let imgData: string
+        try {
+          imgData = canvas.toDataURL('image/png', 1.0)
+          if (!imgData || imgData === 'data:,') {
+            console.warn(`Invalid image data for ${sectionSelector}`)
+            return
+          }
+        } catch (error) {
+          console.error('Error converting canvas to data URL:', error)
+          return
+        }
+
+        const imgWidth = 210
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        const pageHeight = 297
+
+        if (imgHeight <= 0) {
+          console.warn(`Invalid image height for ${sectionSelector}`)
+          return
+        }
+
+        if (!isFirstPage) {
+          pdf.addPage()
+        }
+        isFirstPage = false
+
+        let position = 0
+        let heightLeft = imgHeight
+
+        try {
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+          heightLeft -= pageHeight
+
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight
+            pdf.addPage()
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+            heightLeft -= pageHeight
+          }
+        } catch (error) {
+          console.error('Error adding image to PDF:', error)
+          throw error
+        }
+      }
+
+      // Temporarily show all enabled sections for capture
+      const sectionsToShow: Array<{el: HTMLElement, originalDisplay: string}> = []
+      
+      if (proposalEnabled) {
+        const section = document.querySelector('[data-help="proposal-preview"]') as HTMLElement
+        if (section) {
+          sectionsToShow.push({ el: section, originalDisplay: section.style.display })
+          section.style.display = 'block'
+        }
+      }
+      if (contractEnabled) {
+        const section = document.querySelector('[data-help="contract-preview"]') as HTMLElement
+        if (section) {
+          sectionsToShow.push({ el: section, originalDisplay: section.style.display })
+          section.style.display = 'flex'
+        }
+      }
+      if (invoiceEnabled) {
+        const section = document.querySelector('[data-help="invoice-preview"]') as HTMLElement
+        if (section) {
+          sectionsToShow.push({ el: section, originalDisplay: section.style.display })
+          section.style.display = 'block'
+        }
+      }
+
+      // Wait for sections to render
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Capture enabled sections
+      if (proposalEnabled) {
+        await captureSectionForPDF('[data-help="proposal-preview"]')
+      }
+      if (contractEnabled) {
+        await captureSectionForPDF('[data-help="contract-preview"]')
+      }
+      if (invoiceEnabled) {
+        await captureSectionForPDF('[data-help="invoice-preview"]')
+      }
+
+      // Restore original display states
+      sectionsToShow.forEach(({ el, originalDisplay }) => {
+        el.style.display = originalDisplay
+      })
+
+      // Download PDF
+      const filename = `proposal-${clientName.replace(/\s+/g, '-').toLowerCase() || 'document'}.pdf`
+      pdf.save(filename)
+      
+      toast.success('PDF downloaded successfully!')
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast.error('Failed to generate PDF')
+    } finally {
+      setDownloadingPDF(false)
+    }
+  }
+
   // Date format helper to avoid timezone off-by-one
   const formatISODateLocal = (iso: string) => {
     try {
@@ -215,7 +1137,7 @@ export default function DocumentSuitePage() {
   }
 
   // Enabled docs and navigation helpers
-  const enabledDocs = React.useMemo(() => {
+  const enabledDocs = useMemo(() => {
     const docs: Array<{ id: string; label: string; enabled: boolean }> = [
       { id: "proposal", label: "Proposal", enabled: proposalEnabled },
       { id: "contract", label: "Contract", enabled: contractEnabled },
@@ -358,7 +1280,15 @@ export default function DocumentSuitePage() {
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap');
       `}</style>
-     
+
+      {isLoading ? (
+        <div className="h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50/20">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto text-[#3C3CFF] mb-4" />
+            <p className="text-gray-600">Loading proposal...</p>
+          </div>
+        </div>
+      ) : (
       <div className="h-screen flex flex-col bg-white">
         {/* Minimal Header */}
         <div className="border-b px-6 py-3 flex items-center justify-between bg-white">
@@ -376,21 +1306,77 @@ export default function DocumentSuitePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => toast.success("Saved!")}>
-              <Save className="mr-2 h-4 w-4" />
-              Save
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => {
+                // If already published (Sent), keep it as Sent, otherwise save as Draft
+                const saveStatus = status === 'Sent' ? 'Sent' : 'Draft'
+                handleSave(saveStatus)
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save
+                </>
+              )}
             </Button>
-            <Button variant="ghost" size="sm">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                if (proposalId) {
+                  window.open(`/dashboard/proposals/preview/${proposalId}`, '_blank')
+                } else {
+                  toast.error('Please save the proposal first')
+                }
+              }}
+            >
               <Eye className="mr-2 h-4 w-4" />
               Preview
             </Button>
-            <Button variant="ghost" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              PDF
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleDownloadPDF}
+              disabled={downloadingPDF}
+            >
+              {downloadingPDF ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  PDF
+                </>
+              )}
             </Button>
-            <Button size="sm" className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-              <Send className="mr-2 h-4 w-4" />
-              Send
+            <Button 
+              size="sm" 
+              className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+              onClick={() => handleSave('Sent')}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Publish
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -403,8 +1389,8 @@ export default function DocumentSuitePage() {
                 {/* Tabs rendered inside the document */}
 
                 {/* PROPOSAL PREVIEW */}
-                {activeDoc === "proposal" && proposalEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden" style={{ fontFamily: 'Georgia, serif' }} data-help="proposal-preview">
+                {proposalEnabled && (
+                  <div className="bg-white shadow-sm overflow-hidden" style={{ fontFamily: 'Georgia, serif', display: activeDoc === "proposal" ? 'block' : 'none' }} data-help="proposal-preview">
                     <DocumentTabs />
                     {/* Document Header with Logo */}
                     <div className="px-16 pt-16 pb-8">
@@ -412,14 +1398,14 @@ export default function DocumentSuitePage() {
                         {/* Logo */}
                         {showLogo ? (
                           <div
-                            className={`w-32 h-32 rounded-lg flex items-center justify-center transition-colors ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-400 cursor-pointer group'}` }
+                            className={`w-20 h-20 rounded-lg flex items-center justify-center transition-colors ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-400 cursor-pointer group'}` }
                             onClick={openLogoPicker}
                           >
                             {logoUrl ? (
                               <>
                                 <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5" />
-                                <div className="absolute top-1 right-1 bg-white/90 rounded p-1 shadow">
+                                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded p-1 shadow">
                                   <Pencil className="h-3 w-3 text-gray-700" />
                                 </div>
                               </>
@@ -438,7 +1424,9 @@ export default function DocumentSuitePage() {
                         <div className="text-right text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
                           <div className="font-semibold text-gray-900">{companyName || "{your_company_name}"}</div>
                           <div className="text-gray-600">{companyEmail || "{your_email}"}</div>
-                          <div className="text-gray-600 text-xs mt-1">{companyAddress || "{your_address}"}</div>
+                          {showAddress && (
+                            <div className="text-gray-600 text-xs mt-1">{companyAddress || "{your_address}"}</div>
+                          )}
             </div>
           </div>
                       
@@ -467,76 +1455,71 @@ export default function DocumentSuitePage() {
               </div>
 
                     <div className="px-16 pb-16 space-y-12" style={{ fontFamily: 'Inter, sans-serif' }}>
-                      {/* Problem → Outcome */}
-                      <div>
-                        <EditableField
-                          value={labelGoals}
-                          onChange={setLabelGoals}
-                          fieldKey="labelGoals"
-                          className="text-xl font-normal text-gray-900 mb-4 pb-2 border-b border-gray-200"
-                        />
-                        <EditableField
-                          value={clientGoals}
-                          onChange={setClientGoals}
-                          multiline
-                          fieldKey="clientGoals"
-                          placeholder="Modernize outdated website design&#10;Improve user experience and conversion rates&#10;Mobile-responsive and fast loading"
-                          className="text-sm text-gray-700 leading-relaxed"
-                        />
-                      </div>
-
-                      <div>
-                        <EditableField
-                          value={labelSuccess}
-                          onChange={setLabelSuccess}
-                          fieldKey="labelSuccess"
-                          className="text-xl font-normal text-gray-900 mb-4 pb-2 border-b border-gray-200"
-                        />
-                        <EditableField
-                          value={successOutcome}
-                          onChange={setSuccessOutcome}
-                          multiline
-                          fieldKey="successOutcome"
-                          placeholder="A beautiful, conversion-optimized website that engages visitors and drives measurable business results."
-                          className="text-sm text-gray-700 leading-relaxed"
-                        />
-                </div>
-
-                      {/* Deliverables */}
-                      <div>
-                        <EditableField
-                          value={labelScope}
-                          onChange={setLabelScope}
-                          fieldKey="labelScope"
-                          className="text-xl font-normal text-gray-900 mb-4 pb-2 border-b border-gray-200"
-                        />
-                        <EditableField
-                          value={deliverables}
-                          onChange={setDeliverables}
-                          multiline
-                          fieldKey="deliverables"
-                          placeholder="Custom website design (10 pages)&#10;Mobile-responsive development&#10;CMS integration&#10;SEO optimization&#10;30 days post-launch support"
-                          className="text-sm text-gray-700 leading-relaxed"
-                        />
-            </div>
-
-                      {/* Timeline */}
-                      <div>
-                        <EditableField
-                          value={labelTimeline}
-                          onChange={setLabelTimeline}
-                          fieldKey="labelTimeline"
-                          className="text-xl font-normal text-gray-900 mb-4 pb-2 border-b border-gray-200"
-                        />
-                        <EditableField
-                          value={timeline}
-                          onChange={setTimeline}
-                          multiline
-                          fieldKey="timeline"
-                          placeholder="Phase 1: Discovery & Strategy (Week 1-2)&#10;Phase 2: Design & Feedback (Week 3-4)&#10;Phase 3: Development (Week 5-7)&#10;Phase 4: Launch & Training (Week 8)"
-                          className="text-sm text-gray-700 leading-relaxed"
-                        />
-          </div>
+                      {/* Render blocks dynamically */}
+                      {proposalBlocks.sort((a, b) => a.order - b.order).map((block, index) => {
+                        const placeholder = block.type === 'goals' ? "Modernize outdated website design&#10;Improve user experience and conversion rates&#10;Mobile-responsive and fast loading" :
+                          block.type === 'success' ? "A beautiful, conversion-optimized website that engages visitors and drives measurable business results." :
+                          block.type === 'deliverables' ? "Custom website design (10 pages)&#10;Mobile-responsive development&#10;CMS integration&#10;SEO optimization&#10;30 days post-launch support" :
+                          block.type === 'timeline' ? "Phase 1: Discovery & Strategy (Week 1-2)&#10;Phase 2: Design & Feedback (Week 3-4)&#10;Phase 3: Development (Week 5-7)&#10;Phase 4: Launch & Training (Week 8)" :
+                          "Add your content here..."
+                        
+                        return (
+                          <div key={block.id} className="relative group">
+                            {/* Reorder and delete controls */}
+                            <div className="absolute -left-12 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1">
+                              <button
+                                onClick={() => moveBlockUp(block.id)}
+                                disabled={index === 0}
+                                className={`p-1 rounded hover:bg-gray-200 ${index === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                title="Move up"
+                              >
+                                <ChevronUp className="h-4 w-4 text-gray-600" />
+                              </button>
+                              <button
+                                onClick={() => moveBlockDown(block.id)}
+                                disabled={index === proposalBlocks.length - 1}
+                                className={`p-1 rounded hover:bg-gray-200 ${index === proposalBlocks.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                title="Move down"
+                              >
+                                <ChevronDown className="h-4 w-4 text-gray-600" />
+                              </button>
+                              <button
+                                onClick={() => deleteBlock(block.id)}
+                                className="p-1 rounded hover:bg-red-100 text-red-600"
+                                title="Delete block"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            
+                            <div>
+                              <EditableField
+                                value={block.label}
+                                onChange={(val: string) => updateBlockLabel(block.id, val)}
+                                fieldKey={`label-${block.id}`}
+                                className="text-xl font-normal text-gray-900 mb-4 pb-2 border-b border-gray-200"
+                              />
+                              <EditableField
+                                value={block.content}
+                                onChange={(val: string) => updateBlockContent(block.id, val)}
+                                multiline
+                                fieldKey={`content-${block.id}`}
+                                placeholder={placeholder}
+                                className="text-sm text-gray-700 leading-relaxed"
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                      
+                      {/* Add new block button */}
+                      <button
+                        onClick={addCustomBlock}
+                        className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-gray-600"
+                      >
+                        <Plus className="h-5 w-5" />
+                        <span>Add Custom Section</span>
+                      </button>
 
                       {/* Investment */}
                       <div>
@@ -614,10 +1597,15 @@ export default function DocumentSuitePage() {
                             
                             {addons.filter(a => a.selected).map((addon) => (
                               <tr key={addon.id} className="border-b border-gray-100">
-                                <td className="py-4 text-gray-900">{addon.name}</td>
-                                <td className="py-4 text-gray-600 text-xs">Optional add-on</td>
+                                <td className="py-4">
+                                  <div className="text-gray-900 font-medium">{addon.name}</div>
+                                  {addon.description && (
+                                    <div className="text-gray-600 text-xs mt-1">{addon.description}</div>
+                                  )}
+                                </td>
+                                <td className="py-4 text-gray-600 text-xs">Service add-on</td>
                                 <td className="py-4 text-right font-medium text-gray-900">
-                                  ${parseFloat(addon.price).toLocaleString()}
+                                  ${parseFloat(addon.price || "0").toLocaleString()}
                                 </td>
                                 <td></td>
                     </tr>
@@ -635,15 +1623,15 @@ export default function DocumentSuitePage() {
                         <div className="mt-6 pt-4 space-y-2 text-sm">
                           <div className="flex justify-between text-gray-600">
                             <span>Subtotal</span>
-                            <span>${subtotal.toLocaleString()}</span>
+                            <span>${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
                           <div className="flex justify-between text-gray-600">
                             <span>Tax ({taxRate}%)</span>
-                            <span>${tax.toFixed(2)}</span>
+                            <span>${tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
                         <div className="flex justify-between text-lg font-semibold text-gray-900 pt-3 border-t" style={{ borderColor: accentColor }}>
                             <span>Total Investment</span>
-                          <span style={{ color: brandColor }}>${total.toLocaleString()}</span>
+                          <span style={{ color: brandColor }}>${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
 
@@ -701,26 +1689,28 @@ export default function DocumentSuitePage() {
                           )}
             </div>
           </div>
+
+                      <JolixFooter planTier={planTier} />
               </div>
                   </div>
                 )}
 
                 {/* CONTRACT PREVIEW */}
-                {activeDoc === "contract" && contractEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif' }} data-help="contract-preview">
+                {contractEnabled && (
+                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16 space-y-8 flex flex-col" style={{ fontFamily: 'Georgia, serif', display: activeDoc === "contract" ? 'flex' : 'none' }} data-help="contract-preview">
                     <DocumentTabs />
                     {/* Header */}
                     <div className="flex justify-between items-start mb-8">
                       {showLogo ? (
                         <div
-                          className={`w-32 h-32 rounded-lg flex items-center justify-center ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer'}` }
+                          className={`w-20 h-20 rounded-lg flex items-center justify-center ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer'}` }
                           onClick={openLogoPicker}
                         >
                           {logoUrl ? (
                             <>
                               <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5" />
-                              <div className="absolute top-1 right-1 bg-white/90 rounded p-1 shadow">
+                              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded p-1 shadow">
                                 <Pencil className="h-3 w-3 text-gray-700" />
             </div>
                             </>
@@ -792,7 +1782,7 @@ export default function DocumentSuitePage() {
                           ) : "Full payment due upon project completion"}</p>
                           <p>Client agrees to pay invoices by the due date shown on each invoice.</p>
                           {includeLateFee && (
-                            <p>Late payments may incur a {"{late_fee_percentage}"}% fee after {"{late_days}"} days overdue.</p>
+                            <p>Late payments may incur a {lateFee}% fee after {lateDays} days overdue.</p>
                           )}
                           <p>Ownership of deliverables transfers to Client only after full payment has been received.</p>
           </div>
@@ -804,9 +1794,9 @@ export default function DocumentSuitePage() {
                           3️⃣ Revisions & Changes
                         </h2>
                         <div className="space-y-3 text-gray-700 leading-relaxed">
-                          <p>This agreement includes {"{"}{revisionCount}{"}"} revision(s) per deliverable.</p>
+                          <p>This agreement includes {revisionCount} revision(s) per deliverable.</p>
                           {includeHourlyClause && (
-                            <p>Additional revisions or changes in scope will be billed at ${"{hourly_rate}"} USD per hour or a mutually agreed rate.</p>
+                            <p>Additional revisions or changes in scope will be billed at ${hourlyRate} USD per hour or a mutually agreed rate.</p>
                           )}
                         </div>
             </div>
@@ -895,27 +1885,19 @@ export default function DocumentSuitePage() {
                             <div className="space-y-3">
                               <div>
                                 <div className="text-xs text-gray-600 mb-1">Name:</div>
-                                <div className="text-sm text-gray-900">{clientName}</div>
+                                <div className="text-sm text-gray-900" data-pdf-signature>{clientSignatureName || '—'}</div>
                               </div>
                               <div>
                                 <div className="text-xs text-gray-600 mb-1">Date:</div>
-                        <Input
-                                  type="date"
-                                  className="h-8 text-sm"
-                                  defaultValue={new Date().toISOString().split('T')[0]}
-                                />
+                                <div className="text-sm text-gray-900" data-pdf-signature>—</div>
                     </div>
                     
                     <div>
                                 <div className="text-xs text-gray-600 mb-2">Signature:</div>
-                                <div className="border-b-2 border-gray-400 pb-1">
-                                  <Input
-                                    placeholder="Type your full legal name" 
-                                    value={clientSignatureName}
-                                    onChange={(e) => setClientSignatureName(e.target.value)}
-                                    className="border-0 p-0 text-3xl md:text-4xl h-auto leading-none focus-visible:ring-0 focus-visible:ring-offset-0 text-gray-900" 
-                                    style={{ fontFamily: "'Dancing Script', cursive", lineHeight: 1.15 }}
-                                  />
+                                <div className="border-b-2 border-gray-400 pb-1 min-h-[48px] flex items-end">
+                                  <div className="text-3xl md:text-4xl text-gray-400 italic" style={{ fontFamily: "'Dancing Script', cursive" }} data-pdf-signature>
+                                    {clientSignatureName || '(Client will sign here)'}
+                                  </div>
                           </div>
                               </div>
                               <div className="flex items-start gap-2 pt-2">
@@ -950,25 +1932,27 @@ export default function DocumentSuitePage() {
                         )}
               </div>
                     </div>
+
+                    <JolixFooter planTier={planTier} />
                   </div>
                 )}
 
                 {/* INVOICE PREVIEW */}
-                {activeDoc === "invoice" && invoiceEnabled && (
-                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16" style={{ fontFamily: 'Inter, sans-serif' }} data-help="invoice-preview">
+                {invoiceEnabled && (
+                  <div className="bg-white shadow-sm overflow-hidden px-16 py-16" style={{ fontFamily: 'Inter, sans-serif', display: activeDoc === "invoice" ? 'block' : 'none' }} data-help="invoice-preview">
                     <DocumentTabs />
                     {/* Header */}
                     <div className="flex justify-between items-start mb-12">
                       {showLogo ? (
                         <div
-                          className={`w-32 h-32 rounded-lg flex items-center justify-center ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer'}` }
+                          className={`w-20 h-20 rounded-lg flex items-center justify-center ${logoUrl ? 'relative cursor-pointer group' : 'border-2 border-dashed border-gray-300 bg-gray-50 cursor-pointer'}` }
                           onClick={openLogoPicker}
                         >
                           {logoUrl ? (
                             <>
                               <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5" />
-                              <div className="absolute top-1 right-1 bg-white/90 rounded p-1 shadow">
+                              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded p-1 shadow">
                                 <Pencil className="h-3 w-3 text-gray-700" />
                   </div>
                             </>
@@ -1000,7 +1984,9 @@ export default function DocumentSuitePage() {
                         <div className="text-gray-900 space-y-1">
                           <p className="font-semibold">{companyName}</p>
                           <p className="text-xs text-gray-600">{companyEmail}</p>
-                          <p className="text-xs text-gray-600">{companyAddress}</p>
+                          {showAddress && (
+                            <p className="text-xs text-gray-600">{companyAddress}</p>
+                          )}
                   </div>
                     </div>
                     <div>
@@ -1087,10 +2073,13 @@ export default function DocumentSuitePage() {
                           <tr key={addon.id} className="border-b border-gray-100">
                             <td className="py-4">
                               <div className="font-medium text-gray-900">{addon.name}</div>
+                              {addon.description && (
+                                <div className="text-gray-600 text-xs mt-1">{addon.description}</div>
+                              )}
                             </td>
                             <td className="py-4 text-center text-gray-700">1</td>
                             <td className="py-4 text-right font-medium text-gray-900">
-                              ${parseFloat(addon.price).toLocaleString()}
+                              ${parseFloat(addon.price || "0").toLocaleString()}
                             </td>
                             <td></td>
                           </tr>
@@ -1109,15 +2098,15 @@ export default function DocumentSuitePage() {
                       <div className="w-96 space-y-2 text-sm">
                         <div className="flex justify-between text-gray-700">
                           <span>Subtotal</span>
-                          <span>${subtotal.toLocaleString()}</span>
+                          <span>${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                         <div className="flex justify-between text-gray-700">
                           <span>Tax ({taxRate}%)</span>
-                          <span>${tax.toFixed(2)}</span>
+                          <span>${tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
                         <div className="flex justify-between text-lg font-semibold text-gray-900 pt-3 border-t" style={{ borderColor: accentColor }}>
                           <span>Amount Due Now</span>
-                          <span style={{ color: brandColor }}>${(paymentPlanEnabled ? firstPayment : total).toLocaleString()}</span>
+                          <span style={{ color: brandColor }}>${(paymentPlanEnabled ? firstPayment : total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
               </div>
@@ -1170,6 +2159,8 @@ export default function DocumentSuitePage() {
                         )}
                     </div>
                   </div>
+
+                    <JolixFooter planTier={planTier} />
                   </div>
                 )}
               </div>
@@ -1240,11 +2231,6 @@ export default function DocumentSuitePage() {
                             )}
                           </div>
                           <div className="flex-1 flex items-center gap-2">
-                            <Input
-                              placeholder="Paste logo URL"
-                              value={logoUrl}
-                              onChange={(e) => setLogoUrl(e.target.value)}
-                            />
                             <input
                               id="logoUpload"
                               type="file"
@@ -1253,21 +2239,20 @@ export default function DocumentSuitePage() {
                               onChange={(e) => {
                                 const file = e.target.files?.[0]
                                 if (file) {
-                                  const url = URL.createObjectURL(file)
-                                  setLogoUrl(url)
+                                  handleLogoUpload(file)
                                 }
                               }}
                             />
-                  <Button
+                            <Button
                               variant="outline"
                               onClick={() => (document.getElementById("logoUpload") as HTMLInputElement)?.click()}
-                  >
+                            >
                               Upload
-                  </Button>
+                            </Button>
                             {logoUrl && (
                               <Button variant="ghost" onClick={() => setLogoUrl("")}>Remove</Button>
                             )}
-                </div>
+                          </div>
               </div>
                         <div className="flex items-center justify-between mt-2">
                           <Label className="text-xs">Show Logo in document</Label>
@@ -1319,7 +2304,13 @@ export default function DocumentSuitePage() {
                         <Input value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} className="mt-1" />
                     </div>
                     <div>
-                        <Label className="text-xs">Address</Label>
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="text-xs">Address</Label>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-gray-500">Show</Label>
+                            <Switch checked={showAddress} onCheckedChange={setShowAddress} />
+                          </div>
+                        </div>
                     <Textarea
                           value={companyAddress} 
                           onChange={(e) => setCompanyAddress(e.target.value)} 
@@ -1685,83 +2676,205 @@ export default function DocumentSuitePage() {
                     </AccordionContent>
                   </AccordionItem>
 
-                  {/* Optional Extras (Add-ons) */}
+                  {/* Service Add-ons */}
                   <AccordionItem value="addons" className="border rounded-lg px-4">
                     <AccordionTrigger className="hover:no-underline">
                       <div className="flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        <span className="font-medium">Optional Extras (Add-ons)</span>
+                        <Package className="h-4 w-4" />
+                        <span className="font-medium">Service Add-ons</span>
                 </div>
                     </AccordionTrigger>
                     <AccordionContent className="space-y-3 pt-4">
-                      <p className="text-xs text-gray-500">Optional, nice-to-have items your client can choose to include in the proposal.</p>
-                      {addons.map((addon, idx) => (
-                        <div key={addon.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                          <Checkbox 
-                            checked={addon.selected}
-                            onCheckedChange={(checked) => {
-                              const updated = [...addons]
-                              updated[idx].selected = !!checked
-                              setAddons(updated)
-                            }}
-                          />
-                          <Input 
-                            placeholder="ex. {example add on}" 
-                            value={addon.name}
-                            onChange={(e) => {
-                              const updated = [...addons]
-                              updated[idx].name = e.target.value
-                              setAddons(updated)
-                            }}
-                            className="text-sm flex-1"
-                          />
-                          <Input 
-                            type="number" 
-                            placeholder="Price" 
-                            value={addon.price}
-                            onChange={(e) => {
-                              const updated = [...addons]
-                              updated[idx].price = e.target.value
-                              setAddons(updated)
-                            }}
-                            className="text-sm w-24"
-                      />
-                      <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setAddons(addons.filter((_, i) => i !== idx))
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                      ))}
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-xs font-medium text-gray-700 mb-1">Service Add-ons</p>
+                          <p className="text-xs text-gray-500">Add optional services that clients can include.</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            loadSavedServices()
+                            setServiceModalOpen(true)
+                          }}
+                          className="text-xs"
+                        >
+                          <Package className="mr-2 h-3 w-3" />
+                          Import
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {addons.map((addon, idx) => (
+                          <div key={addon.id} className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
+                            <div className="flex items-start gap-2">
+                              <Checkbox 
+                                checked={addon.selected}
+                                onCheckedChange={(checked) => {
+                                  const updated = [...addons]
+                                  updated[idx].selected = !!checked
+                                  setAddons(updated)
+                                }}
+                                className="mt-1"
+                              />
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Input 
+                                    placeholder="Add-on name" 
+                                    value={addon.name}
+                                    onChange={(e) => {
+                                      const updated = [...addons]
+                                      updated[idx].name = e.target.value
+                                      setAddons(updated)
+                                    }}
+                                    className="text-sm flex-1"
+                                  />
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                                    <Input 
+                                      type="number" 
+                                      placeholder="0.00" 
+                                      value={addon.price}
+                                      onChange={(e) => {
+                                        const updated = [...addons]
+                                        updated[idx].price = e.target.value
+                                        setAddons(updated)
+                                      }}
+                                      className="text-sm w-28 pl-7"
+                                    />
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setAddons(addons.filter((_, i) => i !== idx))
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <Textarea
+                                  placeholder="Description (optional)"
+                                  value={addon.description || ""}
+                                  onChange={(e) => {
+                                    const updated = [...addons]
+                                    updated[idx].description = e.target.value
+                                    setAddons(updated)
+                                  }}
+                                  className="text-sm min-h-[60px] resize-none"
+                                  rows={2}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
                       <Button
                         variant="outline"
                         size="sm"
-                      className="w-full"
+                        className="w-full border-dashed"
                         onClick={() => setAddons([...addons, { 
                           id: Date.now().toString(), 
                           name: "", 
+                          description: "",
                           price: "",
                           selected: false
                         }])}
                       >
                         <Plus className="mr-2 h-4 w-4" />
-                        Add add-on
-                    </Button>
+                        Add Service Add-on
+                      </Button>
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
-                  </div>
-            </ScrollArea>
-                </div>
               </div>
+            </ScrollArea>
+          </div>
+        </div>
+
+        {/* Service Import Modal */}
+        <Dialog open={serviceModalOpen} onOpenChange={setServiceModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import Saved Services</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search services..."
+                className="pl-10"
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+              />
             </div>
-    
+            <div className="max-h-96 overflow-auto border rounded-lg">
+              {servicesLoading ? (
+                <div className="p-8 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-[#3C3CFF] mb-2" />
+                  <p className="text-sm text-gray-600">Loading services...</p>
+                </div>
+              ) : savedServices.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">No saved services found</p>
+                  <p className="text-xs text-gray-400 mt-1">Create services in the Billing section first</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Service</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Description</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">Rate</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedServices
+                      .filter(service => {
+                        const searchLower = serviceSearch.toLowerCase()
+                        return (
+                          service.name?.toLowerCase().includes(searchLower) ||
+                          service.description?.toLowerCase().includes(searchLower)
+                        )
+                      })
+                      .map((service) => (
+                        <tr key={service.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-900">{service.name}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{service.description || '—'}</td>
+                          <td className="px-4 py-3 text-right text-gray-900">
+                            ${service.rate?.toLocaleString() || '0'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => importService(service)}
+                            >
+                              <Plus className="mr-2 h-3 w-3" />
+                              Add
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setServiceModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+        </Dialog>
+      </div>
+      )}
     </>
   )
 }

@@ -36,6 +36,7 @@ import Image from "next/image"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 import { InvoicePreviewModal } from "@/components/invoices/invoice-preview-modal"
+import { JolixFooter } from "@/components/JolixFooter"
 
 interface LineItem {
   id: string
@@ -1411,29 +1412,7 @@ export default function CreateInvoicePage() {
               <p>Thank you for your business!</p>
             </div>
 
-            {/* Powered by Jolix Footer - Free Plan Only */}
-            {planTier === 'free' && (
-              <div className="pt-6 mt-6 border-t border-gray-100">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <span>Powered by</span>
-                  <a 
-                    href="https://jolix.io" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
-                  >
-                    <Image 
-                      src="/jolixlogo.png" 
-                      alt="Jolix" 
-                      width={18} 
-                      height={18} 
-                      className="object-contain"
-                    />
-                    <span>Jolix</span>
-                  </a>
-                </div>
-              </div>
-            )}
+            <JolixFooter planTier={planTier} />
           </div>
         </div>
       </div>
@@ -1628,36 +1607,7 @@ export default function CreateInvoicePage() {
             <p>Thank you for your business!</p>
           </div>
 
-          {/* Powered by Jolix Footer - Free Plan Only */}
-          {planTier === 'free' && (
-            <div style={{ paddingTop: '24px', marginTop: '24px', borderTop: '1px solid #F3F4F6' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '14px', color: '#9CA3AF' }}>
-                <span>Powered by</span>
-                <a 
-                  href="https://jolix.io" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  style={{ 
-                    display: 'inline-flex', 
-                    alignItems: 'center', 
-                    gap: '6px', 
-                    color: '#3C3CFF', 
-                    textDecoration: 'none',
-                    fontWeight: '500'
-                  }}
-                >
-                  <img 
-                    src="/jolixlogo.png" 
-                    alt="Jolix" 
-                    width={18} 
-                    height={18} 
-                    style={{ objectFit: 'contain' }}
-                  />
-                  <span>Jolix</span>
-                </a>
-              </div>
-            </div>
-          )}
+          <JolixFooter planTier={planTier} />
         </div>
       </div>
 

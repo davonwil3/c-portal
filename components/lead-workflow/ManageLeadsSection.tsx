@@ -30,7 +30,6 @@ import {
   Upload,
   MoreHorizontal,
   Edit,
-  Archive,
   Trash2,
   UserPlus,
   Mail,
@@ -45,81 +44,38 @@ import {
   GitBranch,
   Send,
   Tag,
+  Loader2,
+  Globe,
+  Settings,
 } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
-
-// Mock data - same as pipeline page, mapped to ManageLeads structure (30 unique leads)
-const pipelineMockLeads = [
-  { name: "Sarah Johnson", company: "Tech Corp", source: "Reddit", stage: "new" },
-  { name: "Michael Chen", company: "Design Studio", source: "Portfolio", stage: "contacted" },
-  { name: "Emily Davis", company: "Marketing Agency", source: "Referral", stage: "discovery" },
-  { name: "David Miller", company: "Startup Inc", source: "Ad Campaign", stage: "proposal" },
-  { name: "Jessica Wilson", company: "Consulting LLC", source: "Reddit", stage: "negotiation" },
-  { name: "Robert Brown", company: "Creative Co", source: "Inbound", stage: "won" },
-  { name: "Lisa Anderson", company: "Digital Labs", source: "Portfolio", stage: "lost" },
-  { name: "James Martinez", company: "Tech Solutions", source: "Ad Campaign", stage: "new" },
-  { name: "Patricia Taylor", company: "Innovate Inc", source: "Reddit", stage: "contacted" },
-  { name: "John Williams", company: "Design Works", source: "Inbound", stage: "discovery" },
-  { name: "Jennifer Garcia", company: "Agency Pro", source: "Referral", stage: "proposal" },
-  { name: "William Rodriguez", company: "Startup Hub", source: "Ad Campaign", stage: "negotiation" },
-  { name: "Linda Lewis", company: "Tech Ventures", source: "Reddit", stage: "won" },
-  { name: "Richard Walker", company: "Creative Minds", source: "Inbound", stage: "lost" },
-  { name: "Barbara Hall", company: "Digital Dynamics", source: "Referral", stage: "new" },
-  { name: "Joseph Allen", company: "Marketing Pro", source: "Ad Campaign", stage: "contacted" },
-  { name: "Elizabeth Young", company: "Innovation Co", source: "Portfolio", stage: "discovery" },
-  { name: "Thomas King", company: "Tech Innovations", source: "Inbound", stage: "proposal" },
-  { name: "Susan Wright", company: "Design Hub", source: "Referral", stage: "negotiation" },
-  { name: "Christopher Lopez", company: "Startup Labs", source: "Ad Campaign", stage: "won" },
-  { name: "Karen Hill", company: "Creative Solutions", source: "Reddit", stage: "lost" },
-  { name: "Daniel Scott", company: "Tech Group", source: "Inbound", stage: "new" },
-  { name: "Nancy Green", company: "Marketing Masters", source: "Referral", stage: "contacted" },
-  { name: "Paul Adams", company: "Digital Works", source: "Ad Campaign", stage: "discovery" },
-  { name: "Betty Baker", company: "Innovate Labs", source: "Reddit", stage: "proposal" },
-  { name: "Mark Gonzalez", company: "Tech Partners", source: "Inbound", stage: "negotiation" },
-  { name: "Margaret Nelson", company: "Design Studio Pro", source: "Referral", stage: "won" },
-  { name: "Donald Carter", company: "Startup Network", source: "Ad Campaign", stage: "lost" },
-  { name: "Dorothy Mitchell", company: "Creative Agency", source: "Reddit", stage: "new" },
-  { name: "Kenneth Perez", company: "Tech Collective", source: "Inbound", stage: "contacted" },
-]
-
-const mockLeads = pipelineMockLeads.map((lead, i) => {
-  // Map pipeline stage to ManageLeads status
-  const stageToStatus: Record<string, string> = {
-    "new": "New",
-    "contacted": "Contacted",
-    "discovery": "Qualified",
-    "proposal": "Proposal Sent",
-    "negotiation": "Proposal Sent",
-    "won": "Won",
-    "lost": "Lost",
-  }
-  
-  // Map pipeline source to ManageLeads source format
-  const sourceMap: Record<string, string> = {
-    "Reddit": "Reddit",
-    "Inbound": "Inbound",
-    "Referral": "Referral",
-    "Ad Campaign": "Ad Campaign",
-  }
-  
-  return {
-  id: `lead-${i}`,
-    name: lead.name,
-    company: lead.company,
-    email: `contact${i}@${lead.company.toLowerCase().replace(/\s+/g, '')}.com`,
-    phone: `(555) ${String(i + 100).padStart(3, '0')}-${String(i + 1000).padStart(4, '0')}`,
-    status: stageToStatus[lead.stage] || "New",
-    source: sourceMap[lead.source] || lead.source,
-  value: Math.floor(Math.random() * 50000) + 5000,
-  lastContacted: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
-  notes: "Initial conversation went well. Interested in our premium package.",
-  }
-})
+import {
+  getLeads,
+  createLead,
+  updateLead,
+  deleteLead,
+  bulkDeleteLeads,
+  bulkUpdateLeadStatus,
+  updateLeadLastContacted,
+  type Lead,
+} from "@/lib/leads"
+import {
+  getPipelineStages,
+  getPipelineStagesFromDB,
+  getStatusNames,
+  type PipelineStage,
+} from "@/lib/pipeline-stages"
+import { PipelineSettingsDrawer } from "./PipelineSettingsDrawer"
+import { ImportLeadsModal } from "./ImportLeadsModal"
+import { useTour } from "@/contexts/TourContext"
+import { dummyTourLeads } from "@/lib/tour-dummy-data"
 
 export function ManageLeadsSection() {
   const router = useRouter()
-  const [leads, setLeads] = useState(mockLeads)
+  const { isTourRunning } = useTour()
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedLeads, setSelectedLeads] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -135,16 +91,104 @@ export function ManageLeadsSection() {
   const [newLeadPhone, setNewLeadPhone] = useState("")
   const [newLeadValueAmount, setNewLeadValueAmount] = useState("")
   const [newLeadNotes, setNewLeadNotes] = useState("")
+  const [newLeadTwitter, setNewLeadTwitter] = useState("")
+  const [newLeadLinkedIn, setNewLeadLinkedIn] = useState("")
+  const [newLeadInstagram, setNewLeadInstagram] = useState("")
+  const [newLeadPortfolioUrl, setNewLeadPortfolioUrl] = useState("")
   const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [leadDrawerOpen, setLeadDrawerOpen] = useState(false)
-  const [selectedLead, setSelectedLead] = useState<any>(null)
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
   const [changeStatusModalOpen, setChangeStatusModalOpen] = useState(false)
-  const [statusChangeLead, setStatusChangeLead] = useState<any>(null)
+  const [statusChangeLead, setStatusChangeLead] = useState<Lead | null>(null)
   const [selectedStatusOption, setSelectedStatusOption] = useState<string>("New")
   const [customStatusName, setCustomStatusName] = useState("")
   const [customStatusColor, setCustomStatusColor] = useState("#6366F1")
+  const [isSaving, setIsSaving] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editLeadName, setEditLeadName] = useState("")
+  const [editLeadCompany, setEditLeadCompany] = useState("")
+  const [editLeadEmail, setEditLeadEmail] = useState("")
+  const [editLeadPhone, setEditLeadPhone] = useState("")
+  const [editLeadTwitter, setEditLeadTwitter] = useState("")
+  const [editLeadLinkedIn, setEditLeadLinkedIn] = useState("")
+  const [editLeadInstagram, setEditLeadInstagram] = useState("")
+  const [editLeadSource, setEditLeadSource] = useState<Lead['source']>("Manual Import")
+  const [editLeadStatus, setEditLeadStatus] = useState<Lead['status']>("New")
+  const [editLeadValue, setEditLeadValue] = useState("")
+  const [editLeadNotes, setEditLeadNotes] = useState("")
+  const [editLeadPortfolioUrl, setEditLeadPortfolioUrl] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [stages, setStages] = useState<PipelineStage[]>(getPipelineStages())
   const searchParams = useSearchParams()
+
+  // New lead form state
+  const [newLeadSource, setNewLeadSource] = useState<Lead['source']>("Manual Import")
+  const [newLeadStatus, setNewLeadStatus] = useState<Lead['status']>(getStatusNames()[0] as Lead['status'] || "New")
+
+  // Load leads and stages on mount
+  useEffect(() => {
+    loadLeads()
+    // Load stages from database
+    const loadStages = async () => {
+      // Skip loading stages from DB during tour
+      if (isTourRunning) return
+      
+      try {
+        const dbStages = await getPipelineStagesFromDB()
+        setStages(dbStages)
+        // Update localStorage for fast access
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pipeline_stages', JSON.stringify(dbStages))
+        }
+      } catch (error) {
+        console.error('Error loading stages from DB:', error)
+        // Use cached stages from localStorage
+        setStages(getPipelineStages())
+      }
+    }
+    loadStages()
+  }, [isTourRunning])
+
+  // Listen for pipeline stages updates
+  useEffect(() => {
+    const handleStagesUpdate = () => {
+      setStages(getPipelineStages())
+      // Reload leads to reflect status changes
+      loadLeads()
+    }
+    window.addEventListener('pipeline-stages-updated', handleStagesUpdate)
+    return () => {
+      window.removeEventListener('pipeline-stages-updated', handleStagesUpdate)
+    }
+  }, [])
+
+  const loadLeads = async () => {
+    try {
+      setLoading(true)
+      
+      // Use tour mock data if tour is running
+      if (isTourRunning) {
+        setLeads(dummyTourLeads as Lead[])
+        setLoading(false)
+        return
+      }
+      
+      const fetchedLeads = await getLeads()
+      setLeads(fetchedLeads)
+    } catch (error: any) {
+      console.error('Error loading leads:', error)
+      // Check if it's a table doesn't exist error
+      if (error?.message?.includes('relation') || error?.code === '42P01') {
+        toast.error('Leads table not found. Please run the database migration first.')
+      } else {
+        toast.error('Failed to load leads: ' + (error?.message || 'Unknown error'))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Prefill from forms submissions
   useEffect(() => {
@@ -166,19 +210,19 @@ export function ManageLeadsSection() {
       } catch {}
     }
   }, [searchParams])
-  
-  // New lead form state
-  const [newLeadSource, setNewLeadSource] = useState("")
-  const [customSource, setCustomSource] = useState("")
-  const [showCustomSourceInput, setShowCustomSourceInput] = useState(false)
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
-      if (searchQuery && !lead.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-          !lead.company.toLowerCase().includes(searchQuery.toLowerCase()) &&
-          !lead.status.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        const matchesName = lead.name?.toLowerCase().includes(query)
+        const matchesCompany = lead.company?.toLowerCase().includes(query) || false
+        const matchesEmail = lead.email?.toLowerCase().includes(query) || false
+        const matchesStatus = lead.status?.toLowerCase().includes(query) || false
+        if (!matchesName && !matchesCompany && !matchesEmail && !matchesStatus) {
+          return false
+        }
       }
       
       if (statusFilter !== "all" && lead.status !== statusFilter) {
@@ -206,24 +250,195 @@ export function ManageLeadsSection() {
     })
     .sort((a, b) => {
       if (sortBy === "recent") {
-        return b.lastContacted.getTime() - a.lastContacted.getTime()
+        const aDate = a.last_contacted_at ? new Date(a.last_contacted_at).getTime() : new Date(a.created_at).getTime()
+        const bDate = b.last_contacted_at ? new Date(b.last_contacted_at).getTime() : new Date(b.created_at).getTime()
+        return bDate - aDate
       }
       if (sortBy === "value") {
-        return b.value - a.value
+        return (b.value || 0) - (a.value || 0)
       }
       return 0
     })
   }, [leads, searchQuery, statusFilter, sourceFilter, sortBy, segment, showPortfolioOnly])
 
-  const handleLeadClick = (lead: any) => {
+  const handleLeadClick = (lead: Lead) => {
     setSelectedLead(lead)
+    setIsEditing(false)
+    // Populate edit fields
+    setEditLeadName(lead.name)
+    setEditLeadCompany(lead.company || "")
+    setEditLeadEmail(lead.email || "")
+    setEditLeadPhone(lead.phone || "")
+    setEditLeadTwitter(lead.social_media?.twitter || "")
+    setEditLeadLinkedIn(lead.social_media?.linkedIn || "")
+    setEditLeadInstagram(lead.social_media?.instagram || "")
+    setEditLeadSource(lead.source)
+    setEditLeadStatus(lead.status)
+    setEditLeadValue(lead.value?.toString() || "")
+    setEditLeadNotes(lead.notes || "")
+    setEditLeadPortfolioUrl(lead.portfolio_url || "")
     setLeadDrawerOpen(true)
   }
 
-  const handleBulkDelete = () => {
-    setLeads(leads.filter(l => !selectedLeads.includes(l.id)))
-    setSelectedLeads([])
-    toast.success(`${selectedLeads.length} leads deleted`)
+  const handleEditLead = (lead: Lead) => {
+    setSelectedLead(lead)
+    setIsEditing(true)
+    // Populate edit fields
+    setEditLeadName(lead.name)
+    setEditLeadCompany(lead.company || "")
+    setEditLeadEmail(lead.email || "")
+    setEditLeadPhone(lead.phone || "")
+    setEditLeadTwitter(lead.social_media?.twitter || "")
+    setEditLeadLinkedIn(lead.social_media?.linkedIn || "")
+    setEditLeadInstagram(lead.social_media?.instagram || "")
+    setEditLeadSource(lead.source)
+    setEditLeadStatus(lead.status)
+    setEditLeadValue(lead.value?.toString() || "")
+    setEditLeadNotes(lead.notes || "")
+    setEditLeadPortfolioUrl(lead.portfolio_url || "")
+    setLeadDrawerOpen(true)
+  }
+
+  const handleSaveLead = async () => {
+    if (!selectedLead) return
+
+    try {
+      setIsUpdating(true)
+      const socialMedia: Record<string, string> = {}
+      if (editLeadTwitter) socialMedia.twitter = editLeadTwitter
+      if (editLeadLinkedIn) socialMedia.linkedIn = editLeadLinkedIn
+      if (editLeadInstagram) socialMedia.instagram = editLeadInstagram
+
+      const updatedLead = await updateLead(selectedLead.id, {
+        name: editLeadName,
+        company: editLeadCompany || null,
+        email: editLeadEmail || null,
+        phone: editLeadPhone || null,
+        social_media: socialMedia,
+        source: editLeadSource,
+        status: editLeadStatus,
+        value: editLeadValue ? parseFloat(editLeadValue) : 0,
+        notes: editLeadNotes || null,
+        portfolio_url: editLeadPortfolioUrl || null,
+      })
+
+      if (updatedLead) {
+        setLeads(leads.map(l => l.id === selectedLead.id ? updatedLead : l))
+        setSelectedLead(updatedLead)
+        setIsEditing(false)
+        toast.success('Lead updated successfully!')
+      }
+    } catch (error) {
+      console.error('Error updating lead:', error)
+      toast.error('Failed to update lead')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    try {
+      await bulkDeleteLeads(selectedLeads)
+      setLeads(leads.filter(l => !selectedLeads.includes(l.id)))
+      setSelectedLeads([])
+      toast.success(`${selectedLeads.length} leads deleted`)
+    } catch (error) {
+      console.error('Error deleting leads:', error)
+      toast.error('Failed to delete leads')
+    }
+  }
+
+  const handleCreateLead = async () => {
+    if (!newLeadName.trim()) {
+      toast.error('Name is required')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      const socialMedia: Record<string, string> = {}
+      if (newLeadTwitter) socialMedia.twitter = newLeadTwitter
+      if (newLeadLinkedIn) socialMedia.linkedIn = newLeadLinkedIn
+      if (newLeadInstagram) socialMedia.instagram = newLeadInstagram
+
+      const newLead = await createLead({
+        name: newLeadName,
+        company: newLeadCompany || undefined,
+        email: newLeadEmail || undefined,
+        phone: newLeadPhone || undefined,
+        social_media: Object.keys(socialMedia).length > 0 ? socialMedia : undefined,
+        source: newLeadSource,
+        status: newLeadStatus,
+        value: newLeadValueAmount ? parseFloat(newLeadValueAmount) : undefined,
+        notes: newLeadNotes || undefined,
+        portfolio_url: newLeadPortfolioUrl || undefined,
+      })
+
+      if (newLead) {
+        setLeads([newLead, ...leads])
+        toast.success('Lead created successfully!')
+        // Reset form
+        setNewLeadName("")
+        setNewLeadCompany("")
+        setNewLeadEmail("")
+        setNewLeadPhone("")
+        setNewLeadSource("Manual Import")
+        setNewLeadStatus("New")
+        setNewLeadValueAmount("")
+        setNewLeadNotes("")
+        setNewLeadTwitter("")
+        setNewLeadLinkedIn("")
+        setNewLeadInstagram("")
+        setNewLeadPortfolioUrl("")
+        setNewLeadOpen(false)
+      }
+    } catch (error) {
+      console.error('Error creating lead:', error)
+      toast.error('Failed to create lead')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteLead = async (leadId: string) => {
+    try {
+      await deleteLead(leadId)
+      setLeads(leads.filter(l => l.id !== leadId))
+      if (selectedLead?.id === leadId) {
+        setLeadDrawerOpen(false)
+        setSelectedLead(null)
+      }
+      toast.success('Lead deleted successfully')
+    } catch (error) {
+      console.error('Error deleting lead:', error)
+      toast.error('Failed to delete lead')
+    }
+  }
+
+  const handleUpdateLeadStatus = async (leadId: string, status: Lead['status']) => {
+    try {
+      await updateLead(leadId, { status })
+      setLeads(leads.map(l => l.id === leadId ? { ...l, status } : l))
+      if (selectedLead?.id === leadId) {
+        setSelectedLead({ ...selectedLead, status })
+      }
+      toast.success('Lead status updated')
+    } catch (error) {
+      console.error('Error updating lead status:', error)
+      toast.error('Failed to update lead status')
+    }
+  }
+
+  const handleBulkStatusChange = async (status: Lead['status']) => {
+    try {
+      await bulkUpdateLeadStatus(selectedLeads, status)
+      setLeads(leads.map(l => selectedLeads.includes(l.id) ? { ...l, status } : l))
+      setSelectedLeads([])
+      toast.success(`Status updated for ${selectedLeads.length} leads`)
+    } catch (error) {
+      console.error('Error updating lead status:', error)
+      toast.error('Failed to update lead status')
+    }
   }
 
   const getStatusColor = (status: string, statusColor?: string) => {
@@ -255,8 +470,9 @@ export function ManageLeadsSection() {
 
   const handleOpenChangeStatus = (lead: any) => {
     setStatusChangeLead(lead)
-    // Check if it's a custom status (not in defaultStatuses)
-    if (defaultStatuses.includes(lead.status)) {
+    const statusNames = getStatusNames()
+    // Check if it's a known status
+    if (statusNames.includes(lead.status)) {
       setSelectedStatusOption(lead.status)
       setCustomStatusName("")
       setCustomStatusColor("#6366F1")
@@ -269,16 +485,24 @@ export function ManageLeadsSection() {
     setChangeStatusModalOpen(true)
   }
 
-  const handleSaveStatusChange = () => {
+  const handleSaveStatusChange = async () => {
     if (!statusChangeLead) return
     const newStatus = selectedStatusOption === "Custom" ? (customStatusName.trim() || "Custom") : selectedStatusOption
-    const statusColor = selectedStatusOption === "Custom" ? customStatusColor : undefined
-    setLeads(leads.map(l => l.id === statusChangeLead.id ? { ...l, status: newStatus, statusColor } : l))
-    toast.success(`Status changed to ${newStatus}`)
-    setChangeStatusModalOpen(false)
+    try {
+      const updatedLead = await updateLead(statusChangeLead.id, { status: newStatus as Lead['status'] })
+      if (updatedLead) {
+        setLeads(leads.map(l => l.id === statusChangeLead.id ? updatedLead : l))
+        if (selectedLead?.id === statusChangeLead.id) {
+          setSelectedLead(updatedLead)
+        }
+        toast.success(`Status changed to ${newStatus}`)
+        setChangeStatusModalOpen(false)
+      }
+    } catch (error) {
+      console.error('Error updating status:', error)
+      toast.error('Failed to update status')
+    }
   }
-
-  const defaultStatuses = ["New", "Contacted", "Qualified", "Proposal Sent", "Won", "Lost"]
 
   return (
     <div className="space-y-6">
@@ -298,6 +522,10 @@ export function ManageLeadsSection() {
             <Button variant="outline" data-help="btn-pipeline-view" onClick={() => router.push('/dashboard/pipeline')}>
               <GitBranch className="mr-2 h-4 w-4" />
               Pipeline View
+            </Button>
+            <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
             </Button>
           <Button variant="outline" data-help="btn-import-csv" onClick={() => setImportCsvOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
@@ -344,12 +572,9 @@ export function ManageLeadsSection() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="New">New</SelectItem>
-                    <SelectItem value="Contacted">Contacted</SelectItem>
-                    <SelectItem value="Qualified">Qualified</SelectItem>
-                    <SelectItem value="Proposal Sent">Proposal Sent</SelectItem>
-                    <SelectItem value="Won">Won</SelectItem>
-                    <SelectItem value="Lost">Lost</SelectItem>
+                    {getStatusNames().map((status) => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -359,14 +584,15 @@ export function ManageLeadsSection() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sources</SelectItem>
-                    <SelectItem value="Website">Website</SelectItem>
-                    <SelectItem value="Referral">Referral</SelectItem>
-                    <SelectItem value="Ad Campaign">Ad Campaign</SelectItem>
-                    <SelectItem value="Portfolio">Portfolio</SelectItem>
-                    <SelectItem value="Manual Import">Manual Import</SelectItem>
-                  </SelectContent>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      <SelectItem value="Lead Engine">Lead Engine</SelectItem>
+                      <SelectItem value="Portfolio">Portfolio</SelectItem>
+                      <SelectItem value="Website form">Website form</SelectItem>
+                      <SelectItem value="Social">Social</SelectItem>
+                      <SelectItem value="Referral">Referral</SelectItem>
+                      <SelectItem value="Manual Import">Manual Import</SelectItem>
+                    </SelectContent>
                 </Select>
               </div>
               <div>
@@ -402,10 +628,16 @@ export function ManageLeadsSection() {
           <span className="text-sm font-medium text-gray-700">
             {selectedLeads.length} selected
           </span>
-          <Button variant="outline" size="sm">
-            <Edit className="mr-2 h-4 w-4" />
-            Change Status
-          </Button>
+          <Select onValueChange={(value) => handleBulkStatusChange(value as Lead['status'])}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Change Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {getStatusNames().map((status) => (
+                <SelectItem key={status} value={status}>{status}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" size="sm" onClick={handleBulkDelete}>
             <Trash2 className="mr-2 h-4 w-4" />
             Delete
@@ -423,7 +655,12 @@ export function ManageLeadsSection() {
       {/* Leads Table */}
       <Card data-help="leads-table">
         <CardContent className="p-0">
-          {filteredLeads.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+              <span className="ml-3 text-gray-600">Loading leads...</span>
+            </div>
+          ) : filteredLeads.length === 0 ? (
             <div className="text-center py-16">
               <UserPlus className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No leads yet</h3>
@@ -459,6 +696,7 @@ export function ManageLeadsSection() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Company</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Contact</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Social Media</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Value</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Source</th>
@@ -496,15 +734,37 @@ export function ManageLeadsSection() {
                       <td className="px-4 py-4 text-gray-700">{lead.company}</td>
                       <td className="px-4 py-4">
                         <div className="space-y-1 text-sm text-gray-600">
-                          <div className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
-                            {lead.email}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            {lead.phone}
-                          </div>
+                          {lead.email && (
+                            <div className="flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              {lead.email}
+                            </div>
+                          )}
+                          {lead.phone && (
+                            <div className="flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {lead.phone}
+                            </div>
+                          )}
+                          {!lead.email && !lead.phone && (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        {lead.social_media && Object.keys(lead.social_media).length > 0 ? (
+                          <div className="space-y-1 text-sm text-gray-600">
+                            {Object.entries(lead.social_media).map(([platform, username]) => (
+                              <div key={platform} className="flex items-center gap-1">
+                                <Globe className="h-3 w-3 text-gray-400" />
+                                <span className="capitalize">{platform}:</span>
+                                <span className="font-medium">{username}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-4">
                         <Badge 
@@ -515,7 +775,7 @@ export function ManageLeadsSection() {
                         </Badge>
                       </td>
                       <td className="px-4 py-4 font-semibold text-gray-900">
-                        ${lead.value.toLocaleString()}
+                        ${(lead.value || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-700">{lead.source}</td>
                       <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
@@ -539,31 +799,51 @@ export function ManageLeadsSection() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleOpenChangeStatus(lead)}>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenChangeStatus(lead)
+                            }}>
                               <Tag className="mr-2 h-4 w-4" />
                               Change Status
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              handleEditLead(lead)
+                            }}>
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              const q = encodeURIComponent(lead.name)
+                              router.push(`/dashboard/pipeline?q=${q}`)
+                            }}>
                               <GitBranch className="mr-2 h-4 w-4" />
                               View Pipeline
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              toast.info('Proposal feature coming soon')
+                            }}>
                               <Send className="mr-2 h-4 w-4" />
                               Send Proposal
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation()
+                              toast.info('Convert to client feature coming soon')
+                            }}>
                               <UserPlus className="mr-2 h-4 w-4" />
                               Convert to Client
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Archive className="mr-2 h-4 w-4" />
-                              Archive
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (confirm('Are you sure you want to delete this lead?')) {
+                                  handleDeleteLead(lead.id)
+                                }
+                              }}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
@@ -615,6 +895,26 @@ export function ManageLeadsSection() {
                 <Input placeholder="(555) 123-4567" value={newLeadPhone} onChange={(e) => setNewLeadPhone(e.target.value)} />
               </div>
             </div>
+            <div>
+              <Label>Social Media</Label>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <Input 
+                  placeholder="Twitter/X" 
+                  value={newLeadTwitter}
+                  onChange={(e) => setNewLeadTwitter(e.target.value)}
+                />
+                <Input 
+                  placeholder="LinkedIn" 
+                  value={newLeadLinkedIn}
+                  onChange={(e) => setNewLeadLinkedIn(e.target.value)}
+                />
+                <Input 
+                  placeholder="Instagram" 
+                  value={newLeadInstagram}
+                  onChange={(e) => setNewLeadInstagram(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Lead Value</Label>
@@ -625,48 +925,43 @@ export function ManageLeadsSection() {
                 <Select 
                   value={newLeadSource}
                   onValueChange={(value) => {
-                    setNewLeadSource(value)
-                    if (value === "custom") {
-                      setShowCustomSourceInput(true)
-                    } else {
-                      setShowCustomSourceInput(false)
-                      setCustomSource("")
-                    }
+                    setNewLeadSource(value as Lead['source'])
                   }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select source" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Website">Website</SelectItem>
+                    <SelectItem value="Lead Engine">Lead Engine</SelectItem>
+                    <SelectItem value="Portfolio">Portfolio</SelectItem>
+                    <SelectItem value="Website form">Website form</SelectItem>
+                    <SelectItem value="Social">Social</SelectItem>
                     <SelectItem value="Referral">Referral</SelectItem>
-                    <SelectItem value="Ad Campaign">Ad Campaign</SelectItem>
                     <SelectItem value="Manual Import">Manual Import</SelectItem>
-                    <SelectItem value="Reddit">Reddit</SelectItem>
-                    <SelectItem value="Inbound">Inbound</SelectItem>
-                    <SelectItem value="custom">Custom Source</SelectItem>
                   </SelectContent>
                 </Select>
-                {showCustomSourceInput && (
-                  <Input
-                    className="mt-2"
-                    placeholder="Enter custom source..."
-                    value={customSource}
-                    onChange={(e) => setCustomSource(e.target.value)}
-                  />
-                )}
               </div>
             </div>
+            {newLeadSource === 'Portfolio' && (
+              <div>
+                <Label>Portfolio URL</Label>
+                <Input 
+                  placeholder="https://yourportfolio.com/page"
+                  value={newLeadPortfolioUrl}
+                  onChange={(e) => setNewLeadPortfolioUrl(e.target.value)}
+                />
+              </div>
+            )}
             <div>
               <Label>Status</Label>
-              <Select defaultValue="new">
+              <Select value={newLeadStatus} onValueChange={(v) => setNewLeadStatus(v as Lead['status'])}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="contacted">Contacted</SelectItem>
-                  <SelectItem value="qualified">Qualified</SelectItem>
+                  {getStatusNames().map((status) => (
+                    <SelectItem key={status} value={status}>{status}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -678,104 +973,117 @@ export function ManageLeadsSection() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setNewLeadOpen(false)
-              setNewLeadSource("")
-              setCustomSource("")
-              setShowCustomSourceInput(false)
+              setNewLeadSource("Manual Import")
+              setNewLeadStatus("New")
               setNewLeadName("")
               setNewLeadCompany("")
               setNewLeadEmail("")
               setNewLeadPhone("")
               setNewLeadValueAmount("")
               setNewLeadNotes("")
-            }}>
+              setNewLeadTwitter("")
+              setNewLeadLinkedIn("")
+              setNewLeadInstagram("")
+              setNewLeadPortfolioUrl("")
+            }} disabled={isSaving}>
               Cancel
             </Button>
-            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => {
-              const finalSource = newLeadSource === "custom" ? customSource : newLeadSource
-              if (newLeadSource === "custom" && !customSource.trim()) {
-                toast.error("Please enter a custom source")
-                return
-              }
-              // Add lead logic would go here
-              toast.success("Lead created successfully!")
-              setNewLeadOpen(false)
-              setNewLeadSource("")
-              setCustomSource("")
-              setShowCustomSourceInput(false)
-              setNewLeadName("")
-              setNewLeadCompany("")
-              setNewLeadEmail("")
-              setNewLeadPhone("")
-              setNewLeadValueAmount("")
-              setNewLeadNotes("")
-            }}>
-              Save Lead
+            <Button 
+              className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" 
+              onClick={handleCreateLead}
+              disabled={isSaving || !newLeadName.trim()}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Lead'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Import CSV Modal */}
-      <Dialog open={importCsvOpen} onOpenChange={setImportCsvOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import Leads from CSV</DialogTitle>
-          </DialogHeader>
-          <div className="py-8">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-[#3C3CFF] transition-colors cursor-pointer">
-              <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-lg font-medium text-gray-900 mb-2">Drag & drop your CSV file</p>
-              <p className="text-sm text-gray-600 mb-4">or click to browse</p>
-              <Button variant="outline">Choose File</Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImportCsvOpen(false)}>
-              Cancel
-            </Button>
-            <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-              Import Leads
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ImportLeadsModal
+        open={importCsvOpen}
+        onOpenChange={setImportCsvOpen}
+        onImportComplete={loadLeads}
+      />
 
       {/* Lead Details Drawer */}
-      <Sheet open={leadDrawerOpen} onOpenChange={setLeadDrawerOpen}>
+      <Sheet open={leadDrawerOpen} onOpenChange={(open) => {
+        setLeadDrawerOpen(open)
+        if (!open) {
+          setIsEditing(false)
+          setSelectedLead(null)
+        }
+      }}>
         <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-2xl flex items-center gap-3">
               <Avatar className="h-12 w-12">
-                <AvatarFallback>{selectedLead?.name.split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
+                <AvatarFallback>{(isEditing ? editLeadName : selectedLead?.name)?.split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
               </Avatar>
-              {selectedLead?.name}
+              {isEditing ? editLeadName : selectedLead?.name}
             </SheetTitle>
           </SheetHeader>
 
           {selectedLead && (
             <div className="mt-6 space-y-6">
               <div className="flex items-center gap-3">
-                <Select defaultValue={selectedLead.status.toLowerCase()}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">New</SelectItem>
-                    <SelectItem value="contacted">Contacted</SelectItem>
-                    <SelectItem value="qualified">Qualified</SelectItem>
-                    <SelectItem value="proposal sent">Proposal Sent</SelectItem>
-                    <SelectItem value="won">Won</SelectItem>
-                    <SelectItem value="lost">Lost</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline">
+                {!isEditing && (
+                  <Select 
+                    value={selectedLead.status} 
+                    onValueChange={(v) => handleUpdateLeadStatus(selectedLead.id, v as Lead['status'])}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="New">New</SelectItem>
+                      <SelectItem value="Contacted">Contacted</SelectItem>
+                      <SelectItem value="Qualified">Qualified</SelectItem>
+                      <SelectItem value="Proposal Sent">Proposal Sent</SelectItem>
+                      <SelectItem value="Won">Won</SelectItem>
+                      <SelectItem value="Lost">Lost</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    if (isEditing) {
+                      // Reset to original values when canceling
+                      if (selectedLead) {
+                        setEditLeadName(selectedLead.name)
+                        setEditLeadCompany(selectedLead.company || "")
+                        setEditLeadEmail(selectedLead.email || "")
+                        setEditLeadPhone(selectedLead.phone || "")
+                        setEditLeadTwitter(selectedLead.social_media?.twitter || "")
+                        setEditLeadLinkedIn(selectedLead.social_media?.linkedIn || "")
+                        setEditLeadInstagram(selectedLead.social_media?.instagram || "")
+                        setEditLeadSource(selectedLead.source)
+                        setEditLeadStatus(selectedLead.status)
+                        setEditLeadValue(selectedLead.value?.toString() || "")
+                        setEditLeadNotes(selectedLead.notes || "")
+                        setEditLeadPortfolioUrl(selectedLead.portfolio_url || "")
+                      }
+                    }
+                    setIsEditing(!isEditing)
+                  }}
+                >
                   <Edit className="mr-2 h-4 w-4" />
-                  Edit
+                  {isEditing ? 'Cancel' : 'Edit'}
                 </Button>
-                <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Convert to Client
-                </Button>
+                {!isEditing && (
+                  <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Convert to Client
+                  </Button>
+                )}
               </div>
 
               {/* Portfolio Message (if sourced from Portfolio) */}
@@ -800,65 +1108,257 @@ export function ManageLeadsSection() {
 
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Overview</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-start gap-3">
-                    <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Name *</Label>
+                        <Input 
+                          value={editLeadName}
+                          onChange={(e) => setEditLeadName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>Company</Label>
+                        <Input 
+                          value={editLeadCompany}
+                          onChange={(e) => setEditLeadCompany(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Email</Label>
+                        <Input 
+                          type="email"
+                          value={editLeadEmail}
+                          onChange={(e) => setEditLeadEmail(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>Phone</Label>
+                        <Input 
+                          value={editLeadPhone}
+                          onChange={(e) => setEditLeadPhone(e.target.value)}
+                        />
+                      </div>
+                    </div>
                     <div>
-                      <p className="text-sm text-gray-600">Company</p>
-                      <p className="font-medium">{selectedLead.company}</p>
+                      <Label>Social Media</Label>
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        <Input 
+                          placeholder="Twitter/X" 
+                          value={editLeadTwitter}
+                          onChange={(e) => setEditLeadTwitter(e.target.value)}
+                        />
+                        <Input 
+                          placeholder="LinkedIn" 
+                          value={editLeadLinkedIn}
+                          onChange={(e) => setEditLeadLinkedIn(e.target.value)}
+                        />
+                        <Input 
+                          placeholder="Instagram" 
+                          value={editLeadInstagram}
+                          onChange={(e) => setEditLeadInstagram(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Lead Value</Label>
+                        <Input 
+                          type="number"
+                          value={editLeadValue}
+                          onChange={(e) => setEditLeadValue(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>Source</Label>
+                        <Select value={editLeadSource} onValueChange={(v) => setEditLeadSource(v as Lead['source'])}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Lead Engine">Lead Engine</SelectItem>
+                            <SelectItem value="Portfolio">Portfolio</SelectItem>
+                            <SelectItem value="Website form">Website form</SelectItem>
+                            <SelectItem value="Social">Social</SelectItem>
+                            <SelectItem value="Referral">Referral</SelectItem>
+                            <SelectItem value="Manual Import">Manual Import</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {editLeadSource === 'Portfolio' && (
+                      <div>
+                        <Label>Portfolio URL</Label>
+                        <Input 
+                          placeholder="https://yourportfolio.com/page"
+                          value={editLeadPortfolioUrl}
+                          onChange={(e) => setEditLeadPortfolioUrl(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <Label>Status</Label>
+                      <Select value={editLeadStatus} onValueChange={(v) => setEditLeadStatus(v as Lead['status'])}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getStatusNames().map((status) => (
+                            <SelectItem key={status} value={status}>{status}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Notes</Label>
+                      <Textarea 
+                        rows={4}
+                        value={editLeadNotes}
+                        onChange={(e) => setEditLeadNotes(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setIsEditing(false)
+                          // Reset to original values
+                          if (selectedLead) {
+                            setEditLeadName(selectedLead.name)
+                            setEditLeadCompany(selectedLead.company || "")
+                            setEditLeadEmail(selectedLead.email || "")
+                            setEditLeadPhone(selectedLead.phone || "")
+                            setEditLeadTwitter(selectedLead.social_media?.twitter || "")
+                            setEditLeadLinkedIn(selectedLead.social_media?.linkedIn || "")
+                            setEditLeadInstagram(selectedLead.social_media?.instagram || "")
+                            setEditLeadSource(selectedLead.source)
+                            setEditLeadStatus(selectedLead.status)
+                            setEditLeadValue(selectedLead.value?.toString() || "")
+                            setEditLeadNotes(selectedLead.notes || "")
+                            setEditLeadPortfolioUrl(selectedLead.portfolio_url || "")
+                          }
+                        }}
+                        disabled={isUpdating}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        onClick={handleSaveLead}
+                        disabled={isUpdating || !editLeadName.trim()}
+                        className="flex-1 bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                      >
+                        {isUpdating ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <DollarSign className="h-5 w-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-gray-600">Lead Value</p>
-                      <p className="font-medium">${selectedLead.value.toLocaleString()}</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-start gap-3">
+                      <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-gray-600">Company</p>
+                        <p className="font-medium">{selectedLead.company || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <DollarSign className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-gray-600">Lead Value</p>
+                        <p className="font-medium">${(selectedLead.value || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    {selectedLead.email && (
+                      <div className="flex items-start gap-3">
+                        <Mail className="h-5 w-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-600">Email</p>
+                          <p className="font-medium">{selectedLead.email}</p>
+                        </div>
+                      </div>
+                    )}
+                    {selectedLead.phone && (
+                      <div className="flex items-start gap-3">
+                        <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-600">Phone</p>
+                          <p className="font-medium">{selectedLead.phone}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-3">
+                      <Globe className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-gray-600">Social Media</p>
+                        {selectedLead.social_media && Object.keys(selectedLead.social_media).length > 0 ? (
+                          <div className="space-y-1">
+                            {Object.entries(selectedLead.social_media).map(([platform, username]) => (
+                              <p key={platform} className="font-medium text-sm capitalize">{platform}: {username}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="font-medium text-gray-400">—</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <FileText className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-gray-600">Source</p>
+                        <p className="font-medium">{selectedLead.source}</p>
+                        {selectedLead.portfolio_url && (
+                          <a href={selectedLead.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">
+                            View Portfolio →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-gray-600">Last Contacted</p>
+                        <p className="font-medium">
+                          {selectedLead.last_contacted_at 
+                            ? format(new Date(selectedLead.last_contacted_at), "MMM d, yyyy")
+                            : selectedLead.created_at
+                            ? format(new Date(selectedLead.created_at), "MMM d, yyyy")
+                            : 'Never'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-gray-600">Email</p>
-                      <p className="font-medium">{selectedLead.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-gray-600">Phone</p>
-                      <p className="font-medium">{selectedLead.phone}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <FileText className="h-5 w-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-gray-600">Source</p>
-                      <p className="font-medium">{selectedLead.source}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-gray-600">Last Contacted</p>
-                      <p className="font-medium">{format(selectedLead.lastContacted, "MMM d, yyyy")}</p>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
 
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Notes & Activity</h3>
-                <div className="space-y-3">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-700">{selectedLead.notes}</p>
-                    <p className="text-xs text-gray-500 mt-2">{format(selectedLead.lastContacted, "MMM d, yyyy 'at' h:mm a")}</p>
+              {!isEditing && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Notes & Activity</h3>
+                  <div className="space-y-3">
+                    {selectedLead.notes ? (
+                      <div className="p-4 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedLead.notes}</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          {selectedLead.updated_at 
+                            ? format(new Date(selectedLead.updated_at), "MMM d, yyyy 'at' h:mm a")
+                            : format(new Date(selectedLead.created_at), "MMM d, yyyy 'at' h:mm a")}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">No notes yet</p>
+                    )}
                   </div>
                 </div>
-                <div>
-                  <Textarea placeholder="Add a note..." rows={3} />
-                  <Button className="mt-2">Add Note</Button>
-                </div>
-              </div>
+              )}
 
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Follow-Ups & Reminders</h3>
@@ -895,7 +1395,7 @@ export function ManageLeadsSection() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {defaultStatuses.map((status) => (
+                  {getStatusNames().map((status) => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}
                   <SelectItem value="Custom">Custom...</SelectItem>
@@ -923,6 +1423,12 @@ export function ManageLeadsSection() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Pipeline Settings Drawer */}
+      <PipelineSettingsDrawer
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
     </div>
   )
 }

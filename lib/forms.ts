@@ -97,7 +97,7 @@ export async function getForms(): Promise<Form[]> {
 }
 
 // Get forms for a specific project
-export async function getProjectForms(projectId: string): Promise<Form[]> {
+export async function getProjectForms(projectId: string | 'all'): Promise<Form[]> {
   const supabase = createClient()
   
   // First get the current user's account_id
@@ -112,8 +112,8 @@ export async function getProjectForms(projectId: string): Promise<Form[]> {
 
   if (!profile) throw new Error('Profile not found')
 
-  // Get forms for the specific project with client and project information
-  const { data, error } = await supabase
+  // Build query for forms with project information
+  let query = supabase
     .from('forms')
     .select(`
       *,
@@ -121,8 +121,16 @@ export async function getProjectForms(projectId: string): Promise<Form[]> {
       projects:projects(name)
     `)
     .eq('account_id', profile.account_id)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
+
+  // If projectId is 'all', get all forms that have a project_id
+  // Otherwise, filter by specific project_id
+  if (projectId === 'all') {
+    query = query.not('project_id', 'is', null)
+  } else {
+    query = query.eq('project_id', projectId)
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false })
 
   if (error) {
     console.error('Error fetching project forms:', error)
@@ -767,15 +775,29 @@ export async function saveFormTemplate(
       usage_count: 0
     }
 
+    // Prepare insert data with explicit fields
+    const insertData = {
+      name: templateName,
+      description: templateDescription || null, // Explicitly set description
+      template_data: templateData,
+      is_public: false,
+      is_featured: false,
+      usage_count: 0,
+      account_id: profile.account_id,
+      created_by: user.id,
+      created_by_name: `${profile.first_name} ${profile.last_name}`,
+    }
+
+    console.log('Saving template with data:', {
+      name: insertData.name,
+      description: insertData.description,
+      hasDescription: !!insertData.description
+    })
+
     // Save template to Supabase
     const { data, error } = await supabase
       .from('form_templates')
-      .insert({
-        ...templateFormData,
-        account_id: profile.account_id,
-        created_by: user.id,
-        created_by_name: `${profile.first_name} ${profile.last_name}`,
-      })
+      .insert(insertData)
       .select()
       .single()
 

@@ -21,35 +21,67 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid approval status' }, { status: 400 })
     }
 
-    // Update file approval status
-    const { data: file, error } = await supabase
+    // Get user profile for name
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, full_name')
+      .eq('user_id', user.id)
+      .single()
+
+    const approverName = profile?.full_name || 
+      (profile?.first_name && profile?.last_name 
+        ? `${profile.first_name} ${profile.last_name}` 
+        : user.email?.split('@')[0] || 'Unknown User')
+
+    // Update file approval status (following schema - no approval_date or approval_notes columns)
+    const { data: file, error: fileError } = await supabase
       .from('files')
       .update({
         approval_status,
-        approval_date: new Date().toISOString(),
-        approval_notes: comment || null,
-        status: approval_status === 'approved' ? 'active' : 'rejected',
         updated_at: new Date().toISOString()
       })
       .eq('id', fileId)
       .select()
       .single()
 
-    if (error) {
-      console.error('Error updating file:', error)
+    if (fileError) {
+      console.error('Error updating file:', fileError)
       return NextResponse.json({ error: 'Failed to update file' }, { status: 500 })
     }
 
-    // Add comment if provided
+    // Create approval record in file_approvals table
+    const { error: approvalError } = await supabase
+      .from('file_approvals')
+      .insert({
+        file_id: fileId,
+        approver_id: user.id,
+        approver_name: approverName,
+        status: approval_status,
+        decision: comment || null,
+        decision_date: new Date().toISOString(),
+      })
+
+    if (approvalError) {
+      console.error('Error creating approval record:', approvalError)
+      // Don't fail the request if approval record fails, but log it
+    }
+
+    // Add comment if provided (using correct schema columns)
     if (comment) {
-      await supabase
+      const { error: commentError } = await supabase
         .from('file_comments')
         .insert({
           file_id: fileId,
-          comment_text: comment,
-          commenter_id: user.id,
-          commenter_type: 'account_user',
+          content: comment,
+          author_id: user.id,
+          author_name: approverName,
+          is_internal: false, // Client-visible comment
         })
+
+      if (commentError) {
+        console.error('Error adding comment:', commentError)
+        // Don't fail the request if comment fails, but log it
+      }
     }
 
     return NextResponse.json({ success: true, file })

@@ -1016,7 +1016,7 @@ export default function JolixLanding() {
                     <li className="flex items-start">
                       <Check className="h-5 w-5 text-[#3C3CFF] mr-3 flex-shrink-0" />
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-600 text-sm font-semibold">Manage up to 20 active clients/projects simultaneously</span>
+                        <span className="text-slate-600 text-sm font-semibold">Manage up to 5 active clients/projects simultaneously</span>
                         <TooltipProvider delayDuration={100}>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1052,12 +1052,12 @@ export default function JolixLanding() {
                   <div className="flex items-baseline gap-1 mb-4">
                     {billingPeriod === "monthly" ? (
                       <>
-                        <span className="text-5xl font-bold text-slate-900">$39</span>
+                        <span className="text-5xl font-bold text-slate-900">$49</span>
                         <span className="text-slate-500 font-medium">/month</span>
                       </>
                     ) : (
                       <>
-                        <span className="text-5xl font-bold text-slate-900">$33</span>
+                        <span className="text-5xl font-bold text-slate-900">$42</span>
                         <span className="text-slate-500 font-medium">/mo billed yearly</span>
                       </>
                     )}

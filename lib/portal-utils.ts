@@ -46,7 +46,7 @@ export function generatePortalSlug(account: Account, user: User): string {
 
 /**
  * Generate the full live portal URL
- * Format: clientportal.[slug].jolix.io (e.g., clientportal.acme.jolix.io)
+ * Format: portal.[slug].jolix.io (e.g., portal.acme.jolix.io)
  * In dev mode: http://localhost:3000/portal/[slug]
  */
 export function generateLivePortalUrl(slug: string): string {
@@ -61,8 +61,8 @@ export function generateLivePortalUrl(slug: string): string {
     return `http://localhost:3000/portal/${slug}`
   }
 
-  // In production, use subdomain format: clientportal.[slug].jolix.io
-  return `https://clientportal.${slug}.jolix.io`
+  // In production, use subdomain format: portal.[slug].jolix.io
+  return `https://portal.${slug}.jolix.io`
 }
 
 /**

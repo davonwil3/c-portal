@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProposalWizard } from "./ProposalWizard"
 import { Button } from "@/components/ui/button"
@@ -26,7 +26,6 @@ import {
 import {
   Plus,
   Search,
-  Filter,
   Upload,
   MoreHorizontal,
   Edit,
@@ -50,74 +49,32 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { format, subDays } from "date-fns"
+import { getProposals, deleteProposal, duplicateProposal, type Proposal } from "@/lib/proposals"
+import { getClients } from "@/lib/clients"
+import { getLeads } from "@/lib/leads"
+import { Loader2 } from "lucide-react"
 
-// Mock data
-const mockProposals = Array.from({ length: 50 }).map((_, i) => {
-  const id = `PROP-${String(i + 1000).padStart(4, '0')}`
-  const title = [
-    "Website Redesign Project",
-    "SEO Optimization Package",
-    "Brand Identity Development",
-    "Marketing Campaign Q1",
-    "Mobile App Development",
-    "Content Strategy Proposal",
-    "Social Media Management",
-    "Email Marketing Setup"
-  ][i % 8]
-  const recipient = {
-    name: ["Sarah Johnson", "Michael Chen", "Emily Davis", "David Miller", "Jessica Wilson"][i % 5],
-    company: ["Tech Corp", "Design Studio", "Marketing Agency", "Startup Inc", "Consulting LLC"][i % 5],
-    email: `contact${i}@company.com`,
-    type: i % 3 === 0 ? "Client" : "Lead"
-  }
-  const value = Math.floor(Math.random() * 50000) + 5000
-  const status = ["Draft", "Sent", "Viewed", "Accepted", "Declined", "Expired"][i % 6] as ProposalStatus
-  const createdAt = new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000)
-  // Derive a realistic sent date after creation
-  const dateSent = new Date(createdAt.getTime() + (1 + (i % 7)) * 24 * 60 * 60 * 1000)
-  const lastActivity = new Date(dateSent.getTime() + (1 + (i % 5)) * 24 * 60 * 60 * 1000)
-  const validUntil = new Date(Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000)
-  const hasDeposit = Math.random() > 0.5
-  const requiresSignature = Math.random() > 0.5
-  const activities = [
-    { type: "created", date: createdAt, user: "You" },
-    { type: "sent", date: dateSent, user: "You" },
-    { type: "viewed", date: lastActivity, user: recipient.name },
-  ]
-
-  return {
-    id,
-    title,
-    recipient,
-    value,
-    status,
-    lastActivity,
-    createdAt,
-    validUntil,
-    hasDeposit,
-    requiresSignature,
-    activities,
-    dateSent,
-  }
-})
-
-type ProposalStatus = "Draft" | "Sent" | "Viewed" | "Accepted" | "Declined" | "Expired"
+type ProposalStatus = "Draft" | "Sent" | "Accepted" | "Declined"
 
 export function ProposalsSection() {
   const router = useRouter()
-  const [proposals, setProposals] = useState(mockProposals)
+  const [proposals, setProposals] = useState<Proposal[]>([])
   const [selectedProposals, setSelectedProposals] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState("recent")
-  const [filterOpen, setFilterOpen] = useState(false)
   const [dateRangeOpen, setDateRangeOpen] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [leadPickerOpen, setLeadPickerOpen] = useState(false)
   const [leadSearch, setLeadSearch] = useState("")
   const [selectedLeadId, setSelectedLeadId] = useState<string>("")
   const [selectedLead, setSelectedLead] = useState<{ id: string; name: string; company: string; email: string } | null>(null)
+  const [leads, setLeads] = useState<any[]>([])
+  const [clients, setClients] = useState<any[]>([])
+  const [leadsLoading, setLeadsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [useCustomLead, setUseCustomLead] = useState(false)
+  const [recipientType, setRecipientType] = useState<'lead' | 'client'>('lead')
   const [customLeadName, setCustomLeadName] = useState("")
   const [customLeadCompany, setCustomLeadCompany] = useState("")
   const [customLeadEmail, setCustomLeadEmail] = useState("")
@@ -128,13 +85,29 @@ export function ProposalsSection() {
     to: undefined
   })
 
+  // Load proposals from database
+  useEffect(() => {
+    const loadProposals = async () => {
+      try {
+        setLoading(true)
+        const fetchedProposals = await getProposals()
+        setProposals(fetchedProposals)
+      } catch (error: any) {
+        console.error('Error loading proposals:', error)
+        toast.error('Failed to load proposals: ' + (error?.message || 'Unknown error'))
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadProposals()
+  }, [])
+
   // Status counts
   const statusCounts = useMemo(() => {
     return {
       all: proposals.length,
       draft: proposals.filter(p => p.status === "Draft").length,
       sent: proposals.filter(p => p.status === "Sent").length,
-      viewed: proposals.filter(p => p.status === "Viewed").length,
       accepted: proposals.filter(p => p.status === "Accepted").length,
       declined: proposals.filter(p => p.status === "Declined").length,
     }
@@ -187,15 +160,83 @@ export function ProposalsSection() {
   }, [proposals, searchQuery, statusFilter, sortBy, dateRange])
 
   const handleProposalClick = (proposal: any) => {
-    setSelectedProposal(proposal)
-    setProposalDrawerOpen(true)
+    // Navigate to proposal builder with the proposal ID
+    router.push(`/dashboard/proposals/create?id=${proposal.id}`)
   }
 
-  const handleBulkDelete = () => {
-    setProposals(proposals.filter(p => !selectedProposals.includes(p.id)))
-    setSelectedProposals([])
-    toast.success(`${selectedProposals.length} proposals deleted`)
+  const handleView = (proposal: any) => {
+    // Navigate to proposal builder with the proposal ID
+    router.push(`/dashboard/proposals/create?id=${proposal.id}`)
   }
+
+  const handleDuplicate = async (proposal: any) => {
+    try {
+      await duplicateProposal(proposal.id)
+      toast.success('Proposal duplicated successfully')
+      // Reload proposals
+      const fetchedProposals = await getProposals()
+      setProposals(fetchedProposals)
+    } catch (error: any) {
+      console.error('Error duplicating proposal:', error)
+      toast.error('Failed to duplicate proposal: ' + (error?.message || 'Unknown error'))
+    }
+  }
+
+  const handleDelete = async (proposalId: string) => {
+    try {
+      await deleteProposal(proposalId)
+      setProposals(proposals.filter(p => p.id !== proposalId))
+      toast.success('Proposal deleted successfully')
+    } catch (error: any) {
+      console.error('Error deleting proposal:', error)
+      toast.error('Failed to delete proposal: ' + (error?.message || 'Unknown error'))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    try {
+      await Promise.all(selectedProposals.map(id => deleteProposal(id)))
+      setProposals(proposals.filter(p => !selectedProposals.includes(p.id)))
+      setSelectedProposals([])
+      toast.success(`${selectedProposals.length} proposals deleted`)
+    } catch (error: any) {
+      console.error('Error deleting proposals:', error)
+      toast.error('Failed to delete proposals')
+    }
+  }
+
+  const handleCopyLink = (proposal: Proposal) => {
+    // Use UUID for the live link, fallback to id if UUID not available
+    const proposalUuid = proposal.uuid || proposal.id
+    // Use subdomain format as per middleware: proposal.[proposalid].jolix.io
+    // In development, still use production format for the copied link
+    const link = `https://proposal.${proposalUuid}.jolix.io`
+    navigator.clipboard.writeText(link)
+    toast.success("Link copied to clipboard")
+  }
+
+  // Load leads and clients when modal opens
+  useEffect(() => {
+    if (leadPickerOpen) {
+      const loadLeadsAndClients = async () => {
+        setLeadsLoading(true)
+        try {
+          const [fetchedLeads, fetchedClients] = await Promise.all([
+            getLeads(),
+            getClients()
+          ])
+          setLeads(fetchedLeads)
+          setClients(fetchedClients)
+        } catch (error) {
+          console.error('Error loading leads/clients:', error)
+          toast.error('Failed to load leads and clients')
+        } finally {
+          setLeadsLoading(false)
+        }
+      }
+      loadLeadsAndClients()
+    }
+  }, [leadPickerOpen])
 
   const getStatusColor = (status: ProposalStatus) => {
     const colors: Record<ProposalStatus, string> = {
@@ -213,8 +254,8 @@ export function ProposalsSection() {
     switch(type) {
       case "created": return <FileText className="h-4 w-4 text-gray-500" />
       case "sent": return <Send className="h-4 w-4 text-blue-500" />
-      case "viewed": return <Eye className="h-4 w-4 text-purple-500" />
       case "accepted": return <Check className="h-4 w-4 text-green-500" />
+      case "declined": return <X className="h-4 w-4 text-red-500" />
       default: return <Clock className="h-4 w-4 text-gray-400" />
     }
   }
@@ -259,10 +300,6 @@ export function ProposalsSection() {
             <p className="text-gray-600 ml-[60px]">Create, send, and track professional proposals.</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => toast.info("Export feature coming soon")}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
             <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" data-help="btn-new-proposal" onClick={() => setLeadPickerOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               New Proposal
@@ -374,43 +411,10 @@ export function ProposalsSection() {
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
             <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="viewed">Viewed</SelectItem>
             <SelectItem value="accepted">Accepted</SelectItem>
             <SelectItem value="declined">Declined</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
-
-        <Popover open={filterOpen} onOpenChange={setFilterOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <Filter className="h-4 w-4" />
-              Filters
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80">
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-semibold mb-3 block">Quick Filters</Label>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="hasDeposit" />
-                    <Label htmlFor="hasDeposit" className="text-sm font-normal cursor-pointer">
-                      Has deposit
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="requiresSignature" />
-                    <Label htmlFor="requiresSignature" className="text-sm font-normal cursor-pointer">
-                      Requires signature
-                    </Label>
-                  </div>
-                  
-                </div>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
 
         {dateRange.from && (
           <Button
@@ -439,10 +443,6 @@ export function ProposalsSection() {
             <Trash2 className="mr-2 h-4 w-4" />
             Delete
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedProposals([])}>
             <X className="h-4 w-4" />
           </Button>
@@ -452,21 +452,22 @@ export function ProposalsSection() {
       {/* Proposals Table */}
       <Card data-help="proposals-table">
         <CardContent className="p-0">
-          {filteredProposals.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#3C3CFF] mb-4" />
+              <p className="text-gray-600">Loading proposals...</p>
+            </div>
+          ) : filteredProposals.length === 0 ? (
             <div className="text-center py-16">
               <div className="w-20 h-20 bg-gradient-to-br from-[#3C3CFF]/10 to-[#6366F1]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <FileText className="h-10 w-10 text-[#3C3CFF]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No proposals yet</h3>
-              <p className="text-gray-600 mb-6">Create your first proposal to get sign-off fast.</p>
-              <div className="flex gap-3">
-                <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => router.push("/dashboard/proposals/create?template=professional")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  Use Template
-                </Button>
-                <Button variant="outline" onClick={() => router.push("/dashboard/proposals/create?template=blank")}>
+              <p className="text-gray-600 mb-6">Get started by creating your first proposal for a lead.</p>
+              <div className="flex justify-center">
+                <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => setLeadPickerOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Start from Blank
+                  Make a Proposal
                 </Button>
               </div>
             </div>
@@ -489,9 +490,11 @@ export function ProposalsSection() {
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Title</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Recipient</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Value</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Date Sent</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Link</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Actions</th>
                   </tr>
                 </thead>
@@ -539,6 +542,9 @@ export function ProposalsSection() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {proposal.recipient.email || '—'}
+                      </td>
                       <td className="px-4 py-4 font-semibold text-gray-900">
                         ${proposal.value.toLocaleString()}
                       </td>
@@ -548,6 +554,20 @@ export function ProposalsSection() {
                       <td className="px-4 py-4 text-sm text-gray-600">
                         {proposal.dateSent ? format(proposal.dateSent, "MMM d, yyyy") : "—"}
                       </td>
+                      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                        {proposal.status !== 'Draft' ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleCopyLink(proposal)}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            Copy
+                          </Button>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -556,22 +576,21 @@ export function ProposalsSection() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleView(proposal)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDuplicate(proposal)}>
                               <Files className="mr-2 h-4 w-4" />
                               Duplicate
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              navigator.clipboard.writeText(`https://app.example.com/proposals/${proposal.id}`)
-                              toast.success("Link copied to clipboard")
-                            }}>
-                              <Copy className="mr-2 h-4 w-4" />
-                              Copy link
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">
+                            {proposal.status !== 'Draft' && (
+                              <DropdownMenuItem onClick={() => handleCopyLink(proposal)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                Copy link
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(proposal.id)}>
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
@@ -640,8 +659,9 @@ export function ProposalsSection() {
                   Send
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => {
-                  navigator.clipboard.writeText(`https://app.example.com/proposals/${selectedProposal.id}`)
-                  toast.success("Link copied!")
+                  if (selectedProposal) {
+                    handleCopyLink(selectedProposal)
+                  }
                 }}>
                   <Copy className="mr-2 h-4 w-4" />
                   Copy Link
@@ -740,7 +760,13 @@ export function ProposalsSection() {
 
               {/* Footer Actions */}
               <div className="flex items-center gap-3 pt-4 border-t">
-                <Button variant="outline" className="flex-1">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    router.push(`/dashboard/proposals/create?id=${selectedProposal.id}`)
+                  }}
+                >
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </Button>
@@ -757,7 +783,7 @@ export function ProposalsSection() {
       <Dialog open={leadPickerOpen} onOpenChange={setLeadPickerOpen}>
         <DialogContent className="max-w-4xl" data-help="lead-picker-modal">
           <DialogHeader>
-            <DialogTitle>Select a lead to start a proposal</DialogTitle>
+            <DialogTitle>Create a Proposal</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -765,7 +791,7 @@ export function ProposalsSection() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   data-help="input-search-leads-modal"
-                  placeholder="Search leads by name, company, or email"
+                  placeholder={`Search ${recipientType === 'lead' ? 'leads' : 'clients'} by name, company, or email`}
                   className="pl-10"
                   value={leadSearch}
                   onChange={(e) => setLeadSearch(e.target.value)}
@@ -777,8 +803,19 @@ export function ProposalsSection() {
               </div>
             </div>
 
-            {!useCustomLead ? (
-              <div className="border rounded-lg overflow-hidden" data-help="leads-selection-table">
+            {!useCustomLead && (
+              <>
+                <Tabs value={recipientType} onValueChange={(v) => setRecipientType(v as 'lead' | 'client')}>
+                  <TabsList className="w-full">
+                    <TabsTrigger value="lead" className="flex-1">
+                      Leads
+                    </TabsTrigger>
+                    <TabsTrigger value="client" className="flex-1">
+                      Clients
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <div className="border rounded-lg overflow-hidden" data-help="leads-selection-table">
                 <div className="max-h-96 overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
@@ -792,45 +829,114 @@ export function ProposalsSection() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockProposals.slice(0, 1) && []}
-                      {Array.from({ length: 25 }).map((_, i) => {
-                        const name = ["Sarah Johnson", "Michael Chen", "Emily Davis", "David Miller", "Jessica Wilson"][i % 5]
-                        const company = ["Tech Corp", "Design Studio", "Marketing Agency", "Startup Inc", "Consulting LLC"][i % 5]
-                        const email = `contact${i}@company.com`
-                        const source = ["Website", "Referral", "Ad", "Inbound"][i % 4]
-                        const id = `lead-${i}`
-                        const match = (name + company + email + source).toLowerCase().includes(leadSearch.toLowerCase())
-                        if (!match) return null
-                        return (
-                          <tr key={id} className="border-t hover:bg-gray-50">
-                            <td className="px-3 py-2">
-                              <input
-                                type="radio"
-                                name="leadSelect"
-                                data-help={`radio-lead-${i}`}
-                                checked={selectedLeadId === id}
-                                onChange={() => {
-                                  setSelectedLeadId(id)
-                                  setSelectedLead({ id, name, company, email })
-                                }}
-                              />
-                            </td>
-                            <td className="px-3 py-2">{name}</td>
-                            <td className="px-3 py-2">{company}</td>
-                            <td className="px-3 py-2">{email}</td>
-                            <td className="px-3 py-2">{source}</td>
-                            <td className="px-3 py-2 text-right">${(Math.floor(Math.random()*40000)+5000).toLocaleString()}</td>
-                          </tr>
-                        )
-                      })}
+                      {leadsLoading ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-8 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-[#3C3CFF] mb-2" />
+                            <p className="text-sm text-gray-600">Loading leads...</p>
+                          </td>
+                        </tr>
+                      ) : leads.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-8 text-center text-gray-500">
+                            No leads found
+                          </td>
+                        </tr>
+                      ) : recipientType === 'lead' ? (
+                        leads
+                          .filter(lead => {
+                            const searchLower = leadSearch.toLowerCase()
+                            return (
+                              lead.name?.toLowerCase().includes(searchLower) ||
+                              lead.company?.toLowerCase().includes(searchLower) ||
+                              lead.email?.toLowerCase().includes(searchLower) ||
+                              lead.source?.toLowerCase().includes(searchLower)
+                            )
+                          })
+                          .map((lead) => {
+                            const id = lead.id
+                            return (
+                              <tr key={id} className="border-t hover:bg-gray-50">
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="radio"
+                                    name="recipientSelect"
+                                    data-help={`radio-lead-${id}`}
+                                    checked={selectedLeadId === id}
+                                    onChange={() => {
+                                      setSelectedLeadId(id)
+                                      setSelectedLead({ 
+                                        id, 
+                                        name: lead.name, 
+                                        company: lead.company || '', 
+                                        email: lead.email || '' 
+                                      })
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-3 py-2">{lead.name}</td>
+                                <td className="px-3 py-2">{lead.company || '—'}</td>
+                                <td className="px-3 py-2">{lead.email || '—'}</td>
+                                <td className="px-3 py-2">{lead.source || '—'}</td>
+                                <td className="px-3 py-2 text-right">
+                                  {lead.value ? `$${lead.value.toLocaleString()}` : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })
+                      ) : (
+                        clients
+                          .filter(client => {
+                            const searchLower = leadSearch.toLowerCase()
+                            const fullName = `${client.first_name} ${client.last_name}`.trim()
+                            return (
+                              fullName.toLowerCase().includes(searchLower) ||
+                              client.company?.toLowerCase().includes(searchLower) ||
+                              client.email?.toLowerCase().includes(searchLower)
+                            )
+                          })
+                          .map((client) => {
+                            const id = client.id
+                            const fullName = `${client.first_name} ${client.last_name}`.trim()
+                            return (
+                              <tr key={id} className="border-t hover:bg-gray-50">
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="radio"
+                                    name="recipientSelect"
+                                    data-help={`radio-client-${id}`}
+                                    checked={selectedLeadId === id}
+                                    onChange={() => {
+                                      setSelectedLeadId(id)
+                                      setSelectedLead({ 
+                                        id, 
+                                        name: fullName, 
+                                        company: client.company || '', 
+                                        email: client.email || '' 
+                                      })
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-3 py-2">{fullName}</td>
+                                <td className="px-3 py-2">{client.company || '—'}</td>
+                                <td className="px-3 py-2">{client.email || '—'}</td>
+                                <td className="px-3 py-2">Client</td>
+                                <td className="px-3 py-2 text-right">—</td>
+                              </tr>
+                            )
+                          })
+                      )}
                     </tbody>
                   </table>
                 </div>
                 <div className="p-3 bg-gray-50 text-xs text-gray-600">
-                  Tip: You can also switch to "Enter custom details" to create a proposal for someone not in your leads.
+                  Tip: Switch between Leads and Clients tabs above, or use "Enter custom details" for someone not in your list.
                 </div>
               </div>
-            ) : (
+              </>
+            )}
+            
+            {useCustomLead && (
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <Label>Name</Label>
@@ -859,11 +965,12 @@ export function ProposalsSection() {
                   return
                 }
                 if (!selectedLeadId) {
-                  toast.error("Please select a lead or enter custom details")
+                  toast.error("Please select a lead/client or enter custom details")
                   return
                 }
                 const q = selectedLead ? `&clientName=${encodeURIComponent(selectedLead.name)}&clientCompany=${encodeURIComponent(selectedLead.company)}&clientEmail=${encodeURIComponent(selectedLead.email)}` : ""
-                router.push(`/dashboard/proposals/create?template=professional&leadId=${encodeURIComponent(selectedLeadId)}${q}`)
+                const typeParam = recipientType === 'client' ? '&clientId=' : '&leadId='
+                router.push(`/dashboard/proposals/create?template=professional${typeParam}${encodeURIComponent(selectedLeadId)}${q}`)
               }}
             >
               Continue

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label"
 import Image from "next/image"
 import { type Account } from "@/lib/auth"
 import { forwardRef } from "react"
+import { JolixFooter } from "@/components/JolixFooter"
 
 interface InvoicePreviewModalProps {
   open: boolean
@@ -248,29 +249,9 @@ export const InvoicePreviewModal = forwardRef<HTMLDivElement, InvoicePreviewModa
             <p>Thank you for your business!</p>
           </div>
 
-          {/* Powered by Jolix Footer - Free Plan Only */}
-          {account?.plan_tier === 'free' && (
-            <div className="pt-10 mt-10 border-t border-gray-100 px-12">
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                <span>Powered by</span>
-                <a
-                  href="https://jolix.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
-                >
-                  <Image
-                    src="/jolixlogo.png"
-                    alt="Jolix"
-                    width={18}
-                    height={18}
-                    className="object-contain"
-                  />
-                  <span>Jolix</span>
-                </a>
-              </div>
-            </div>
-          )}
+          <div className="px-12">
+            <JolixFooter planTier={account?.plan_tier} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>

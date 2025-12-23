@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner"
 import { Loader2, CheckCircle, Edit } from "lucide-react"
 import { hasFormBeenSubmitted, type Form, type FormSubmission } from "@/lib/forms"
+import { JolixFooter } from "@/components/JolixFooter"
 
 interface FormFillingModalProps {
   open: boolean
@@ -21,6 +22,7 @@ interface FormFillingModalProps {
   clientEmail?: string
   clientName?: string
   onFormSubmitted?: () => void
+  account?: any
 }
 
 export function FormFillingModal({
@@ -29,7 +31,8 @@ export function FormFillingModal({
   form,
   clientEmail,
   clientName,
-  onFormSubmitted
+  onFormSubmitted,
+  account
 }: FormFillingModalProps) {
   const [responses, setResponses] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(false)
@@ -359,6 +362,9 @@ export function FormFillingModal({
               {fields.map((field) => renderField(field))}
             </div>
           )}
+
+          {/* Powered by Jolix Footer */}
+          <JolixFooter planTier={account?.plan_tier} />
         </div>
 
         {!hasSubmitted && (

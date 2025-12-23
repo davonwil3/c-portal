@@ -153,6 +153,18 @@ export default function CreatePortalPage() {
       // Store just the slug (not the full URL) - URL will be generated dynamically
       const portalUrl = portalSlug
 
+      // Get selected client data
+      const selectedClient = clients.find(c => c.id === formData.clientId)
+      if (!selectedClient) {
+        toast.error("Selected client not found")
+        return
+      }
+
+      // Generate client slug from client name/company
+      const clientSlug = selectedClient.company
+        ? selectedClient.company.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim()
+        : `${selectedClient.first_name}-${selectedClient.last_name}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').trim()
+
       // Check if a portal already exists for this client
       const { data: existingPortal } = await supabase
         .from('portals')
@@ -201,11 +213,11 @@ export default function CreatePortalPage() {
           .insert({
             account_id: profile.account_id,
             client_id: formData.clientId,
-            email: selectedClient?.email || `${selectedClient?.first_name?.toLowerCase()}.${selectedClient?.last_name?.toLowerCase()}@example.com`,
-            name: selectedClient?.first_name && selectedClient?.last_name 
+            email: selectedClient.email || `${selectedClient.first_name?.toLowerCase()}.${selectedClient.last_name?.toLowerCase()}@example.com`,
+            name: selectedClient.first_name && selectedClient.last_name
               ? `${selectedClient.first_name} ${selectedClient.last_name}`
-              : selectedClient?.company || 'Client',
-            company_name: selectedClient?.company || (selectedClient?.first_name + ' ' + selectedClient?.last_name) || 'Client Company',
+              : selectedClient.company || 'Client',
+            company_name: selectedClient.company || `${selectedClient.first_name} ${selectedClient.last_name}` || 'Client Company',
             client_slug: clientSlug,
             is_active: true,
             role: 'client'
@@ -267,6 +279,24 @@ export default function CreatePortalPage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Create Portal</h1>
               <p className="text-gray-600 mt-1">Set up a new client portal</p>
+            </div>
+          </div>
+        </div>
+
+        {/* One Portal Per Client Notice */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-5xl">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 text-xs font-bold">i</span>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-blue-900">One Portal Per Client</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Each client can only have one portal. If you need to create a new portal for a client who already has one,
+                you'll need to delete the existing portal first.
+              </p>
             </div>
           </div>
         </div>

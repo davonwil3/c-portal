@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowRight, Mail, Lock, User, Building2, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { signUpWithEmail, signInWithEmail, signInWithOAuth } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -142,7 +143,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="hidden lg:flex flex-col justify-center items-center bg-gradient-to-br from-[#3C3CFF] to-[#6D6DFF] relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-center items-center bg-gradient-to-br from-[#4647E0] to-[#6B5CFF] relative overflow-hidden px-12">
         {/* Subtle Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{
@@ -151,63 +152,71 @@ export default function AuthPage() {
         </div>
 
         {/* Floating Elements */}
-        <div className="absolute inset-0 opacity-30">
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
           <div className="absolute top-20 right-20 w-32 h-32 bg-white/30 rounded-full blur-xl"></div>
           <div className="absolute bottom-20 left-20 w-24 h-24 bg-white/25 rounded-full blur-xl"></div>
           <div className="absolute top-1/2 left-1/3 w-20 h-20 bg-white/20 rounded-full blur-xl"></div>
         </div>
 
         {/* Main Content */}
-        <div className="relative z-10 text-center text-white px-12 max-w-lg space-y-8 pb-12">
+        <div className="relative z-10 w-full max-w-lg space-y-10">
           {/* Logo */}
-          <div className="flex justify-center mb-12">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30">
-                <span className="text-white font-bold text-xl">C</span>
-              </div>
-              <span className="text-2xl font-bold text-white">ClientPortalHQ</span>
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-white/30 shadow-sm">
+               {/* Using text placeholder as requested if image not handy, or I can try to use Image if I import it. 
+                   The user said "use the Jolix logo mark (or a simple “J” placeholder...)" 
+                   I will use the text J for simplicity and robustness as I am not sure if I can import Image without checking imports at top, 
+                   Wait, I should check imports. 'lucide-react' is there. 'next/image' is NOT imported in the read file above.
+                   I will use a simple J text or SVG to be safe, or just the J text as requested.
+               */}
+              <Image
+                src="/jolixlogo.png"
+                alt="Jolix Logo"
+                width={52}
+                height={52}
+                className="w-10 h-10"
+                quality={90}
+              />
             </div>
+            <span className="text-2xl font-medium text-white tracking-tight">Jolix</span>
           </div>
 
-          {/* Main Headline */}
-          <div className="space-y-6">
-            <h1 className="text-4xl lg:text-5xl font-bold leading-tight">
-              Your client portal
-              <br />
-              <span className="bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">simplified</span>
+          {/* Main Headline & Subheadline */}
+          <div className="space-y-7">
+            <h1 className="text-4xl lg:text-5xl font-bold leading-tight text-white text-left">
+              Run your freelance business like a pro.
             </h1>
 
-            <h3 className="text-xl lg:text-2xl text-blue-100 leading-relaxed font-medium">
-              Share files, send invoices, and manage clients from one beautiful portal.
-            </h3>
+            <p className="text-lg text-blue-100 leading-relaxed font-normal text-left max-w-full">
+              Find clients, manage projects, and get paid in one place.
+            </p>
           </div>
 
-          {/* Simple Feature List */}
-          <div className="space-y-4 text-left max-w-md mx-auto">
-            <div className="flex items-center space-x-3 text-lg text-blue-100">
-              <div className="flex-shrink-0 w-2 h-2 bg-white rounded-full"></div>
-              <span>Launch in 2 minutes</span>
+          {/* Bullet List */}
+          <div className="space-y-4 text-left">
+            <div className="flex items-start space-x-3 text-lg text-blue-50/90">
+              <div className="flex-shrink-0 mt-2 w-1.5 h-1.5 bg-white rounded-full"></div>
+              <span>Daily curated leads matched to your skills</span>
             </div>
 
-            <div className="flex items-center space-x-3 text-lg text-blue-100">
-              <div className="flex-shrink-0 w-2 h-2 bg-white rounded-full"></div>
-              <span>Look professional instantly</span>
+            <div className="flex items-start space-x-3 text-lg text-blue-50/90">
+              <div className="flex-shrink-0 mt-2 w-1.5 h-1.5 bg-white rounded-full"></div>
+              <span>Projects, invoices, and client portals all connected</span>
             </div>
 
-            <div className="flex items-center space-x-3 text-lg text-blue-100">
-              <div className="flex-shrink-0 w-2 h-2 bg-white rounded-full"></div>
-              <span>Perfect for freelancers</span>
+            <div className="flex items-start space-x-3 text-lg text-blue-50/90">
+              <div className="flex-shrink-0 mt-2 w-1.5 h-1.5 bg-white rounded-full"></div>
+              <span>XP levels and challenges that reward consistent progress</span>
             </div>
           </div>
 
-          {/* Trust Indicator */}
+          {/* Footer Line */}
           <div className="pt-8 border-t border-white/10">
-            <p className="text-blue-200 text-sm">Trusted by freelancers worldwide</p>
+            <p className="text-blue-200/70 text-sm font-medium">
+              Built for ambitious freelancers who want to run their business like a pro.
+            </p>
           </div>
         </div>
-
-        {/* Bottom Gradient */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/5 to-transparent"></div>
       </div>
 
       {/* Right Side - Auth Form */}
@@ -363,10 +372,10 @@ export default function AuthPage() {
                       onClick={() => handleOAuthSignIn('apple')}
                       disabled={isLoading}
                     >
-                      <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                      <svg className="w-6 h-6 mr-2" viewBox="0 0 24 24">
                         <path
                           fill="currentColor"
-                          d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.024-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.402.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24.009 12.017 24.009c6.624 0 11.99-5.367 11.99-11.988C24.007 5.367 18.641.001 12.017.001z"
+                          d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
                         />
                       </svg>
                       Apple
@@ -440,7 +449,7 @@ export default function AuthPage() {
                       />
                     </div>
                     {errors.email && <p className="text-sm text-red-600">{errors.email}</p>}
-                    <p className="text-xs text-gray-500">No spam, ever.</p>
+                   
                   </div>
 
                   <div className="space-y-2">
@@ -558,7 +567,7 @@ export default function AuthPage() {
                       <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                         <path
                           fill="currentColor"
-                          d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.024-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.402.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24.009 12.017 24.009c6.624 0 11.99-5.367 11.99-11.988C24.007 5.367 18.641.001 12.017.001z"
+                          d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
                         />
                       </svg>
                       Apple

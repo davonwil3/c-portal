@@ -4,17 +4,43 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   
-  // Check if this is a client portal subdomain
-  // Format: clientportal.[company-name].jolix.io or clientportal.[username].jolix.io
+  // Check if this is a proposal subdomain
+  // Format: proposal.[proposalid].jolix.io
   // Also handle localhost in development
-  if (hostname.includes('clientportal') && (hostname.includes('.jolix.io') || hostname.includes('localhost'))) {
+  if (hostname.startsWith('proposal.') && (hostname.includes('.jolix.io') || hostname.includes('localhost'))) {
+    let proposalId = ''
+    
+    if (hostname.includes('.jolix.io')) {
+      // Production: proposal.[proposalid].jolix.io -> extract [proposalid]
+      const parts = hostname.split('.')
+      if (parts.length >= 3 && parts[0] === 'proposal') {
+        proposalId = parts[1] // Get the proposalId between 'proposal' and 'jolix'
+      }
+    } else if (hostname.includes('localhost')) {
+      // Development: localhost:3000 - proposalId will be in the path, handled by Next.js routing
+      return NextResponse.next()
+    }
+    
+    if (proposalId) {
+      // Rewrite to /proposal/[proposalid]
+      const url = request.nextUrl.clone()
+      url.pathname = `/proposal/${proposalId}${url.pathname === '/' ? '' : url.pathname}`
+      
+      return NextResponse.rewrite(url)
+    }
+  }
+  
+  // Check if this is a client portal subdomain
+  // Format: portal.[company-name].jolix.io or portal.[username].jolix.io
+  // Also handle localhost in development
+  if (hostname.startsWith('portal.') && (hostname.includes('.jolix.io') || hostname.includes('localhost'))) {
     let slug = ''
     
     if (hostname.includes('.jolix.io')) {
-      // Production: clientportal.[slug].jolix.io -> extract [slug]
-    const parts = hostname.split('.')
-      if (parts.length >= 3 && parts[0] === 'clientportal') {
-        slug = parts[1] // Get the slug between 'clientportal' and 'jolix'
+      // Production: portal.[slug].jolix.io -> extract [slug]
+      const parts = hostname.split('.')
+      if (parts.length >= 3 && parts[0] === 'portal') {
+        slug = parts[1] // Get the slug between 'portal' and 'jolix'
       }
     } else if (hostname.includes('localhost')) {
       // Development: localhost:3000 - slug will be in the path, handled by Next.js routing

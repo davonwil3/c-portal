@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/dashboard/layout"
 import { useTour } from "@/contexts/TourContext"
-import { dummyPipelineLeads, dummyLeads } from "@/lib/tour-dummy-data"
+import { dummyPipelineLeads, dummyLeads, dummyTourLeads } from "@/lib/tour-dummy-data"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -46,6 +46,17 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
+import { getLeads, updateLead, type Lead } from "@/lib/leads"
+import { Loader2 } from "lucide-react"
+import {
+  getPipelineStages,
+  getPipelineStagesFromDB,
+  statusToStageId,
+  stageIdToStatus,
+  type PipelineStage,
+} from "@/lib/pipeline-stages"
+import { PipelineSettingsDrawer } from "@/components/lead-workflow/PipelineSettingsDrawer"
+import { ImportLeadsModal } from "@/components/lead-workflow/ImportLeadsModal"
 
 // Mock data - 30 unique leads (same as ManageLeads page)
 const uniqueLeadsData = [
@@ -107,10 +118,12 @@ const defaultStages = [
   { id: "lost", name: "Lost", color: "bg-red-100 text-red-700" },
 ]
 
+
 export default function PipelinePage() {
   const { isTourRunning } = useTour()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [loading, setLoading] = useState(true)
   
   // Use dummy data during tours
   const initialLeads = useMemo(() => {
@@ -128,7 +141,6 @@ export default function PipelinePage() {
             value: lead.value,
             source: lead.source,
             stage: stage,
-            niche: 'Web Dev',
             notes: `Potential project for ${lead.company}`,
             lastContact: new Date().toISOString(),
             nextFollowUp: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -138,15 +150,143 @@ export default function PipelinePage() {
       })
       return tourLeads
     }
-    return mockLeads
+    return []
   }, [isTourRunning])
   
   const [leads, setLeads] = useState(initialLeads)
+
+  // Load leads from database
+  useEffect(() => {
+    const loadLeads = async () => {
+      try {
+        setLoading(true)
+        
+        // Use tour mock data if tour is running
+        if (isTourRunning) {
+          const pipelineLeads = dummyTourLeads.map((lead) => ({
+            id: lead.id,
+            name: lead.name,
+            company: lead.company || '',
+            email: lead.email || '',
+            phone: lead.phone || '',
+            value: lead.value || 0,
+            source: lead.source,
+            stage: statusToStageId(lead.status),
+            notes: lead.notes || '',
+            lastContact: lead.last_contacted_at || lead.created_at,
+            nextFollowUp: lead.last_contacted_at || lead.created_at,
+            tags: lead.tags || [],
+          }))
+          setLeads(pipelineLeads)
+          setLoading(false)
+          return
+        }
+        
+        const dbLeads = await getLeads()
+        // Convert database leads to pipeline format
+        const pipelineLeads = dbLeads.map((lead: Lead) => ({
+          id: lead.id,
+          name: lead.name,
+          company: lead.company || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
+          value: lead.value || 0,
+          source: lead.source,
+          stage: statusToStageId(lead.status),
+          notes: lead.notes || '',
+          lastContact: lead.last_contacted_at || lead.created_at,
+          nextFollowUp: lead.last_contacted_at || lead.created_at,
+          tags: lead.tags || [],
+        }))
+        setLeads(pipelineLeads)
+      } catch (error) {
+        console.error('Error loading leads:', error)
+        toast.error('Failed to load leads')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadLeads()
+  }, [isTourRunning])
+
+  // Load stages from database on mount
+  useEffect(() => {
+    if (isTourRunning) return
+    
+    const loadStages = async () => {
+      try {
+        const dbStages = await getPipelineStagesFromDB()
+        setStages(dbStages)
+        // Update localStorage for fast access
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pipeline_stages', JSON.stringify(dbStages))
+        }
+      } catch (error) {
+        console.error('Error loading stages from DB:', error)
+        // Use cached stages from localStorage
+        setStages(getPipelineStages())
+      }
+    }
+    loadStages()
+  }, [isTourRunning])
+
+  // Listen for pipeline stages updates
+  useEffect(() => {
+    const handleStagesUpdate = async () => {
+      if (isTourRunning) return
+      // Reload from database to get latest
+      try {
+        const dbStages = await getPipelineStagesFromDB()
+        setStages(dbStages)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pipeline_stages', JSON.stringify(dbStages))
+        }
+        // Reload leads to reflect stage changes
+        const dbLeads = await getLeads()
+        const pipelineLeads = dbLeads.map((lead: Lead) => ({
+          id: lead.id,
+          name: lead.name,
+          company: lead.company || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
+          value: lead.value || 0,
+          source: lead.source,
+          stage: statusToStageId(lead.status),
+          notes: lead.notes || '',
+          lastContact: lead.last_contacted_at || lead.created_at,
+          nextFollowUp: lead.last_contacted_at || lead.created_at,
+          tags: lead.tags || [],
+        }))
+        setLeads(pipelineLeads)
+      } catch (error) {
+        console.error('Error reloading stages:', error)
+        setStages(getPipelineStages())
+      }
+    }
+    window.addEventListener('pipeline-stages-updated', handleStagesUpdate)
+    return () => {
+      window.removeEventListener('pipeline-stages-updated', handleStagesUpdate)
+    }
+  }, [isTourRunning])
+
   const [selectedLead, setSelectedLead] = useState<any>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newLeadOpen, setNewLeadOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState<string>(searchParams.get('q') || "")
+  const [importCsvOpen, setImportCsvOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState<string>(() => {
+    const q = searchParams.get('q')
+    return q ? decodeURIComponent(q) : ""
+  })
+  
+  // Update search query when URL param changes
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q) {
+      setSearchQuery(decodeURIComponent(q))
+    }
+  }, [searchParams])
   const [filterOpen, setFilterOpen] = useState(false)
   const [stageFilter, setStageFilter] = useState("all")
   const [sourceFilter, setSourceFilter] = useState("all")
@@ -157,16 +297,11 @@ export default function PipelinePage() {
   const [showCustomSourceInput, setShowCustomSourceInput] = useState(false)
   
   // Settings state - using mutable stages
-  const [stages, setStages] = useState([...defaultStages])
+  const [stages, setStages] = useState<PipelineStage[]>(getPipelineStages())
   const [followUpInterval, setFollowUpInterval] = useState(3)
   const [autoArchive, setAutoArchive] = useState(false)
   const [defaultCurrency, setDefaultCurrency] = useState("USD")
   
-  // Settings working state (for temporary edits)
-  const [workingStages, setWorkingStages] = useState(stages)
-  const [workingFollowUp, setWorkingFollowUp] = useState(followUpInterval)
-  const [workingAutoArchive, setWorkingAutoArchive] = useState(autoArchive)
-  const [workingCurrency, setWorkingCurrency] = useState(defaultCurrency)
 
   // Drag & Drop state/refs
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
@@ -238,13 +373,10 @@ export default function PipelinePage() {
   // Calculate metrics
   const metrics = useMemo(() => {
     const total = leads.length
-    const active = leads.filter(l => !["won", "lost"].includes(l.stage)).length
     const won = leads.filter(l => l.stage === "won").length
     const lost = leads.filter(l => l.stage === "lost").length
     const winRate = total > 0 ? Math.round((won / (won + lost)) * 100) : 0
-    const avgDays = 12 // Mock value
-
-    return { total, active, won, lost, winRate, avgDays }
+    return { total, won, lost, winRate }
   }, [leads])
 
   // Filter leads
@@ -278,77 +410,27 @@ export default function PipelinePage() {
     setDrawerOpen(true)
   }
 
-  const handleMoveStage = (leadId: string, newStage: string) => {
-    setLeads(leads.map(lead => 
-      lead.id === leadId ? { ...lead, stage: newStage } : lead
-    ))
-    toast.success("Lead moved successfully")
+  const handleMoveStage = async (leadId: string, newStage: string) => {
+    try {
+      // Update in database
+      const newStatus = stageIdToStatus(newStage) as Lead['status']
+      await updateLead(leadId, { status: newStatus })
+      
+      // Update local state
+      setLeads(leads.map(lead => 
+        lead.id === leadId ? { ...lead, stage: newStage } : lead
+      ))
+      toast.success("Lead moved successfully")
+    } catch (error) {
+      console.error('Error moving lead:', error)
+      toast.error('Failed to move lead')
+    }
   }
 
-  // Sync working states when settings opens
-  useEffect(() => {
-    if (settingsOpen) {
-      setWorkingStages([...stages])
-      setWorkingFollowUp(followUpInterval)
-      setWorkingAutoArchive(autoArchive)
-      setWorkingCurrency(defaultCurrency)
-    }
-  }, [settingsOpen, stages, followUpInterval, autoArchive, defaultCurrency])
 
   // Settings handlers
   const handleOpenSettings = () => {
     setSettingsOpen(true)
-  }
-
-  const handleSaveSettings = () => {
-    setStages([...workingStages])
-    setFollowUpInterval(workingFollowUp)
-    setAutoArchive(workingAutoArchive)
-    setDefaultCurrency(workingCurrency)
-    setSettingsOpen(false)
-    toast.success("Pipeline settings saved successfully")
-  }
-
-  const handleCancelSettings = () => {
-    setSettingsOpen(false)
-  }
-
-  const handleUpdateStageName = (stageId: string, newName: string) => {
-    setWorkingStages(workingStages.map(stage =>
-      stage.id === stageId ? { ...stage, name: newName } : stage
-    ))
-  }
-
-  const handleDeleteStage = (stageId: string) => {
-    if (stageId === "new" || stageId === "won") {
-      toast.error("Cannot delete required stages (New and Won)")
-      return
-    }
-    setWorkingStages(workingStages.filter(stage => stage.id !== stageId))
-    toast.success("Stage deleted")
-  }
-
-  const handleMoveStageUp = (index: number) => {
-    if (index === 0) return
-    const newStages = [...workingStages]
-    ;[newStages[index - 1], newStages[index]] = [newStages[index], newStages[index - 1]]
-    setWorkingStages(newStages)
-  }
-
-  const handleMoveStageDown = (index: number) => {
-    if (index === workingStages.length - 1) return
-    const newStages = [...workingStages]
-    ;[newStages[index], newStages[index + 1]] = [newStages[index + 1], newStages[index]]
-    setWorkingStages(newStages)
-  }
-
-  const handleAddStage = () => {
-    const newId = `stage-${Date.now()}`
-    setWorkingStages([...workingStages, {
-      id: newId,
-      name: "New Stage",
-      color: "bg-gray-100 text-gray-700"
-    }])
   }
 
   const getStageValue = (stageId: string) => {
@@ -374,7 +456,7 @@ export default function PipelinePage() {
               </div>
               <Button
                 variant="secondary"
-                onClick={() => router.back()}
+                onClick={() => router.push('/dashboard/lead-workflow?active=manage-leads')}
                 className="bg-white/20 hover:bg-white/30 text-white border-0"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -385,7 +467,7 @@ export default function PipelinePage() {
         </div>
 
         {/* Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-white border-0 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -393,15 +475,6 @@ export default function PipelinePage() {
                 <p className="text-xs text-gray-600">Total Leads</p>
               </div>
               <p className="text-2xl font-bold text-gray-900">{metrics.total}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white border-0 shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Users className="h-4 w-4 text-blue-500" />
-                <p className="text-xs text-gray-600">Active</p>
-              </div>
-              <p className="text-2xl font-bold text-gray-900">{metrics.active}</p>
             </CardContent>
           </Card>
           <Card className="bg-white border-0 shadow-sm">
@@ -431,21 +504,12 @@ export default function PipelinePage() {
               <p className="text-2xl font-bold text-gray-900">{metrics.winRate}%</p>
             </CardContent>
           </Card>
-          <Card className="bg-white border-0 shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Clock className="h-4 w-4 text-orange-500" />
-                <p className="text-xs text-gray-600">Avg Days</p>
-              </div>
-              <p className="text-2xl font-bold text-gray-900">{metrics.avgDays}</p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Actions and Filters */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="relative flex-1 max-w-md">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 data-help="input-pipeline-search"
@@ -486,10 +550,12 @@ export default function PipelinePage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Sources</SelectItem>
-                        <SelectItem value="Reddit">Reddit</SelectItem>
-                        <SelectItem value="Inbound">Inbound</SelectItem>
+                        <SelectItem value="Lead Engine">Lead Engine</SelectItem>
+                        <SelectItem value="Portfolio">Portfolio</SelectItem>
+                        <SelectItem value="Website form">Website form</SelectItem>
+                        <SelectItem value="Social">Social</SelectItem>
                         <SelectItem value="Referral">Referral</SelectItem>
-                        <SelectItem value="Ad Campaign">Ad Campaign</SelectItem>
+                        <SelectItem value="Manual Import">Manual Import</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -497,8 +563,8 @@ export default function PipelinePage() {
               </PopoverContent>
             </Popover>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline">
+          <div className="flex items-center gap-3 ml-auto">
+            <Button variant="outline" onClick={() => setImportCsvOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />
               Import
             </Button>
@@ -513,7 +579,16 @@ export default function PipelinePage() {
           </div>
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-[#3C3CFF]" />
+            <span className="ml-2 text-gray-600">Loading leads...</span>
+          </div>
+        )}
+
         {/* Kanban Board */}
+        {!loading && (
         <div
           className="overflow-x-auto pb-4"
           ref={scrollContainerRef}
@@ -524,7 +599,6 @@ export default function PipelinePage() {
           <div className="flex gap-4 min-w-max">
             {stages.map(stage => {
               const stageLeads = leadsByStage[stage.id] || []
-              const stageValue = getStageValue(stage.id)
 
               return (
                 <div
@@ -538,15 +612,10 @@ export default function PipelinePage() {
                     <CardContent className="p-4">
                       {/* Column Header */}
                       <div className="mb-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge className={stage.color}>{stage.name}</Badge>
-                            <span className="text-sm font-semibold text-gray-700">
-                              {stageLeads.length}
-                            </span>
-                          </div>
-                          <span className="text-sm font-medium text-gray-600">
-                            ${(stageValue / 1000).toFixed(0)}k
+                        <div className="flex items-center gap-2">
+                          <Badge className={stage.color}>{stage.name}</Badge>
+                          <span className="text-sm font-semibold text-gray-700">
+                            {stageLeads.length}
                           </span>
                         </div>
                       </div>
@@ -607,6 +676,7 @@ export default function PipelinePage() {
             })}
           </div>
         </div>
+        )}
 
         {/* Lead Details Drawer */}
         <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -723,160 +793,67 @@ export default function PipelinePage() {
         </Sheet>
 
         {/* Pipeline Settings Drawer */}
-        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <SheetContent className="w-[500px] sm:max-w-[500px] overflow-y-auto">
-            <SheetHeader>
-              <div className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-[#3C3CFF]" />
-                <SheetTitle className="text-2xl">Pipeline Settings</SheetTitle>
-              </div>
-            </SheetHeader>
-
-            <div className="mt-6 space-y-8">
-              {/* Pipeline Stages Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Pipeline Stages</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Customize the stages your leads move through.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {workingStages.map((stage, index) => (
-                    <div
-                      key={stage.id}
-                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-                    >
-                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                      <Input
-                        value={stage.name}
-                        onChange={(e) => handleUpdateStageName(stage.id, e.target.value)}
-                        className="flex-1 bg-white"
-                      />
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleMoveStageUp(index)}
-                          disabled={index === 0}
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleMoveStageDown(index)}
-                          disabled={index === workingStages.length - 1}
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                        {stage.id !== "new" && stage.id !== "won" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteStage(stage.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleAddStage}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Stage
-                </Button>
-              </div>
-
-              <Separator />
-
-              {/* Lead Preferences Section */}
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead Preferences</h3>
-                  
-                  <div className="space-y-6">
-                    {/* Follow-up Interval */}
-                    <div className="space-y-2">
-                      <Label htmlFor="follow-up">
-                        Default Follow-up Interval
-                      </Label>
-                      <div className="flex items-center gap-3">
-                        <Input
-                          id="follow-up"
-                          type="number"
-                          min="1"
-                          value={workingFollowUp}
-                          onChange={(e) => setWorkingFollowUp(parseInt(e.target.value) || 3)}
-                          className="w-20"
-                        />
-                        <span className="text-sm text-gray-600">
-                          Remind me after X days if no response
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Auto-Archive */}
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div>
-                        <Label htmlFor="auto-archive" className="text-base font-medium">
-                          Auto-Archive Inactive Leads
-                        </Label>
-                      </div>
-                      <Switch
-                        id="auto-archive"
-                        checked={workingAutoArchive}
-                        onCheckedChange={setWorkingAutoArchive}
-                      />
-                    </div>
-
-                    {/* Currency */}
-                    <div className="space-y-2">
-                      <Label htmlFor="currency">Default Currency</Label>
-                      <Select value={workingCurrency} onValueChange={setWorkingCurrency}>
-                        <SelectTrigger id="currency">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="USD">USD ($)</SelectItem>
-                          <SelectItem value="EUR">EUR (€)</SelectItem>
-                          <SelectItem value="GBP">GBP (£)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 mt-8 pt-4 pb-2 -mx-6 px-6">
-              <div className="flex items-center justify-end gap-3">
-                <Button variant="ghost" onClick={handleCancelSettings}>
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
-                  onClick={handleSaveSettings}
-                >
-                  Save Changes
-                </Button>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+        <PipelineSettingsDrawer
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            setSettingsOpen(open)
+            if (!open) {
+              // Reload leads when settings close to reflect any changes
+              if (!isTourRunning) {
+                const loadLeads = async () => {
+                  try {
+                    // Use tour mock data if tour is running (shouldn't get here, but just in case)
+                    if (isTourRunning) {
+                      const pipelineLeads = dummyTourLeads.map((lead) => ({
+                        id: lead.id,
+                        name: lead.name,
+                        company: lead.company || '',
+                        email: lead.email || '',
+                        phone: lead.phone || '',
+                        value: lead.value || 0,
+                        source: lead.source,
+                        stage: statusToStageId(lead.status),
+                        notes: lead.notes || '',
+                        lastContact: lead.last_contacted_at || lead.created_at,
+                        nextFollowUp: lead.last_contacted_at || lead.created_at,
+                        tags: lead.tags || [],
+                      }))
+                      setLeads(pipelineLeads)
+                      return
+                    }
+                    
+                    const dbLeads = await getLeads()
+                    const pipelineLeads = dbLeads.map((lead: Lead) => ({
+                      id: lead.id,
+                      name: lead.name,
+                      company: lead.company || '',
+                      email: lead.email || '',
+                      phone: lead.phone || '',
+                      value: lead.value || 0,
+                      source: lead.source,
+                      stage: statusToStageId(lead.status),
+                      niche: 'Web Dev',
+                      notes: lead.notes || '',
+                      lastContact: lead.last_contacted_at || lead.created_at,
+                      nextFollowUp: lead.last_contacted_at || lead.created_at,
+                      tags: lead.tags || [],
+                    }))
+                    setLeads(pipelineLeads)
+                  } catch (error) {
+                    console.error('Error loading leads:', error)
+                  }
+                }
+                loadLeads()
+              }
+            }
+          }}
+          followUpInterval={followUpInterval}
+          setFollowUpInterval={setFollowUpInterval}
+          autoArchive={autoArchive}
+          setAutoArchive={setAutoArchive}
+          defaultCurrency={defaultCurrency}
+          setDefaultCurrency={setDefaultCurrency}
+        />
 
         {/* New Lead Modal */}
         <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
@@ -916,35 +893,22 @@ export default function PipelinePage() {
                     value={newLeadSource}
                     onValueChange={(value) => {
                       setNewLeadSource(value)
-                      if (value === "custom") {
-                        setShowCustomSourceInput(true)
-                      } else {
-                        setShowCustomSourceInput(false)
-                        setCustomSource("")
-                      }
+                      setShowCustomSourceInput(false)
+                      setCustomSource("")
                     }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select source" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Website">Website</SelectItem>
+                      <SelectItem value="Lead Engine">Lead Engine</SelectItem>
+                      <SelectItem value="Portfolio">Portfolio</SelectItem>
+                      <SelectItem value="Website form">Website form</SelectItem>
+                      <SelectItem value="Social">Social</SelectItem>
                       <SelectItem value="Referral">Referral</SelectItem>
-                      <SelectItem value="Ad Campaign">Ad Campaign</SelectItem>
                       <SelectItem value="Manual Import">Manual Import</SelectItem>
-                      <SelectItem value="Reddit">Reddit</SelectItem>
-                      <SelectItem value="Inbound">Inbound</SelectItem>
-                      <SelectItem value="custom">Custom Source</SelectItem>
                     </SelectContent>
                   </Select>
-                  {showCustomSourceInput && (
-                    <Input
-                      className="mt-2"
-                      placeholder="Enter custom source..."
-                      value={customSource}
-                      onChange={(e) => setCustomSource(e.target.value)}
-                    />
-                  )}
                 </div>
               </div>
               <div>
@@ -975,9 +939,8 @@ export default function PipelinePage() {
                 Cancel
               </Button>
               <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]" onClick={() => {
-                const finalSource = newLeadSource === "custom" ? customSource : newLeadSource
-                if (newLeadSource === "custom" && !customSource.trim()) {
-                  toast.error("Please enter a custom source")
+                if (!newLeadSource) {
+                  toast.error("Please select a source")
                   return
                 }
                 // Add lead logic would go here
@@ -992,6 +955,36 @@ export default function PipelinePage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Import CSV Modal */}
+        <ImportLeadsModal
+          open={importCsvOpen}
+          onOpenChange={setImportCsvOpen}
+          onImportComplete={async () => {
+            if (!isTourRunning) {
+              try {
+                const dbLeads = await getLeads()
+                const pipelineLeads = dbLeads.map((lead: Lead) => ({
+                  id: lead.id,
+                  name: lead.name,
+                  company: lead.company || '',
+                  email: lead.email || '',
+                  phone: lead.phone || '',
+                  value: lead.value || 0,
+                  source: lead.source,
+                  stage: statusToStageId(lead.status),
+                  notes: lead.notes || '',
+                  lastContact: lead.last_contacted_at || lead.created_at,
+                  nextFollowUp: lead.last_contacted_at || lead.created_at,
+                  tags: lead.tags || [],
+                }))
+                setLeads(pipelineLeads)
+              } catch (error) {
+                console.error('Error reloading leads:', error)
+              }
+            }
+          }}
+        />
       </div>
     </DashboardLayout>
   )

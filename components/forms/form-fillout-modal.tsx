@@ -23,6 +23,7 @@ import { type Form } from "@/lib/forms"
 import { type Account } from "@/lib/auth"
 import { useState } from "react"
 import { toast } from "sonner"
+import { JolixFooter } from "@/components/JolixFooter"
 
 interface FormFilloutModalProps {
   open: boolean
@@ -402,6 +403,11 @@ export function FormFilloutModal({ open, onOpenChange, form, account, client, on
               <div className="mt-12 pt-8 border-t border-gray-200 text-center">
                 <p className="text-sm text-gray-600 mb-2">{footerLine1}</p>
                 <p className="text-sm text-gray-600">{footerLine2}</p>
+              </div>
+
+              {/* Powered by Jolix Footer */}
+              <div className="px-8">
+                <JolixFooter planTier={account?.plan_tier} />
               </div>
             </div>
           </div>

@@ -604,6 +604,67 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Comment functions
+  const formatCommentTimeAgo = (timestamp: string) => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+    if (seconds < 60) return 'Just now'
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+    return date.toLocaleDateString()
+  }
+
+  const openCommentsModal = async (file: File) => {
+    setSelectedFileForComments(file)
+    setIsCommentsModalOpen(true)
+    setLoadingComments(true)
+    
+    try {
+      const comments = await getFileComments(file.id)
+      setFileComments(comments)
+    } catch (error) {
+      console.error('Error loading comments:', error)
+      toast.error('Failed to load comments')
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  const closeCommentsModal = () => {
+    setIsCommentsModalOpen(false)
+    setSelectedFileForComments(null)
+    setFileComments([])
+    setNewComment('')
+    setIsInternalComment(false)
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedFileForComments) return
+    
+    setAddingComment(true)
+    try {
+      const comment = await addFileComment(
+        selectedFileForComments.id,
+        newComment.trim(),
+        isInternalComment
+      )
+      
+      if (comment) {
+        setFileComments([...fileComments, comment])
+        setNewComment('')
+        toast.success('Comment added successfully')
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error)
+      toast.error('Failed to add comment')
+    } finally {
+      setAddingComment(false)
+    }
+  }
+
   // Helper functions
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -2802,38 +2863,6 @@ export default function ProjectDetailPage() {
     } finally {
       setLoadingComments(false)
     }
-  }
-
-  const handleAddComment = async () => {
-    if (!selectedFileForComments || !newComment.trim()) {
-      toast.error('Please enter a comment')
-      return
-    }
-
-    try {
-      setAddingComment(true)
-      const comment = await addFileComment(selectedFileForComments.id, newComment.trim(), isInternalComment)
-
-      if (comment) {
-        setFileComments(prev => [comment, ...prev])
-        setNewComment("")
-        setIsInternalComment(false)
-        toast.success('Comment added successfully')
-      }
-    } catch (error) {
-      console.error('Error adding comment:', error)
-      toast.error('Failed to add comment')
-    } finally {
-      setAddingComment(false)
-    }
-  }
-
-  const closeCommentsModal = () => {
-    setIsCommentsModalOpen(false)
-    setSelectedFileForComments(null)
-    setFileComments([])
-    setNewComment("")
-    setIsInternalComment(false)
   }
 
   // Form action functions
@@ -5977,7 +6006,7 @@ export default function ProjectDetailPage() {
                             {comment.author_name || 'Unknown User'}
                           </span>
                           <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                            {formatTimeAgo(comment.created_at)}
+                            {formatCommentTimeAgo(comment.created_at)}
                           </span>
                         </div>
                         <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">

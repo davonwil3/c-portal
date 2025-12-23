@@ -1084,7 +1084,8 @@ function PortalsSection({
   setViewMode,
   getStatusConfig,
   getActivityIndicator,
-  handlePortalAction
+  handlePortalAction,
+  accountPortalUrl
 }: {
   portals: Portal[]
   loading: boolean
@@ -1102,6 +1103,7 @@ function PortalsSection({
   getStatusConfig: (status: string) => any
   getActivityIndicator: (lastActivity: string) => React.ReactNode
   handlePortalAction: (action: string, portal: Portal, e: React.MouseEvent) => void
+  accountPortalUrl: string
 }) {
   const router = useRouter()
   const statusOptions = [
@@ -1124,29 +1126,17 @@ function PortalsSection({
 
   return (
     <div className="space-y-6" data-help="portals-section">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Portals</h2>
+        <p className="text-gray-600 mt-1">Create and manage client-facing portals</p>
+      </div>
+
       {/* Portal Settings Info */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3" data-help="portals-notice">
         <p className="text-sm text-gray-700">
           <span className="font-medium">Global Portal Settings</span> set default templates for all new portals. Individual portal settings can be customized per portal.
         </p>
-      </div>
-
-      {/* One Portal Per Client Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4" data-help="portals-notice">
-        <div className="flex items-start space-x-3">
-          <div className="flex-shrink-0">
-            <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-blue-600 text-xs font-bold">i</span>
-            </div>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-medium text-blue-900">One Portal Per Client</h3>
-            <p className="text-sm text-blue-700 mt-1">
-              Each client can only have one portal. If you need to create a new portal for a client who already has one, 
-              you'll need to delete the existing portal first.
-            </p>
-          </div>
-        </div>
       </div>
 
       {/* Header with Search, Filters, and Actions */}
@@ -1255,20 +1245,6 @@ function PortalsSection({
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Total Portals</p>
-                    <p className="text-2xl font-bold text-gray-900">{portals.length}</p>
-                  </div>
-                  <div className="p-3 bg-blue-100 rounded-lg">
-                    <Globe className="h-6 w-6 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white border-0 shadow-sm rounded-2xl">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
                     <p className="text-sm font-medium text-gray-600">Live Portals</p>
                     <p className="text-2xl font-bold text-gray-900">
                       {portals.filter(p => p.status === "live").length}
@@ -1292,6 +1268,30 @@ function PortalsSection({
                   </div>
                   <div className="p-3 bg-purple-100 rounded-lg">
                     <BarChart3 className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-0 shadow-sm rounded-2xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-600">Portal URL</p>
+                    {accountPortalUrl ? (
+                      <p
+                        className="text-sm font-semibold text-[#3C3CFF] break-all cursor-pointer hover:underline"
+                        onClick={() => window.open(accountPortalUrl, '_blank')}
+                        title="Click to open portal login page"
+                      >
+                        {accountPortalUrl}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-500">Loading portal URL...</p>
+                    )}
+                  </div>
+                  <div className="p-3 bg-blue-100 rounded-lg ml-4">
+                    <ExternalLink className="h-6 w-6 text-blue-600" />
                   </div>
                 </div>
               </CardContent>
@@ -1695,6 +1695,7 @@ export default function ClientWorkflowPage() {
   const [portalViewMode, setPortalViewMode] = useState<"grid" | "list">("grid")
   const [showAddMembersModal, setShowAddMembersModal] = useState(false)
   const [selectedPortalForMembers, setSelectedPortalForMembers] = useState<Portal | null>(null)
+  const [accountPortalUrl, setAccountPortalUrl] = useState<string>("")
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [showViewMembersModal, setShowViewMembersModal] = useState(false)
   const [selectedPortalForView, setSelectedPortalForView] = useState<Portal | null>(null)
@@ -2551,6 +2552,61 @@ export default function ClientWorkflowPage() {
     try {
       setPortalsLoading(true)
       
+      // Get current user from Supabase
+      const supabase = createClient()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        toast.error('Failed to get user session')
+        return
+      }
+
+      // Get user profile and account info to generate portal URL
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('account_id, first_name, last_name')
+        .eq('user_id', user.id)
+        .single()
+
+      if (profile?.account_id) {
+        const { data: account } = await supabase
+          .from('accounts')
+          .select('company_name')
+          .eq('id', profile.account_id)
+          .single()
+
+        // Generate portal slug from company name or user name
+        let slug = ''
+        if (account?.company_name) {
+          slug = account.company_name
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim()
+        } else {
+          const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+          if (fullName) {
+            slug = fullName
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '')
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-')
+              .trim()
+          } else {
+            slug = 'portal'
+          }
+        }
+
+        // Generate portal URL based on environment
+        const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        const portalUrl = isDevelopment 
+          ? `http://localhost:3000/portal/${slug}/login`
+          : `https://portal.${slug}.jolix.io/login`
+        
+        setAccountPortalUrl(portalUrl)
+      }
+      
       // Use dummy data during tours
       if (isTourRunning || currentTour?.id === "portals") {
         const tourPortals = dummyPortals.map(dp => ({
@@ -2571,15 +2627,6 @@ export default function ClientWorkflowPage() {
         
         setPortals(tourPortals)
         setPortalsLoading(false)
-        return
-      }
-      
-      // Get current user from Supabase
-      const supabase = createClient()
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError || !user) {
-        toast.error('Failed to get user session')
         return
       }
 
@@ -2903,6 +2950,7 @@ export default function ClientWorkflowPage() {
             getStatusConfig={getStatusConfig}
             getActivityIndicator={getActivityIndicator}
             handlePortalAction={handlePortalAction}
+            accountPortalUrl={accountPortalUrl}
           />
         )
       default:

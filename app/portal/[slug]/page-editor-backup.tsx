@@ -2885,98 +2885,57 @@ function ContractsSection({ brandColor, contracts, selectedProject, account, cli
 }
 
 // Activity Section Component
-function ActivitySection({ brandColor, selectedProject }: { brandColor: string; selectedProject: string }) {
+function ActivitySection({ brandColor, selectedProject, projects, projectActivities = [] }: { brandColor: string; selectedProject: string; projects: Project[]; projectActivities?: any[] }) {
   const [filterType, setFilterType] = useState<"all" | "finance" | "files" | "tasks" | "contracts">("all")
-  const [activities, setActivities] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-
-  // Fetch activities when selectedProject changes
-  useEffect(() => {
-    const loadActivities = async () => {
-      if (!selectedProject || selectedProject === "all") {
-        setActivities([])
-        return
-      }
-
-      setLoading(true)
-      try {
-        const response = await fetch(`/api/projects/${selectedProject}/activities`)
-        if (response.ok) {
-          const data = await response.json()
-          setActivities(data.activities || [])
-        } else {
-          console.error('Failed to load activities')
-          setActivities([])
-        }
-      } catch (error) {
-        console.error('Error loading activities:', error)
-        setActivities([])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadActivities()
-  }, [selectedProject])
-
-  // Helper function to map activity type to filter category
-  const getActivityCategory = (activityType: string): "finance" | "files" | "tasks" | "contracts" | null => {
+  
+  // Helper function to get activity icon and styling (same as home page)
+  const getActivityIcon = (activityType: string) => {
+    const type = activityType?.toLowerCase() || ''
+    if (type.includes('invoice') || type.includes('payment')) return { icon: '💰', bgColor: 'bg-green-100' }
+    if (type.includes('file')) return { icon: '📄', bgColor: 'bg-blue-100' }
+    if (type.includes('task') || type.includes('milestone')) return { icon: '✓', bgColor: 'bg-purple-100' }
+    if (type.includes('contract')) return { icon: '📝', bgColor: 'bg-purple-100' }
+    return { icon: '📌', bgColor: 'bg-gray-100' }
+  }
+  
+  // Helper function to get activity category (same as home page)
+  const getActivityCategory = (activityType: string): string => {
     const type = activityType?.toLowerCase() || ''
     if (type.includes('invoice') || type.includes('payment')) return 'finance'
     if (type.includes('file')) return 'files'
     if (type.includes('task') || type.includes('milestone')) return 'tasks'
     if (type.includes('contract')) return 'contracts'
-    // Messages are filtered out - don't show them
-    if (type.includes('message')) return null
-    return null
+    return 'all'
   }
-
-  // Helper function to get activity icon and styling
-  const getActivityDisplay = (activityType: string) => {
-    const type = activityType?.toLowerCase() || ''
-    
-    if (type.includes('invoice') || type.includes('payment')) {
-      return {
-        icon: CreditCard,
-        iconBg: "bg-green-100",
-        iconColor: "text-green-600",
+  
+  // Use the same logic as home page - filter projectActivities by selected project
+  const filteredProjectActivities = (projectActivities || [])
+    .filter(activity => {
+      // If selectedProject is 'all' or empty/null, show all activities
+      if (!selectedProject || selectedProject === 'all') {
+        return true
       }
-    }
-    if (type.includes('contract')) {
+      // When a specific project is selected, show activities for that project
+      const activityProjectId = activity.project_id ? String(activity.project_id) : null
+      const selectedProjectId = String(selectedProject)
+      return activityProjectId === selectedProjectId
+    })
+    .map(activity => {
+      const display = getActivityIcon(activity.activity_type)
+      const category = getActivityCategory(activity.activity_type)
+      
       return {
-        icon: FileText,
-        iconBg: "bg-blue-100",
-        iconColor: "text-blue-600",
+        id: activity.id,
+        type: activity.activity_type,
+        category: category,
+        icon: display.icon,
+        bgColor: display.bgColor,
+        title: activity.action || 'Activity',
+        description: activity.metadata?.description || activity.metadata?.name || '',
+        date: activity.created_at,
+        project_id: activity.project_id,
       }
-    }
-    if (type.includes('file')) {
-      return {
-        icon: Upload,
-        iconBg: "bg-purple-100",
-        iconColor: "text-purple-600",
-      }
-    }
-    if (type.includes('message')) {
-      return {
-        icon: MessageCircle,
-        iconBg: "bg-amber-100",
-        iconColor: "text-amber-600",
-      }
-    }
-    if (type.includes('task') || type.includes('milestone')) {
-      return {
-        icon: CheckSquare,
-        iconBg: "bg-teal-100",
-        iconColor: "text-teal-600",
-      }
-    }
-    // Default
-    return {
-      icon: Activity,
-      iconBg: "bg-gray-100",
-      iconColor: "text-gray-600",
-    }
-  }
+    })
 
   // Format timestamp to relative time
   const formatTimestamp = (dateString: string) => {
@@ -2995,58 +2954,17 @@ function ActivitySection({ brandColor, selectedProject }: { brandColor: string; 
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
   }
 
-  // Format activities for display
-  const formattedActivities = activities.map(activity => {
-    const display = getActivityDisplay(activity.activity_type)
-    const category = getActivityCategory(activity.activity_type)
-    
-    // Extract title and description from action and metadata
-    let title = activity.action || 'Activity'
-    let description = ''
-    
-    if (activity.metadata) {
-      // Try to extract meaningful info from metadata
-      if (activity.metadata.file_name) {
-        description = activity.metadata.file_name
-      } else if (activity.metadata.invoice_number) {
-        description = `Invoice ${activity.metadata.invoice_number}`
-        if (activity.metadata.amount) {
-          description += ` - $${parseFloat(activity.metadata.amount).toLocaleString()}`
-        }
-      } else if (activity.metadata.contract_name) {
-        description = activity.metadata.contract_name
-      } else if (activity.metadata.task_name) {
-        description = activity.metadata.task_name
-      } else if (activity.metadata.milestone_name) {
-        description = activity.metadata.milestone_name
-      } else if (activity.metadata.content_preview) {
-        // Message content preview
-        description = activity.metadata.content_preview
-        if (activity.metadata.has_attachment && activity.metadata.attachment_name) {
-          description += ` (📎 ${activity.metadata.attachment_name})`
-        }
-      } else if (activity.metadata.has_attachment && activity.metadata.attachment_name) {
-        description = `📎 ${activity.metadata.attachment_name}`
-      }
-    }
-
-    return {
-      id: activity.id,
-      type: category || 'other',
-      icon: display.icon,
-      iconBg: display.iconBg,
-      iconColor: display.iconColor,
-      title: title,
-      actor: activity.user_name || 'System',
-      timestamp: formatTimestamp(activity.created_at),
-      description: description || activity.action || '',
-      rawActivity: activity,
-    }
+  // Sort by date (most recent first)
+  filteredProjectActivities.sort((a, b) => {
+    const dateA = new Date(a.date).getTime()
+    const dateB = new Date(b.date).getTime()
+    return dateB - dateA // Descending order (newest first)
   })
 
+  // Filter by category
   const filteredActivities = filterType === "all" 
-    ? formattedActivities 
-    : formattedActivities.filter(activity => activity.type === filterType)
+    ? filteredProjectActivities 
+    : filteredProjectActivities.filter(activity => activity.category === filterType)
 
   return (
     <div className="space-y-8">
@@ -3107,51 +3025,41 @@ function ActivitySection({ brandColor, selectedProject }: { brandColor: string; 
       {/* Activity Feed */}
       <Card className="border border-gray-200 shadow-lg rounded-2xl">
         <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400 mr-2" />
-              <span className="text-sm text-gray-600">Loading activities...</span>
-            </div>
-          ) : (
-            <ScrollArea className="h-[600px]">
-              <div className="divide-y divide-gray-200">
-                {filteredActivities.map((activity) => {
-                  const Icon = activity.icon
-                  return (
-                    <div
-                      key={activity.id}
-                      className="flex items-start gap-4 p-6 hover:bg-gray-50 transition-colors duration-200"
-                    >
-                      {/* Icon */}
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 ${activity.iconBg}`}>
-                        <Icon className={`h-5 w-5 ${activity.iconColor}`} />
-                      </div>
+          <ScrollArea className="h-[600px]">
+            <div className="divide-y divide-gray-200">
+              {filteredActivities.map((activity) => {
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex items-start gap-4 p-6 hover:bg-gray-50 transition-colors duration-200"
+                  >
+                    {/* Icon */}
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 ${activity.bgColor}`}>
+                      <span className="text-lg">{activity.icon}</span>
+                    </div>
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-4 mb-1">
-                          <h4 className="text-sm font-semibold text-gray-900">{activity.title}</h4>
-                        </div>
-                        {activity.description && (
-                          <p className="text-sm text-gray-600 mb-1">{activity.description}</p>
-                        )}
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span className="font-medium">{activity.actor}</span>
-                          <span>·</span>
-                          <span>{activity.timestamp}</span>
-                        </div>
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4 mb-1">
+                        <h4 className="text-sm font-semibold text-gray-900">{activity.title}</h4>
+                      </div>
+                      {activity.description && (
+                        <p className="text-sm text-gray-600 mb-1">{activity.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span>{formatTimestamp(activity.date)}</span>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          )}
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 
       {/* Empty State */}
-      {!loading && filteredActivities.length === 0 && (
+      {filteredActivities.length === 0 && (
         <Card className="border-2 border-dashed border-gray-300 rounded-2xl">
           <CardContent className="p-12">
             <div className="text-center">
@@ -3162,14 +3070,10 @@ function ActivitySection({ brandColor, selectedProject }: { brandColor: string; 
                 <Activity className="h-8 w-8" style={{ color: brandColor }} />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {!selectedProject || selectedProject === "all" 
-                  ? "Select a project to view activity" 
-                  : "No activity yet"}
+                No activity yet
               </h3>
               <p className="text-sm text-gray-600">
-                {!selectedProject || selectedProject === "all"
-                  ? "Choose a project from the dropdown above to see its activity"
-                  : "Activity will appear here as things happen"}
+                Activity will appear here as your project progresses
               </p>
             </div>
           </CardContent>
@@ -4326,6 +4230,7 @@ export function PortalPreview({
   account,
   onTaskViewsChange,
   onContractsUpdate,
+  projectActivities = [],
 }: {
   section: string
   brandColor: string
@@ -4350,6 +4255,7 @@ export function PortalPreview({
   account: Account | null
   onTaskViewsChange?: (views: {milestones: boolean; board: boolean}) => void
   onContractsUpdate?: (updatedContract: any) => void
+  projectActivities?: any[]
 }) {
   const [activityFilter, setActivityFilter] = useState<string>('all')
   const [selectedForm, setSelectedForm] = useState<any>(null)
@@ -4363,6 +4269,9 @@ export function PortalPreview({
   const [showInvoicePreviewModal, setShowInvoicePreviewModal] = useState(false)
   const [formResponses, setFormResponses] = useState<Record<string, any>>({})
   const [signatureName, setSignatureName] = useState("")
+  
+  // Debug logging
+  console.log('PortalPreview projectActivities:', projectActivities?.length || 0)
   
   return (
     <Card className="w-full shadow-2xl rounded-none">
@@ -4393,7 +4302,7 @@ export function PortalPreview({
                 </Avatar>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">
-                    {client.company} Portal
+                    {client.company || `${client.firstName} ${client.lastName}`.trim()}&apos;s Portal
                   </h2>
                   <p className="text-gray-600">
                     {client.firstName} {client.lastName}
@@ -4453,8 +4362,8 @@ export function PortalPreview({
                       
                       return (
                         <div className="flex items-center gap-4">
-                          <div className="relative w-20 h-20">
-                            <svg className="w-20 h-20 transform -rotate-90">
+                          <div className="relative w-20 h-20 flex-shrink-0" style={{ padding: '4px' }}>
+                            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 80 80" style={{ overflow: 'visible' }}>
                               <circle
                                 cx="40"
                                 cy="40"
@@ -4929,79 +4838,67 @@ export function PortalPreview({
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
                       }
                       
-                      // Create activity items from invoices, files, contracts, and messages
-                      const activities: any[] = []
-                      
-                      // Filter invoices by selected project
-                      const projectFilteredInvoices = selectedProject === 'all' 
-                        ? invoices 
-                        : invoices.filter(inv => !inv.project_id || inv.project_id === selectedProject)
-                      
-                      // Add paid invoices (if filter is 'all' or 'finance')
-                      if (activityFilter === 'all' || activityFilter === 'finance') {
-                        projectFilteredInvoices
-                          .filter(inv => inv.status === 'paid')
-                          .forEach(inv => {
-                            activities.push({
-                              type: 'invoice_paid',
-                              category: 'finance',
-                              icon: '💰',
-                              bgColor: 'bg-green-100',
-                              title: `Invoice ${inv.invoice_number || `#${inv.id.slice(0, 8)}`} paid`,
-                              description: `Payment of $${(inv.total_amount || inv.subtotal || 0).toLocaleString()} received`,
-                              date: inv.paid_date || inv.updated_at || inv.created_at,
-                            })
-                          })
+                      // Helper function to get activity icon and styling
+                      const getActivityIcon = (activityType: string) => {
+                        const type = activityType?.toLowerCase() || ''
+                        if (type.includes('invoice') || type.includes('payment')) return { icon: '💰', bgColor: 'bg-green-100' }
+                        if (type.includes('file')) return { icon: '📄', bgColor: 'bg-blue-100' }
+                        if (type.includes('task') || type.includes('milestone')) return { icon: '✓', bgColor: 'bg-purple-100' }
+                        if (type.includes('contract')) return { icon: '📝', bgColor: 'bg-purple-100' }
+                        return { icon: '📌', bgColor: 'bg-gray-100' }
                       }
                       
-                      // Add approved files (if filter is 'all' or 'docs')
-                      if (activityFilter === 'all' || activityFilter === 'docs') {
-                        // Filter files by selected project
-                        const projectFilteredFiles = selectedProject === 'all' 
-                          ? files 
-                          : files.filter(f => !f.project_id || f.project_id === selectedProject)
-                        
-                        projectFilteredFiles
-                          .filter(f => f.approval_status === 'approved')
-                          .forEach(file => {
-                            activities.push({
-                              type: 'file_approved',
-                              category: 'docs',
-                              icon: '📄',
-                              bgColor: 'bg-blue-100',
-                              title: 'File approved',
-                              description: file.name,
-                              date: file.updated_at || file.created_at,
-                            })
-                          })
-                        
-                        // Filter contracts by selected project
-                        const projectFilteredContracts = selectedProject === 'all' 
-                          ? contracts 
-                          : contracts.filter(c => !c.project_id || c.project_id === selectedProject)
-                        
-                        // Add signed contracts
-                        projectFilteredContracts
-                          .filter(c => c.status === 'signed' && c.signed_at)
-                          .forEach(contract => {
-                            activities.push({
-                              type: 'contract_signed',
-                              category: 'docs',
-                              icon: '📝',
-                              bgColor: 'bg-purple-100',
-                              title: 'Contract signed',
-                              description: contract.name || 'Contract finalized',
-                              date: contract.signed_at || contract.updated_at || contract.created_at,
-                            })
-                          })
+                      // Helper function to get activity category
+                      const getActivityCategory = (activityType: string): string => {
+                        const type = activityType?.toLowerCase() || ''
+                        if (type.includes('invoice') || type.includes('payment')) return 'finance'
+                        if (type.includes('file')) return 'docs'
+                        if (type.includes('task') || type.includes('milestone')) return 'docs'
+                        if (type.includes('contract')) return 'docs'
+                        return 'all'
                       }
                       
-                      // Messages are no longer shown in activity feed
+                      // Debug logging
+                      console.log('Latest Activity Debug:', {
+                        totalActivities: projectActivities?.length || 0,
+                        selectedProject,
+                        activityFilter,
+                        sampleActivity: projectActivities?.[0]
+                      })
+                      
+                      // Filter project activities by selected project
+                      const filteredProjectActivities = (projectActivities || [])
+                        .filter(activity => {
+                          // Filter by selected project
+                          if (selectedProject && selectedProject !== 'all' && activity.project_id !== selectedProject) {
+                            console.log('Filtered out activity:', activity.project_id, 'does not match', selectedProject)
+                            return false
+                          }
+                          return true
+                        })
+                        .map(activity => {
+                          const display = getActivityIcon(activity.activity_type)
+                          const category = getActivityCategory(activity.activity_type)
+                          
+                          return {
+                            type: activity.activity_type,
+                            category: category,
+                            icon: display.icon,
+                            bgColor: display.bgColor,
+                            title: activity.action || 'Activity',
+                            description: activity.metadata?.description || activity.metadata?.name || '',
+                            date: activity.created_at,
+                          }
+                        })
+                      
+                      console.log('After project filter:', filteredProjectActivities.length)
                       
                       // Filter by category if needed
                       const filteredActivities = activityFilter === 'all' 
-                        ? activities 
-                        : activities.filter(a => a.category === activityFilter)
+                        ? filteredProjectActivities 
+                        : filteredProjectActivities.filter(a => a.category === activityFilter)
+                      
+                      console.log('After category filter:', filteredActivities.length)
                       
                       // Sort by date (most recent first) and take top 4
                       filteredActivities.sort((a, b) => {
@@ -5009,12 +4906,17 @@ export function PortalPreview({
                         const dateB = new Date(b.date).getTime()
                         return dateB - dateA // Descending order (newest first)
                       })
-                      const recentActivities = filteredActivities.slice(0, 4)
+                      // Show up to 10 activities instead of just 4
+                      const recentActivities = filteredActivities.slice(0, 10)
+                      
+                      console.log('Final activities to display:', recentActivities.length, recentActivities)
                       
                       if (recentActivities.length === 0) {
                         return (
-                          <div className="text-center py-8 text-gray-500">
-                            <p className="text-sm">No recent activity</p>
+                          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                            <Activity className="h-12 w-12 mb-3 opacity-50" />
+                            <p className="text-base font-medium text-gray-500">No activity yet</p>
+                            <p className="text-sm text-gray-400 mt-1">Activity will appear here as your project progresses</p>
                         </div>
                         )
                       }
@@ -5224,7 +5126,7 @@ export function PortalPreview({
         ) : section === "appointments" ? (
           <AppointmentsSection brandColor={brandColor} bookings={bookings} selectedProject={selectedProject} clientId={client.id} />
         ) : section === "activity" ? (
-          <ActivitySection brandColor={brandColor} selectedProject={selectedProject} />
+          <ActivitySection brandColor={brandColor} selectedProject={selectedProject} projects={projects} projectActivities={projectActivities} />
         ) : (
           // Other sections placeholder
           <Card className="border border-gray-200 shadow-lg rounded-2xl">
@@ -6371,6 +6273,14 @@ function FilesSection({ brandColor, files, selectedProject, client, account }: {
           file={selectedFile}
           brandColor={brandColor}
           showReviewActions={selectedFile.approval_status !== 'approved'}
+          showCommentsSection={true}
+          clientInfo={{
+            name: client.firstName && client.lastName 
+              ? `${client.firstName} ${client.lastName}`.trim() 
+              : 'Client',
+            email: client.email || '',
+            id: client.id || ''
+          }}
           onApproved={handleFileApproved}
           onRejected={handleFileRejected}
         />

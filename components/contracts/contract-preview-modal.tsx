@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
+import { JolixFooter } from "@/components/JolixFooter"
 
 interface ContractPreviewModalProps {
   open: boolean
@@ -13,8 +14,6 @@ interface ContractPreviewModalProps {
 
 export function ContractPreviewModal({ open, onOpenChange, contract, account }: ContractPreviewModalProps) {
   if (!contract) return null
-  
-  const isFreePlan = account?.plan_tier === 'free'
 
   // Generate contract HTML
   const generateContractHTML = (contract: any) => {
@@ -255,29 +254,7 @@ export function ContractPreviewModal({ open, onOpenChange, contract, account }: 
         <div className="flex-1 overflow-y-auto min-h-0 p-12">
           <div dangerouslySetInnerHTML={{ __html: generateContractHTML(contract) }} />
           
-          {/* Powered by Jolix Footer - Free Plan Only */}
-          {isFreePlan && (
-            <div className="pt-10 mt-10 border-t border-gray-100">
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                <span>Powered by</span>
-                <a
-                  href="https://jolix.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
-                >
-                  <Image
-                    src="/jolixlogo.png"
-                    alt="Jolix"
-                    width={18}
-                    height={18}
-                    className="object-contain"
-                  />
-                  <span>Jolix</span>
-                </a>
-              </div>
-            </div>
-          )}
+          <JolixFooter planTier={account?.plan_tier} />
         </div>
         <DialogFooter className="px-6 pb-6 pt-4 border-t flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

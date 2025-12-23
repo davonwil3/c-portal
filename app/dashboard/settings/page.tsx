@@ -58,6 +58,8 @@ export default function SettingsPage() {
   })
   const [companyData, setCompanyData] = useState({
     companyName: "",
+    companyEmail: "",
+    companyPhone: "",
     address: "",
     timezone: "est",
     industry: "copywriting",
@@ -269,6 +271,8 @@ export default function SettingsPage() {
             setAccount(userAccount)
             setCompanyData({
               companyName: userAccount.company_name || "",
+              companyEmail: userAccount.email || "",
+              companyPhone: userAccount.phone || "",
               address: userAccount.address || "",
               timezone: userAccount.timezone || "est",
               industry: userAccount.industry || "copywriting",
@@ -1028,6 +1032,8 @@ export default function SettingsPage() {
       setSavingCompany(true)
       const { data, error } = await updateAccount(account.id, {
         company_name: companyData.companyName || null,
+        email: companyData.companyEmail || null,
+        phone: companyData.companyPhone || null,
         address: companyData.address || null,
         timezone: companyData.timezone || null,
         industry: companyData.industry === "other" ? companyData.otherIndustry : companyData.industry || null,
@@ -1308,6 +1314,30 @@ export default function SettingsPage() {
                         onChange={(e) => setCompanyData({ ...companyData, companyName: e.target.value })}
                         disabled={savingCompany}
                         placeholder="Enter company name"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="companyEmail">Company Email</Label>
+                      <Input
+                        id="companyEmail"
+                        type="email"
+                        value={companyData.companyEmail}
+                        onChange={(e) => setCompanyData({ ...companyData, companyEmail: e.target.value })}
+                        disabled={savingCompany}
+                        placeholder="company@example.com"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="companyPhone">Company Phone</Label>
+                      <Input
+                        id="companyPhone"
+                        type="tel"
+                        value={companyData.companyPhone}
+                        onChange={(e) => setCompanyData({ ...companyData, companyPhone: e.target.value })}
+                        disabled={savingCompany}
+                        placeholder="(555) 123-4567"
                       />
                     </div>
 

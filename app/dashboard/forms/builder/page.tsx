@@ -72,6 +72,7 @@ import { saveFormDraft, saveFormTemplate, publishForm, updateFormDraft, updateAn
 import { getCurrentAccount, type Account } from "@/lib/auth"
 import { toast } from "sonner"
 import Image from "next/image"
+import { JolixFooter } from "@/components/JolixFooter"
 import {
   DndContext,
   closestCenter,
@@ -968,25 +969,38 @@ export default function FormBuilderPage() {
   }
 
   const handleSaveAsTemplate = async () => {
-    if (!templateName.trim()) return
-    
+    if (!templateName.trim() || !templateDescription.trim()) {
+      toast.error("Please provide both a template name and description")
+      return
+    }
+
+    console.log('Saving template:', {
+      name: templateName.trim(),
+      description: templateDescription.trim(),
+      descriptionLength: templateDescription.trim().length
+    })
+
     setIsSaving(true)
     try {
       const result = await saveFormTemplate(
-        templateName,
-        "", // Empty description since we removed the field
+        templateName.trim(),
+        templateDescription.trim(),
         formTitle,
         fields
       )
 
       if (result.success) {
+        toast.success("Template saved successfully!")
         setShowSaveTemplate(false)
         setTemplateName("")
         setTemplateDescription("")
+      } else {
+        toast.error(result.error || "Failed to save template")
       }
-      
+
     } catch (error) {
       console.error("Error saving template:", error)
+      toast.error("An error occurred while saving the template")
     } finally {
       setIsSaving(false)
     }
@@ -1556,6 +1570,11 @@ export default function FormBuilderPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Powered by Jolix Footer */}
+                  <div className="px-8">
+                    <JolixFooter planTier={account?.plan_tier} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -2028,29 +2047,10 @@ export default function FormBuilderPage() {
               </div>
             )}
 
-            {/* Powered by Jolix Footer - Free Plan Only */}
-            {account?.plan_tier === 'free' && (
-              <div className="pt-10 mt-10 border-t border-gray-100 px-8">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <span>Powered by</span>
-                  <a
-                    href="https://jolix.io"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[#3C3CFF] hover:text-[#2D2DCC] transition-colors font-medium"
-                  >
-                    <Image
-                      src="/jolixlogo.png"
-                      alt="Jolix"
-                      width={18}
-                      height={18}
-                      className="object-contain"
-                    />
-                    <span>Jolix</span>
-                  </a>
-                </div>
-              </div>
-            )}
+            {/* Powered by Jolix Footer */}
+            <div className="px-8">
+              <JolixFooter planTier={account?.plan_tier} />
+            </div>
                 </div>
               </div>
             </div>
@@ -2060,7 +2060,7 @@ export default function FormBuilderPage() {
 
       {/* Save as Template Modal */}
       <Dialog open={showSaveTemplate} onOpenChange={setShowSaveTemplate}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Save This Form as a Template</DialogTitle>
           </DialogHeader>
@@ -2076,14 +2076,33 @@ export default function FormBuilderPage() {
                 placeholder="e.g. Client Onboarding Template"
               />
             </div>
+            <div>
+              <Label htmlFor="template-description" className="text-sm font-medium text-gray-700 mb-2 block">
+                Description *
+              </Label>
+              <Textarea
+                id="template-description"
+                value={templateDescription}
+                onChange={(e) => setTemplateDescription(e.target.value)}
+                placeholder="Describe what this template is for and when to use it..."
+                className="min-h-[100px]"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This description will help you and others understand when to use this template.
+              </p>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSaveTemplate(false)} disabled={isSaving}>
+            <Button variant="outline" onClick={() => {
+              setShowSaveTemplate(false)
+              setTemplateName("")
+              setTemplateDescription("")
+            }} disabled={isSaving}>
               Cancel
             </Button>
             <Button
               onClick={handleSaveAsTemplate}
-              disabled={!templateName.trim() || isSaving}
+              disabled={!templateName.trim() || !templateDescription.trim() || isSaving}
               className="bg-[#3C3CFF] hover:bg-[#3C3CFF]/90"
             >
               {isSaving ? (

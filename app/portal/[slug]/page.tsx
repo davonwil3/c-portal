@@ -43,7 +43,8 @@ export default function ClientPortalPage() {
   const [formSubmissions, setFormSubmissions] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [bookings, setBookings] = useState<any[]>([])
-  const [selectedProject, setSelectedProject] = useState<string>('all')
+  const [projectActivities, setProjectActivities] = useState<any[]>([])
+  const [selectedProject, setSelectedProject] = useState<string>('')
   const [activeSection, setActiveSection] = useState("home")
   const [account, setAccount] = useState<Account | null>(null)
 
@@ -77,6 +78,18 @@ export default function ClientPortalPage() {
     
     checkAuth()
   }, [slug, router])
+
+  // Ensure selectedProject is valid when projects change
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject) {
+      const visibleProjects = projects.filter(p => projectVisibility[p.id] !== false)
+      // If selectedProject is not in visible projects, update it
+      if (visibleProjects.length > 0 && !visibleProjects.find(p => p.id === selectedProject)) {
+        setSelectedProject(visibleProjects[0].id)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects.length]) // Only run when projects array length changes
 
   // Load portal data
   useEffect(() => {
@@ -211,14 +224,46 @@ export default function ClientPortalPage() {
           avatar: avatar || 'U'
         })
 
-        // Load portal settings from global_portal_settings
+        // Load portal settings - first get global settings, then individual portal settings
         const { data: globalSettings } = await supabase
           .from('global_portal_settings')
-          .select('settings')
+          .select('settings, modules')
           .eq('account_id', portalData.account_id)
-          .single()
+          .maybeSingle()
 
-        const settings = globalSettings?.settings || portalData.settings || {}
+        // Get individual portal settings
+        const { data: portalSettings } = await supabase
+          .from('portal_settings')
+          .select('settings, modules, project_visibility')
+          .eq('portal_id', portalData.id)
+          .maybeSingle()
+
+        // Merge settings: individual portal settings override global settings
+        const globalSettingsJson = globalSettings?.settings || {}
+        const individualSettingsJson = portalSettings?.settings || {}
+        
+        // Merge function (individual overrides global)
+        const mergeSettings = (global: any, individual: any) => {
+          if (!individual || Object.keys(individual).length === 0) return global || {}
+          if (!global || Object.keys(global).length === 0) return individual || {}
+          
+          const merged = { ...individual }
+          Object.keys(global).forEach(key => {
+            if (!(key in merged)) {
+              merged[key] = global[key]
+            } else if (
+              typeof merged[key] === 'object' && 
+              !Array.isArray(merged[key]) &&
+              typeof global[key] === 'object' && 
+              !Array.isArray(global[key])
+            ) {
+              merged[key] = { ...global[key], ...merged[key] }
+            }
+          })
+          return merged
+        }
+
+        const settings = mergeSettings(globalSettingsJson, individualSettingsJson)
         
         setBrandColor(settings.brandColor || "#4647E0")
         setWelcomeMessage(settings.welcomeMessage || "")
@@ -228,12 +273,28 @@ export default function ClientPortalPage() {
         setBackgroundColor(settings.backgroundColor || "#4647E0")
         setSidebarBgColor(settings.sidebarBgColor || "#FFFFFF")
         setSidebarTextColor(settings.sidebarTextColor || "#374151")
-        setSidebarHighlightColor(settings.highlightColor || "#4647E0")
-        setSidebarHighlightTextColor(settings.highlightTextColor || "#FFFFFF")
+        setSidebarHighlightColor(settings.sidebarHighlightColor || settings.highlightColor || "#4647E0")
+        setSidebarHighlightTextColor(settings.sidebarHighlightTextColor || settings.highlightTextColor || "#FFFFFF")
         setPortalFont(settings.portalFont || "Inter")
-        setModuleStates(settings.moduleStates || {})
-        setProjectVisibility(settings.projectVisibility || {})
-        setClientTaskViews(settings.clientTaskViews || { milestones: true, board: true })
+        
+        // Merge module states from both sources
+        const defaultModules = {
+          home: true,
+          tasks: true,
+          invoices: true,
+          forms: true,
+          files: true,
+          messages: true,
+          contracts: true,
+          appointments: true,
+          activity: true
+        }
+        const globalModules = globalSettings?.modules || {}
+        const individualModules = portalSettings?.modules || {}
+        const mergedModules = { ...defaultModules, ...globalModules, ...individualModules }
+        setModuleStates(settings.moduleStates || mergedModules || {})
+        
+        setClientTaskViews(settings.clientTaskViews || settings.taskViews || { milestones: true, board: true })
         setCompanyName(settings.companyName || "")
 
         // Get account info
@@ -247,7 +308,13 @@ export default function ClientPortalPage() {
           setAccount({
             id: accountInfo.id,
             company_name: accountInfo.company_name || '',
-            name: accountInfo.company_name || ''
+            name: accountInfo.company_name || '',
+            plan_tier: 'free',
+            stripe_customer_id: null,
+            subscription_status: null,
+            trial_ends_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           } as Account)
         }
 
@@ -261,24 +328,67 @@ export default function ClientPortalPage() {
 
         setProjects(projectsData || [])
 
+        // Initialize project visibility - default all projects to visible if not set
+        if (projectsData && projectsData.length > 0) {
+          // Get visibility from settings (defined earlier in the function)
+          const currentVisibility = portalSettings?.project_visibility || settings.projectVisibility || {}
+          // If visibility is empty, default all projects to visible
+          if (!currentVisibility || Object.keys(currentVisibility).length === 0) {
+            const defaultVisibility: Record<string, boolean> = {}
+            projectsData.forEach(p => {
+              defaultVisibility[p.id] = true
+            })
+            setProjectVisibility(defaultVisibility)
+          } else {
+            // Merge with existing visibility, defaulting new projects to visible
+            const mergedVisibility: Record<string, boolean> = { ...currentVisibility }
+            projectsData.forEach(p => {
+              if (!(p.id in mergedVisibility)) {
+                mergedVisibility[p.id] = true // Default to visible for new projects
+              }
+            })
+            setProjectVisibility(mergedVisibility)
+          }
+        } else {
+          // No projects, set empty visibility
+          setProjectVisibility({})
+        }
+
         // Set default project
         if (projectsData && projectsData.length > 0) {
           const defaultProj = settings.defaultProject
-          if (defaultProj && projectsData.find(p => p.id === defaultProj)) {
+          // Handle 'newest', null, or undefined - use first project (newest by created_at)
+          if (defaultProj === 'newest' || !defaultProj || defaultProj === null) {
+            setSelectedProject(projectsData[0].id)
+          } else if (defaultProj && projectsData.find(p => p.id === defaultProj)) {
+            // Use the specified default project if it exists
             setSelectedProject(defaultProj)
           } else {
+            // Fallback to first project if default doesn't exist
             setSelectedProject(projectsData[0].id)
           }
+        } else {
+          // No projects available
+          setSelectedProject('')
         }
 
         // Load other data using client_id from allowlist
         const clientId = allowlistEntry.client_id
         
+        // Get project IDs for this client to filter tasks and milestones
+        const projectIds = projectsData?.map(p => p.id) || []
+        
         const [invoicesRes, filesRes, tasksRes, milestonesRes, contractsRes, formsRes, submissionsRes, messagesRes, bookingsRes] = await Promise.all([
           supabase.from('invoices').select('*').eq('account_id', portalData.account_id).eq('client_id', clientId).order('created_at', { ascending: false }),
           supabase.from('files').select('*').eq('account_id', portalData.account_id).eq('client_id', clientId).order('created_at', { ascending: false }),
-          supabase.from('tasks').select('*').eq('account_id', portalData.account_id).order('created_at', { ascending: false }),
-          supabase.from('milestones').select('*').eq('account_id', portalData.account_id).order('order_index', { ascending: true }),
+          // Use project_tasks table and filter by project_id
+          projectIds.length > 0 
+            ? supabase.from('project_tasks').select('*').in('project_id', projectIds).order('created_at', { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
+          // Use project_milestones table and filter by project_id, order by sort_order
+          projectIds.length > 0
+            ? supabase.from('project_milestones').select('*').in('project_id', projectIds).order('sort_order', { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
           supabase.from('contracts').select('*').eq('account_id', portalData.account_id).eq('client_id', clientId).order('created_at', { ascending: false }),
           supabase.from('forms').select('*').eq('account_id', portalData.account_id).order('created_at', { ascending: false }),
           supabase.from('form_submissions').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
@@ -295,6 +405,24 @@ export default function ClientPortalPage() {
         setFormSubmissions(submissionsRes.data || [])
         setMessages(messagesRes.data || [])
         setBookings(bookingsRes.data || [])
+
+        // Load project activities for latest activity section
+        if (projectIds.length > 0) {
+          const { data: activitiesData, error: activitiesError } = await supabase
+            .from('project_activities')
+            .select('*')
+            .in('project_id', projectIds)
+            .order('created_at', { ascending: false })
+            .limit(50)
+          
+          if (activitiesError) {
+            console.error('Error loading project activities:', activitiesError)
+          }
+          console.log('Loaded project activities:', activitiesData?.length || 0)
+          setProjectActivities(activitiesData || [])
+        } else {
+          setProjectActivities([])
+        }
 
     } catch (error) {
         console.error('Error loading portal data:', error)
@@ -372,16 +500,16 @@ export default function ClientPortalPage() {
                 {/* Project Selector */}
                 {projects.length > 0 && (
                   <div className="px-3 mb-3">
-                <Label htmlFor="project-select" className="text-xs mb-1.5 block" style={{ color: sidebarTextColor }}>
+                    <Label htmlFor="project-select" className="text-xs mb-1.5 block" style={{ color: sidebarTextColor }}>
                       Project
                     </Label>
                     <select
-                  id="project-select"
+                      id="project-select"
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#4647E0] focus:border-transparent"
                       value={selectedProject}
                       onChange={(e) => setSelectedProject(e.target.value)}
                     >
-                  {projects.filter(p => projectVisibility[p.id] !== false).map((project) => (
+                      {projects.map((project) => (
                         <option key={project.id} value={project.id}>
                           {project.name}
                         </option>
@@ -427,7 +555,7 @@ export default function ClientPortalPage() {
           backgroundImageUrl={useBackgroundImage ? backgroundImageUrl : ''}
               backgroundColor={!useBackgroundImage ? backgroundColor : ''}
               client={client}
-          projects={projects.filter(p => projectVisibility[p.id] !== false)}
+          projects={projects}
               invoices={invoices}
               files={files}
               tasks={tasks}
@@ -445,6 +573,7 @@ export default function ClientPortalPage() {
               onContractsUpdate={(updatedContract) => {
                 setContracts(prev => prev.map(c => c.id === updatedContract.id ? updatedContract : c))
               }}
+              projectActivities={projectActivities}
             />
             </div>
     </div>
