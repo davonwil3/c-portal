@@ -14,6 +14,9 @@ import {
   BarChart3,
   Trophy,
   Settings,
+  GraduationCap,
+  FileText,
+  Store,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -44,6 +47,7 @@ const navigationItems = [
   { title: "Home", icon: Home, href: "/dashboard" },
   { title: "Lead Workflow", icon: Search, href: "/dashboard/lead-workflow" },
   { title: "Grow", icon: TrendingUp, href: "/dashboard/grow", dataHelp: "sidebar-grow" },
+  { title: "Marketplace", icon: Store, href: "/dashboard/marketplace" },
   { title: "Client Workflow", icon: Users, href: "/dashboard/workflow" },
   { title: "Messages", icon: MessageSquare, href: "/dashboard/messages" },
   { title: "Scheduler", icon: Calendar, href: "/dashboard/schedule" },
@@ -52,6 +56,8 @@ const navigationItems = [
   { title: "Time Tracker", icon: Clock, href: "/dashboard/time-tracking" },
   { title: "Billing", icon: CreditCard, href: "/dashboard/billing" },
   { title: "Analytics", icon: BarChart3, href: "/dashboard/analytics" },
+  { title: "Academy", icon: GraduationCap, href: "/dashboard/academy" },
+  { title: "Notes", icon: FileText, href: "/dashboard/notes" },
   { title: "Achievements", icon: Trophy, href: "/dashboard/achievements" },
   { title: "Settings", icon: Settings, href: "/dashboard/settings" },
   { title: "Help", icon: QuestionMark, href: "/dashboard/help" },
@@ -73,7 +79,7 @@ export function AppSidebar({ onHoverChange }: { onHoverChange?: (isHovered: bool
 
   return (
     <div 
-      className="fixed left-0 top-20 bottom-4 bg-[#3C3CFF] rounded-r-3xl flex flex-col items-center py-6 shadow-xl z-50 overflow-hidden"
+      className="fixed left-0 top-20 bottom-4 bg-[#3C3CFF] rounded-r-3xl flex flex-col items-center py-4 shadow-xl z-50 overflow-hidden"
       style={{
         width: isHovered ? '180px' : '64px',
         transition: 'width 150ms cubic-bezier(0.4, 0, 0.2, 1)',
@@ -101,10 +107,13 @@ export function AppSidebar({ onHoverChange }: { onHoverChange?: (isHovered: bool
                 item.title === "Scheduler" ? "sidebar-scheduler" :
                 item.title === "Messages" ? "sidebar-messages" :
                 item.title === "Grow" ? "sidebar-grow" :
+                item.title === "Marketplace" ? "sidebar-marketplace" :
+                item.title === "Academy" ? "sidebar-academy" :
+                item.title === "Notes" ? "sidebar-notes" :
                 item.title === "Achievements" ? "sidebar-achievements" :
                 item.dataHelp || undefined
               }
-              className={`relative flex items-center rounded-xl transition-colors duration-200 h-10 ${
+              className={`relative flex items-center rounded-xl transition-colors duration-200 h-9 ${
                 isActive 
                   ? 'bg-white text-[#3C3CFF] shadow-md' 
                   : 'text-white/80 hover:bg-white/20 hover:text-white'

@@ -489,11 +489,11 @@ export default function AuthPage() {
                       />
                       <Label htmlFor="terms" className="text-sm text-gray-700 leading-relaxed">
                         I agree to the{" "}
-                        <Link href="/terms" className="text-[#3C3CFF] hover:text-[#2D2DCC] underline">
+                        <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#3C3CFF] hover:text-[#2D2DCC] underline">
                           Terms of Service
                         </Link>{" "}
                         and{" "}
-                        <Link href="/privacy" className="text-[#3C3CFF] hover:text-[#2D2DCC] underline">
+                        <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#3C3CFF] hover:text-[#2D2DCC] underline">
                           Privacy Policy
                         </Link>
                       </Label>

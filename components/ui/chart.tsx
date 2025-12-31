@@ -20,9 +20,6 @@ export function ChartContainer({
   className,
   ...props
 }: ChartContainerProps) {
-  console.log('ChartContainer config:', config)
-  console.log('ChartContainer children:', children)
-  
   return (
     <div
       className={cn(

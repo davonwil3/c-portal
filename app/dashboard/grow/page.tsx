@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useTour } from "@/contexts/TourContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,10 +23,10 @@ import {
   Clock,
   Plus,
   X as TwitterIcon,
+  X,
   Linkedin,
   Image as ImageIcon,
   Link as LinkIcon,
-  Hash,
   Save,
   ChevronRight,
   Target,
@@ -44,11 +44,14 @@ import {
   Play,
   Wand2,
   RotateCcw,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  Loader2,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
+import { getCurrentAccount, getCurrentUser, getUserProfile } from "@/lib/auth"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +64,24 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { format } from "date-fns"
+import { toast } from "sonner"
 
 // Mock engagement data for charts
 const engagementData = [
@@ -101,11 +122,12 @@ export default function GrowPage() {
   const [autoPlanEnabled, setAutoPlanEnabled] = useState(false)
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["twitter"])
   const [postText, setPostText] = useState("")
-  const [plannerView, setPlannerView] = useState<"week" | "month" | "list">("week")
+  const [plannerView, setPlannerView] = useState<"week" | "month" | "list" | "past">("week")
   
   // Wizard state
   const [wizardActive, setWizardActive] = useState(true)
   const [wizardStep, setWizardStep] = useState(1)
+  const [includePromoInPlan, setIncludePromoInPlan] = useState<boolean>(true)
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [customFocusTopic, setCustomFocusTopic] = useState<string>("")
   const [platformMode, setPlatformMode] = useState<"both" | "x" | "linkedin">("both")
@@ -113,19 +135,117 @@ export default function GrowPage() {
   const [selectedSchedule, setSelectedSchedule] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [planGenerated, setPlanGenerated] = useState(false)
+  
+  // AI-generated plan data
+  const [aiPlanData, setAiPlanData] = useState<any>(null)
 
-  // Mock data
-  const userName = "Alex"
+  // User data
+  const [userName, setUserName] = useState<string>("")
+  const [userIndustry, setUserIndustry] = useState<string>("")
   const weeklyGoal = 3
   const postsThisWeek = 2
+  
+  // Plan tier state
+  const [planTier, setPlanTier] = useState<'free' | 'pro' | 'premium'>('free')
+  
+  // Fetch user name and plan tier on mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        // Load user name
+        const user = await getCurrentUser()
+        if (user) {
+          const profile = await getUserProfile(user.id)
+          if (profile?.first_name) {
+            // Use first name only, or full name if last name exists
+            const name = profile.last_name 
+              ? `${profile.first_name} ${profile.last_name}`
+              : profile.first_name
+            setUserName(name)
+          } else {
+            // Fallback to email or "there" if no name
+            setUserName(user.email?.split('@')[0] || "there")
+          }
+        } else {
+          setUserName("there")
+        }
 
-  const handleGeneratePlan = () => {
+        // Load plan tier and industry
+        const account = await getCurrentAccount()
+        if (account) {
+          if (account.plan_tier) {
+            setPlanTier(account.plan_tier)
+          }
+          if (account.industry) {
+            setUserIndustry(account.industry)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error)
+        setUserName("there")
+      }
+    }
+    loadUserData()
+  }, [])
+
+  const handleGeneratePlan = async () => {
     setIsGenerating(true)
-    setTimeout(() => {
+    console.log('🚀 Starting plan generation with:', {
+      userName,
+      userIndustry,
+      selectedGoal,
+      selectedTopics,
+      customFocusTopic,
+      platformMode,
+      postsPerWeek,
+      selectedSchedule,
+    })
+
+    try {
+      const response = await fetch('/api/grow/generate-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userName,
+          industry: userIndustry,
+          selectedGoal,
+          selectedTopics,
+          customFocusTopic,
+          platformMode,
+          postsPerWeek,
+          selectedSchedule,
+          includePromo: includePromoInPlan,
+        }),
+      })
+
+      console.log('📡 API Response status:', response.status, response.statusText)
+
+      const result = await response.json()
+      console.log('📦 API Response data:', result)
+
+      if (result.success) {
+        console.log('✅ Plan generated successfully!')
+        console.log('📋 Generated Plan Data:', JSON.stringify(result.data, null, 2))
+        setAiPlanData(result.data)
+        setPlanGenerated(true)
+        setWizardActive(false)
+      } else {
+        console.error('❌ Failed to generate plan:', result.error)
+        console.error('Full error response:', result)
+        toast.error('Failed to generate plan. Please try again.')
+      }
+    } catch (error) {
+      console.error('❌ Error generating plan:', error)
+      if (error instanceof Error) {
+        console.error('Error message:', error.message)
+        console.error('Error stack:', error.stack)
+      }
+      toast.error('An error occurred while generating your plan.')
+    } finally {
       setIsGenerating(false)
-      setPlanGenerated(true)
-      setWizardActive(false)
-    }, 3000)
+    }
   }
 
   const handleRegeneratePlan = () => {
@@ -137,7 +257,9 @@ export default function GrowPage() {
     setPlatformMode("both")
     setPostsPerWeek(4)
     setSelectedSchedule([])
+    setIncludePromoInPlan(true)
     setPlanGenerated(false)
+    setAiPlanData(null)
   }
 
   // Ensure we start on Growth Plan tab when tour starts
@@ -152,7 +274,6 @@ export default function GrowPage() {
     if (isTourRunning && currentTour?.id === "grow") {
       let hasSwitchedToComposer = false
       let hasSwitchedToPlanner = false
-      let hasSwitchedToAnalytics = false
       let hasSwitchedToBrand = false
       
       const checkForTabSwitch = () => {
@@ -186,23 +307,8 @@ export default function GrowPage() {
           }
         }
         
-        // Check if growth-insights-tab is the current target
-        if (!hasSwitchedToAnalytics && activeTab === "planner") {
-          const insightsTab = document.querySelector('[data-help="growth-insights-tab"]')
-          const tourTooltip = document.querySelector('div[class*="bg-white"][class*="rounded-xl"]')
-          if (insightsTab && tourTooltip) {
-            const tooltipText = tourTooltip.textContent || ''
-            // Only switch if tooltip text starts with "The Growth Insights tab" (specific hint about this tab)
-            if (tooltipText.includes("The Growth Insights tab is where you track")) {
-              setActiveTab("analytics")
-              hasSwitchedToAnalytics = true
-              return
-            }
-          }
-        }
-        
         // Check if brand-profile-tab is the current target
-        if (!hasSwitchedToBrand && activeTab === "analytics") {
+        if (!hasSwitchedToBrand && activeTab === "planner") {
           const brandTab = document.querySelector('[data-help="brand-profile-tab"]')
           const tourTooltip = document.querySelector('div[class*="bg-white"][class*="rounded-xl"]')
           if (brandTab && tourTooltip) {
@@ -257,7 +363,7 @@ export default function GrowPage() {
                   className="data-[state=active]:border-b-2 data-[state=active]:border-[#3C3CFF] rounded-none bg-transparent data-[state=active]:bg-transparent px-4"
                   data-help="ai-studio-tab"
                 >
-                  AI Studio
+                  Create
                 </TabsTrigger>
                 <TabsTrigger 
                   value="planner"
@@ -265,13 +371,6 @@ export default function GrowPage() {
                   data-help="schedule-tab"
                 >
                   Schedule
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="analytics"
-                  className="data-[state=active]:border-b-2 data-[state=active]:border-[#3C3CFF] rounded-none bg-transparent data-[state=active]:bg-transparent px-4"
-                  data-help="growth-insights-tab"
-                >
-                  Growth Insights
                 </TabsTrigger>
                 <TabsTrigger 
                   value="brand"
@@ -310,6 +409,10 @@ export default function GrowPage() {
                   onRegeneratePlan={handleRegeneratePlan}
                   postsThisWeek={postsThisWeek}
                   weeklyGoal={weeklyGoal}
+                  planTier={planTier}
+                  aiPlanData={aiPlanData}
+                  includePromoInPlan={includePromoInPlan}
+                  setIncludePromoInPlan={setIncludePromoInPlan}
                 />
               </TabsContent>
 
@@ -324,17 +427,13 @@ export default function GrowPage() {
                   setSelectedPlatforms={setSelectedPlatforms}
                   postText={postText}
                   setPostText={setPostText}
+                  userIndustry={userIndustry}
                 />
               </TabsContent>
 
               {/* Schedule Tab */}
               <TabsContent value="planner" className="mt-0" data-help="schedule-content">
                 <ScheduleTab view={plannerView} setView={setPlannerView} />
-              </TabsContent>
-
-              {/* Growth Insights Tab */}
-              <TabsContent value="analytics" className="mt-0" data-help="growth-insights-content">
-                <GrowthInsightsTab />
               </TabsContent>
 
               {/* Brand Profile Tab */}
@@ -356,7 +455,8 @@ function PostFrequencyStep({
   postsPerWeek,
   setPostsPerWeek,
   onBack,
-  onContinue
+  onContinue,
+  planTier
 }: {
   platformMode: "both" | "x" | "linkedin"
   setPlatformMode: (mode: "both" | "x" | "linkedin") => void
@@ -364,7 +464,18 @@ function PostFrequencyStep({
   setPostsPerWeek: (count: number) => void
   onBack: () => void
   onContinue: () => void
+  planTier: 'free' | 'pro' | 'premium'
 }) {
+  // Get available posts message based on plan tier
+  const getAvailablePostsMessage = () => {
+    if (planTier === 'premium') {
+      return "You have unlimited posts available to be scheduled this month"
+    } else if (planTier === 'pro') {
+      return "You have 100 posts available to be scheduled this month"
+    } else {
+      return "You have 10 posts available to be scheduled this month"
+    }
+  }
   const [scaleAnim, setScaleAnim] = useState(false)
   const [showMaxTooltip, setShowMaxTooltip] = useState(false)
 
@@ -442,7 +553,6 @@ function PostFrequencyStep({
     <Card className="shadow-sm border-gray-100 animate-in fade-in duration-500">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">How many posts should Jolix create this week?</CardTitle>
-        <CardDescription>We'll balance quality and reach while matching your goals.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Platform Selector */}
@@ -500,6 +610,12 @@ function PostFrequencyStep({
 
         {/* Stepper */}
         <div className="space-y-4">
+          {/* Plan-based posts available pill */}
+          <div className="flex justify-center">
+            <Badge className="bg-[#3C3CFF]/10 text-[#3C3CFF] border border-[#3C3CFF]/20 px-3 py-1.5 text-xs font-medium hover:bg-[#3C3CFF]/10 hover:text-[#3C3CFF] cursor-default">
+              {getAvailablePostsMessage()}
+            </Badge>
+          </div>
           <Label className="text-sm font-medium text-gray-700 text-center block">Posts per week:</Label>
           <div className="flex items-center justify-center gap-4">
             <button
@@ -606,7 +722,11 @@ function GrowthPlanTab({
   onGeneratePlan,
   onRegeneratePlan,
   postsThisWeek,
-  weeklyGoal
+  weeklyGoal,
+  planTier,
+  aiPlanData,
+  includePromoInPlan,
+  setIncludePromoInPlan
 }: { 
   userName: string
   wizardActive: boolean
@@ -630,7 +750,73 @@ function GrowthPlanTab({
   onRegeneratePlan: () => void
   postsThisWeek: number
   weeklyGoal: number
+  planTier: 'free' | 'pro' | 'premium'
+  aiPlanData: any
+  includePromoInPlan: boolean
+  setIncludePromoInPlan: (value: boolean) => void
 }) {
+  // State for editing posts
+  const [editingPostIndex, setEditingPostIndex] = useState<number | null>(null)
+  const [localPosts, setLocalPosts] = useState<any[]>([])
+  
+  // Schedule modal state for individual posts
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+  const [selectedPostForSchedule, setSelectedPostForSchedule] = useState<number | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
+  const [selectedTime, setSelectedTime] = useState<string>("09:00")
+  
+  // Initialize local posts when aiPlanData changes
+  useEffect(() => {
+    if (aiPlanData?.posts) {
+      setLocalPosts([...aiPlanData.posts])
+    } else {
+      // Use fallback posts
+      setLocalPosts([
+        { 
+          num: "1",
+          date: "Tue 10 AM",
+          platform: "twitter",
+          content: "Red flag I wish I caught earlier: clients who say 'just make it pop' without explaining what that means 🚩\n\nGreat clients give context. They say things like 'more vibrant colors for a younger audience' or 'increase contrast for accessibility.'\n\nClear feedback = better work. Always ask: 'Can you show me an example of what you mean?'",
+          category: "Freelancing tip"
+        },
+        { 
+          num: "2",
+          date: "Thu 11 AM",
+          platform: "linkedin",
+          content: "Just wrapped a brand identity project that changed everything for this client.\n\nBefore: Generic, forgettable logo\nAfter: Distinctive identity that tells their story\n\n3 things that made the difference:\n\n1. Deep discovery session (not just 'what colors do you like?')\n2. Competitive audit to find whitespace\n3. Brand guidelines they can actually use\n\nSometimes clients don't know what they need until you show them.\n\nWhat's been your biggest client transformation story? 👇",
+          category: "Client story"
+        },
+        { 
+          num: "3",
+          date: "Sat 9 AM",
+          platform: "twitter",
+          content: "3 lessons from my latest design project:\n\n1. Start with constraints\nInstead of unlimited options, I gave myself: max 3 colors, 2 fonts, mobile-first. Creativity exploded.\n\n2. Client feedback ≠ design direction\n'Make it bigger' often means 'make it more prominent.' Sometimes that's hierarchy, not size.\n\n3. Document decisions as you go\nWhat seems obvious today won't be in 6 months. Screenshot the 'why' behind every choice.\n\nWhat have you learned recently?",
+          category: "Portfolio post"
+        },
+      ])
+    }
+  }, [aiPlanData])
+  
+  const handleEditPost = (index: number) => {
+    setEditingPostIndex(index)
+  }
+  
+  const handleSavePost = (index: number) => {
+    setEditingPostIndex(null)
+    // Update aiPlanData with edited content
+    if (aiPlanData) {
+      const updatedData = { ...aiPlanData, posts: [...localPosts] }
+      // Note: We can't directly update aiPlanData prop, but we can update local state
+      // The parent component would need to handle this if persistence is needed
+    }
+  }
+  
+  const handlePostContentChange = (index: number, newContent: string) => {
+    const updated = [...localPosts]
+    updated[index] = { ...updated[index], content: newContent }
+    setLocalPosts(updated)
+  }
+  
   const goals = [
     { id: "clients", label: "Get Clients", icon: Target, tagline: "Attract new leads and projects", emoji: "🎯" },
     { id: "audience", label: "Grow Audience", icon: TrendingUp, tagline: "Build reach and followers", emoji: "🌍" },
@@ -689,7 +875,7 @@ function GrowthPlanTab({
               </div>
               <div>
                 <h2 className="text-3xl font-bold mb-3">
-                  Hey {userName}, let's design your growth plan for this week 🚀
+                  Hey {userName || "there"}, let's design your growth plan for this week 🚀
                 </h2>
                 <p className="text-gray-600 text-lg">
                   Jolix will craft a personalized content plan to help you hit your goals.
@@ -739,6 +925,26 @@ function GrowthPlanTab({
                   )
                 })}
               </div>
+              
+              {/* Include Promo Toggle */}
+              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <Switch
+                  id="include-promo-plan"
+                  checked={includePromoInPlan}
+                  onCheckedChange={setIncludePromoInPlan}
+                />
+                <div className="flex-1">
+                  <Label htmlFor="include-promo-plan" className="text-sm font-medium cursor-pointer">
+                    Include promotional content
+                  </Label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {includePromoInPlan 
+                      ? `When enabled, ${selectedGoal === 'clients' ? '~40%' : selectedGoal === 'audience' ? '~25%' : '~15%'} of posts will include promotional CTAs based on your focus.`
+                      : 'All posts will be pure value content with no promotional mentions.'}
+                  </p>
+                </div>
+              </div>
+              
               <div className="flex gap-3 justify-center">
                 <Button variant="outline" onClick={() => setWizardStep(1)}>
                   Back
@@ -829,6 +1035,7 @@ function GrowthPlanTab({
             setPostsPerWeek={setPostsPerWeek}
             onBack={() => setWizardStep(3)}
             onContinue={() => setWizardStep(5)}
+            planTier={planTier}
           />
         )}
 
@@ -919,12 +1126,17 @@ function GrowthPlanTab({
     expertise: "Build Authority"
   }
 
+  // Extract first name from userName
+  const firstName = userName.split(' ')[0] || userName
+
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       {/* Header with Regenerate */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-3xl font-bold mb-2">Your Growth Plan for This Week 🌱</h2>
+          <h2 className="text-3xl font-bold mb-2">
+            {aiPlanData?.greeting || `Hey ${firstName}, Your Growth Plan for This Week 🌱`}
+          </h2>
           <p className="text-gray-600 text-lg">
             Tailored to your goal: <span className="font-semibold text-[#3C3CFF]">{goalLabels[selectedGoal]}</span>
           </p>
@@ -941,14 +1153,22 @@ function GrowthPlanTab({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-[#3C3CFF]" />
-              <h4 className="font-semibold text-lg">🗓️ 3 posts this week</h4>
+              <h4 className="font-semibold text-lg">
+                {aiPlanData?.postingSchedule?.description || "3 posts this week"}
+              </h4>
             </div>
-            <p className="text-gray-700 leading-relaxed">
-              <span className="font-semibold text-gray-900">Tue 10 AM</span> • <span className="font-semibold text-gray-900">Thu 11 AM</span> • <span className="font-semibold text-gray-900">Sat 9 AM</span> — (best engagement windows)
-            </p>
+            {aiPlanData?.postingSchedule?.times ? (
+              <p className="text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: aiPlanData.postingSchedule.times }} />
+            ) : (
+              <p className="text-gray-700 leading-relaxed">
+                <span className="font-semibold text-gray-900">Tue 10 AM</span> • <span className="font-semibold text-gray-900">Thu 11 AM</span> • <span className="font-semibold text-gray-900">Sat 9 AM</span> — (best engagement windows)
+              </p>
+            )}
             <div className="flex items-center gap-2 text-sm text-[#3C3CFF] bg-blue-50 rounded-lg px-3 py-2 w-fit">
               <TrendingUp className="h-4 w-4" />
-              <span className="font-medium">Avg reach +18% at these times.</span>
+              <span className="font-medium">
+                {aiPlanData?.postingSchedule?.insight || "Avg reach +18% at these times."}
+              </span>
             </div>
           </div>
         </CardContent>
@@ -958,39 +1178,17 @@ function GrowthPlanTab({
       <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
         <div className="flex items-center gap-2">
           <Lightbulb className="h-5 w-5 text-[#3C3CFF]" />
-          <h3 className="text-xl font-bold text-gray-900">💡 Jolix suggests:</h3>
+          <h3 className="text-xl font-bold text-gray-900">Jolix suggests:</h3>
         </div>
         
         <div className="grid grid-cols-1 gap-6">
-          {[
-            { 
-              num: "1️⃣",
-              date: "Tue 10 AM",
-              platform: "twitter",
-              tweet: "Red flag I wish I caught earlier: clients who say 'just make it pop' without explaining what that means 🚩\n\nGreat clients give context. They say things like 'more vibrant colors for a younger audience' or 'increase contrast for accessibility.'\n\nClear feedback = better work. Always ask: 'Can you show me an example of what you mean?'",
-              category: "Freelancing tip"
-            },
-            { 
-              num: "2️⃣",
-              date: "Thu 11 AM",
-              platform: "linkedin",
-              tweet: "Just wrapped a brand identity project that changed everything for this client.\n\nBefore: Generic, forgettable logo\nAfter: Distinctive identity that tells their story\n\n3 things that made the difference:\n\n1. Deep discovery session (not just 'what colors do you like?')\n2. Competitive audit to find whitespace\n3. Brand guidelines they can actually use\n\nSometimes clients don't know what they need until you show them.\n\nWhat's been your biggest client transformation story? 👇",
-              category: "Client story"
-            },
-            { 
-              num: "3️⃣",
-              date: "Sat 9 AM",
-              platform: "twitter",
-              tweet: "3 lessons from my latest design project:\n\n1. Start with constraints\nInstead of unlimited options, I gave myself: max 3 colors, 2 fonts, mobile-first. Creativity exploded.\n\n2. Client feedback ≠ design direction\n'Make it bigger' often means 'make it more prominent.' Sometimes that's hierarchy, not size.\n\n3. Document decisions as you go\nWhat seems obvious today won't be in 6 months. Screenshot the 'why' behind every choice.\n\nWhat have you learned recently?",
-              category: "Portfolio post"
-            },
-          ].map((post, idx) => (
+          {localPosts.map((post: any, idx: number) => (
             <Card key={idx} className="shadow-md border-[#3C3CFF]/20 hover:shadow-lg hover:border-[#3C3CFF]/40 transition-all">
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
                   {/* Post Number Badge */}
                   <div className="flex-shrink-0">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C3CFF] to-[#6366F1] flex items-center justify-center text-white font-bold text-lg">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md">
                       {post.num}
                     </div>
                   </div>
@@ -1010,7 +1208,7 @@ function GrowthPlanTab({
                         {post.platform === "twitter" ? (
                           <>
                             <TwitterIcon className="h-3 w-3" />
-                            <span className="text-xs font-medium">X</span>
+                            <span className="text-xs font-medium">X (manual post)</span>
                           </>
                         ) : (
                           <>
@@ -1023,24 +1221,51 @@ function GrowthPlanTab({
                     
                     {/* Tweet Text */}
                     <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 mb-4">
-                      <p className="text-gray-900 leading-relaxed whitespace-pre-line text-sm">
-                        {post.tweet}
-                      </p>
+                      {editingPostIndex === idx ? (
+                        <Textarea
+                          value={post.content || post.tweet || ''}
+                          onChange={(e) => handlePostContentChange(idx, e.target.value)}
+                          className="text-gray-900 leading-relaxed text-sm min-h-[150px] resize-y"
+                          autoFocus
+                        />
+                      ) : (
+                        <p className="text-gray-900 leading-relaxed whitespace-pre-line text-sm">
+                          {post.content || post.tweet}
+                        </p>
+                      )}
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
-                        <Edit3 className="h-3.5 w-3.5 mr-1.5" />
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
+                      {editingPostIndex === idx ? (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="border-gray-300 hover:bg-gray-50"
+                          onClick={() => handleSavePost(idx)}
+                        >
+                          <Save className="h-3.5 w-3.5 mr-1.5" />
+                          Save
+                        </Button>
+                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="border-gray-300 hover:bg-gray-50"
+                          onClick={() => handleEditPost(idx)}
+                        >
+                          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
+                          Edit
+                        </Button>
+                      )}
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-gray-300 hover:bg-gray-50"
+                        onClick={() => handleOpenScheduleModal(idx)}
+                      >
                         <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
                         Schedule
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
-                        <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                        Preview
                       </Button>
                     </div>
                   </div>
@@ -1051,28 +1276,96 @@ function GrowthPlanTab({
         </div>
       </div>
 
+      {/* Schedule Modal for Individual Posts */}
+      <Dialog open={scheduleModalOpen} onOpenChange={setScheduleModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Schedule Your Post</DialogTitle>
+            <DialogDescription>
+              Choose a date and time to schedule this post
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Date Picker */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Select Date</Label>
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                className="rounded-md border"
+              />
+              {selectedDate && (
+                <p className="text-sm text-gray-600">
+                  Selected: {format(selectedDate, "PPP")}
+                </p>
+              )}
+            </div>
+            
+            {/* Time Picker - Only show after date is selected */}
+            {selectedDate && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <Label className="text-sm font-medium">Select Time</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={selectedTime}
+                    onChange={(e) => setSelectedTime(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  Your post will be scheduled for {format(selectedDate, "PPP")} at {selectedTime}
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setScheduleModalOpen(false)
+                setSelectedPostForSchedule(null)
+                setSelectedDate(undefined)
+                setSelectedTime("09:00")
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+              onClick={handleScheduleIndividualPost}
+              disabled={!selectedDate}
+            >
+              Schedule Post
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* C. Engagement Boosters */}
       <Card className="shadow-sm border-gray-100 animate-in slide-in-from-bottom-4 duration-1000">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Zap className="h-5 w-5 text-[#3C3CFF]" />
-            <CardTitle>🚀 Simple Actions:</CardTitle>
+            <CardTitle>Simple Actions:</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <CheckCircle2 className="h-5 w-5 text-[#3C3CFF] mt-0.5 flex-shrink-0" />
-              <p className="text-gray-700">Reply to <span className="font-semibold">2 comments</span> within 30 min of posting</p>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <CheckCircle2 className="h-5 w-5 text-[#3C3CFF] mt-0.5 flex-shrink-0" />
-              <p className="text-gray-700">Comment on <span className="font-semibold">3 posts from your niche</span> daily</p>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <CheckCircle2 className="h-5 w-5 text-[#3C3CFF] mt-0.5 flex-shrink-0" />
-              <p className="text-gray-700">Re-share <span className="font-semibold">a successful post</span> mid-week</p>
-            </div>
+            {(aiPlanData?.engagementActions || [
+              "Reply to 2 comments within 30 min of posting",
+              "Comment on 3 posts from your niche daily",
+              "Re-share a successful post mid-week"
+            ]).map((action: string, idx: number) => (
+              <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-[#3C3CFF] mt-0.5 flex-shrink-0" />
+                <p className="text-gray-700" dangerouslySetInnerHTML={{ __html: action }} />
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -1107,7 +1400,11 @@ function GrowthPlanTab({
           {/* Overview */}
           <div className="p-4 bg-white/60 backdrop-blur rounded-xl border border-white/50">
             <p className="text-gray-800 leading-relaxed">
-              This week's plan is designed to help you <span className="font-semibold text-[#3C3CFF]">{goalLabels[selectedGoal].toLowerCase()}</span> through strategic content that resonates with your audience. You'll post <span className="font-semibold">3 times</span> at optimal engagement windows, focusing on <span className="font-semibold">freelancing expertise</span> and <span className="font-semibold">client management insights</span>.
+              {aiPlanData?.summary?.overview || (
+                <>
+                  This week's plan is designed to help you <span className="font-semibold text-[#3C3CFF]">{goalLabels[selectedGoal].toLowerCase()}</span> through strategic content that resonates with your audience. You'll post <span className="font-semibold">3 times</span> at optimal engagement windows, focusing on <span className="font-semibold">freelancing expertise</span> and <span className="font-semibold">client management insights</span>.
+                </>
+              )}
             </p>
           </div>
 
@@ -1119,11 +1416,17 @@ function GrowthPlanTab({
                 <h4 className="font-semibold text-sm text-gray-700">Posting Schedule</h4>
               </div>
               <p className="text-sm text-gray-600">
-                <span className="font-semibold text-gray-900">Tue, Thu, Sat</span> at peak engagement times (10 AM, 11 AM, 9 AM)
+                {aiPlanData?.postingSchedule?.times ? (
+                  aiPlanData.postingSchedule.times
+                ) : (
+                  <>
+                    <span className="font-semibold text-gray-900">Tue, Thu, Sat</span> at peak engagement times (10 AM, 11 AM, 9 AM)
+                  </>
+                )}
               </p>
               <div className="mt-2 flex items-center gap-1 text-xs text-[#3C3CFF]">
                 <TrendingUp className="h-3 w-3" />
-                <span>+18% expected reach</span>
+                <span>{aiPlanData?.summary?.expectedReach || "+18% expected reach"}</span>
               </div>
             </div>
 
@@ -1133,7 +1436,11 @@ function GrowthPlanTab({
                 <h4 className="font-semibold text-sm text-gray-700">Content Focus</h4>
               </div>
               <p className="text-sm text-gray-600">
-                Mix of <span className="font-semibold text-gray-900">practical tips</span>, <span className="font-semibold text-gray-900">client stories</span>, and <span className="font-semibold text-gray-900">portfolio showcases</span>
+                {aiPlanData?.summary?.contentFocus || (
+                  <>
+                    Mix of <span className="font-semibold text-gray-900">practical tips</span>, <span className="font-semibold text-gray-900">client stories</span>, and <span className="font-semibold text-gray-900">portfolio showcases</span>
+                  </>
+                )}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {selectedTopics.slice(0, 3).map((topic, idx) => (
@@ -1197,7 +1504,8 @@ function AIStudioTab({
   selectedPlatforms, 
   setSelectedPlatforms,
   postText,
-  setPostText
+  setPostText,
+  userIndustry
 }: {
   mode: "manual" | "ai"
   setMode: (mode: "manual" | "ai") => void
@@ -1207,23 +1515,62 @@ function AIStudioTab({
   setSelectedPlatforms: (platforms: string[]) => void
   postText: string
   setPostText: (text: string) => void
+  userIndustry: string
 }) {
   const [previewPlatform, setPreviewPlatform] = useState<"twitter" | "linkedin">("twitter")
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
   const [promptText, setPromptText] = useState<string>("")
+  const [selectedPlatform, setSelectedPlatform] = useState<"twitter" | "linkedin">("twitter")
+  const [isGenerating, setIsGenerating] = useState<boolean>(false)
+  const [includePromo, setIncludePromo] = useState<boolean>(false)
+  const [showInfoBanner, setShowInfoBanner] = useState<boolean>(false)
+  
+  // Schedule modal state
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
+  const [selectedTime, setSelectedTime] = useState<string>("09:00")
+  
+  // Confirm posted modal state for X posts
+  const [confirmPostedModalOpen, setConfirmPostedModalOpen] = useState(false)
+  const [editingPostIndex, setEditingPostIndex] = useState<number | null>(null)
+  const [localPosts, setLocalPosts] = useState<any[]>([])
   const [rewriteCount, setRewriteCount] = useState<number>(0)
   const [undoText, setUndoText] = useState<string>("")
   const [showUndo, setShowUndo] = useState<boolean>(false)
   const [customRewritePrompt, setCustomRewritePrompt] = useState<string>("")
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false)
+  const [localImages, setLocalImages] = useState<Array<{ file: File; preview: string }>>([])
+  const [isRewriting, setIsRewriting] = useState<boolean>(false)
   const maxChars = previewPlatform === "twitter" ? 280 : 3000
 
-  const togglePlatform = (platform: string) => {
-    if (selectedPlatforms.includes(platform)) {
-      setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform))
-    } else {
-      setSelectedPlatforms([...selectedPlatforms, platform])
+  // Check if info banner should be shown (first visit only)
+  useEffect(() => {
+    const dismissed = localStorage.getItem('jolix-social-x-info-dismissed')
+    if (!dismissed) {
+      setShowInfoBanner(true)
     }
+  }, [])
+
+  // Handle banner dismissal
+  const handleDismissBanner = () => {
+    setShowInfoBanner(false)
+    localStorage.setItem('jolix-social-x-info-dismissed', 'true')
+  }
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup all object URLs when component unmounts
+      setLocalImages((prev) => {
+        prev.forEach((item) => URL.revokeObjectURL(item.preview))
+        return []
+      })
+    }
+  }, []) // Only run on unmount
+
+  const togglePlatform = (platform: string) => {
+    // Only allow one platform at a time
+    setSelectedPlatforms([platform])
   }
 
   // Dummy data for posts
@@ -1260,16 +1607,168 @@ function AIStudioTab({
     }
   ]
 
-  const generateSuggestions = () => {
-    // Always generate 3-5 random posts
-    const count = Math.floor(Math.random() * 3) + 3 // 3-5 posts
-    const shuffled = [...dummyPosts].sort(() => 0.5 - Math.random())
-    setAiSuggestions(shuffled.slice(0, count))
+  const generateSuggestions = async () => {
+    if (!promptText.trim()) {
+      return
+    }
+
+    setIsGenerating(true)
+    console.log('🚀 Starting post generation with:', {
+      prompt: promptText,
+      platform: selectedPlatform,
+      industry: userIndustry,
+    })
+
+    try {
+      const response = await fetch('/api/grow/generate-posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: promptText,
+          platform: selectedPlatform,
+          industry: userIndustry,
+          includePromo,
+        }),
+      })
+
+      console.log('📡 API Response status:', response.status, response.statusText)
+
+      const result = await response.json()
+      console.log('📦 API Response data:', result)
+
+      if (result.success && result.data?.posts) {
+        console.log('✅ Posts generated successfully!')
+        console.log('📋 Generated Posts:', JSON.stringify(result.data.posts, null, 2))
+        
+        // Format posts to match the expected structure
+        const formattedPosts = result.data.posts.map((post: any, idx: number) => ({
+          num: `${idx + 1}`,
+          content: post.content,
+          category: post.category || 'Post',
+          platform: post.platform || selectedPlatform,
+        }))
+        
+        setAiSuggestions(formattedPosts)
+        setLocalPosts(formattedPosts)
+      } else {
+        console.error('❌ Failed to generate posts:', result.error)
+        console.error('Full error response:', result)
+        toast.error('Failed to generate posts. Please try again.')
+      }
+    } catch (error) {
+      console.error('❌ Error generating posts:', error)
+      if (error instanceof Error) {
+        console.error('Error message:', error.message)
+        console.error('Error stack:', error.stack)
+      }
+      toast.error('An error occurred while generating posts.')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
-  // Dummy rewrite function
-  const rewriteText = (preset?: string, customPrompt?: string) => {
+  const handleEditPost = (index: number) => {
+    setEditingPostIndex(index)
+  }
+
+  const handleSavePost = (index: number) => {
+    setEditingPostIndex(null)
+    // Update aiSuggestions to match localPosts
+    setAiSuggestions([...localPosts])
+  }
+
+  const handlePostContentChange = (index: number, newContent: string) => {
+    const updated = [...localPosts]
+    updated[index] = { ...updated[index], content: newContent }
+    setLocalPosts(updated)
+  }
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    // Create local previews for selected files
+    Array.from(files).forEach((file) => {
+      const preview = URL.createObjectURL(file)
+      setLocalImages((prev) => [...prev, { file, preview }])
+    })
+
+    // Reset input
+    event.target.value = ''
+  }
+
+  const removeImage = (index: number) => {
+    setLocalImages((prev) => {
+      // Revoke the object URL to free memory
+      URL.revokeObjectURL(prev[index].preview)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  const uploadImagesToStorage = async (): Promise<string[]> => {
+    if (localImages.length === 0) return []
+
+    const formData = new FormData()
+    localImages.forEach((item) => {
+      formData.append('files', item.file)
+    })
+
+    const response = await fetch('/api/grow/upload-images', {
+      method: 'POST',
+      body: formData,
+    })
+
+    const result = await response.json()
+
+    if (result.success && result.urls) {
+      // Clean up local previews
+      localImages.forEach((item) => URL.revokeObjectURL(item.preview))
+      setLocalImages([])
+      return result.urls
+    } else {
+      throw new Error(result.error || 'Failed to upload images')
+    }
+  }
+
+  // Handle confirming X post was posted
+  const handleConfirmXPosted = async () => {
+    try {
+      // Save post to database with status 'posted'
+      const response = await fetch('/api/grow/save-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: postText,
+          platform: 'twitter',
+          images: [], // X posts don't have images in manual composer
+          generation_method: 'manual',
+          status: 'posted',
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast.success('Nice! We\'ve marked this as posted on X.')
+        // Clear the form
+        setPostText('')
+        setLocalImages([])
+        setConfirmPostedModalOpen(false)
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error saving post:', error)
+      toast.error('Failed to save post. Please try again.')
+    }
+  }
+
+  // Rewrite function with OpenAI
+  const rewriteText = async (preset?: string, customPrompt?: string) => {
     if (rewriteCount >= 3) {
+      toast.error('You have reached the maximum number of rewrites (3).')
       return // Limit reached
     }
     
@@ -1279,33 +1778,49 @@ function AIStudioTab({
 
     // Store current text for undo
     setUndoText(postText)
-    
-    // Dummy rewrite logic (in real app, this would call an API)
-    let rewritten = postText
-    
-    if (preset === "Make clearer") {
-      rewritten = postText.replace(/\./g, '. ').replace(/\s+/g, ' ').trim()
-    } else if (preset === "More engaging") {
-      rewritten = postText + " 🚀"
-    } else if (preset === "More concise") {
-      rewritten = postText.split(' ').slice(0, Math.ceil(postText.split(' ').length * 0.7)).join(' ')
-    } else if (preset === "More professional") {
-      rewritten = postText.charAt(0).toUpperCase() + postText.slice(1)
-    } else if (customPrompt) {
-      rewritten = `[Rewritten: ${customPrompt}] ${postText}`
-    }
-    
-    setPostText(rewritten)
-    setRewriteCount(rewriteCount + 1)
     setDropdownOpen(false)
-    setCustomRewritePrompt("")
+    setIsRewriting(true)
     
-    // Show undo for 10 seconds
-    setShowUndo(true)
-    setTimeout(() => {
-      setShowUndo(false)
-      setUndoText("")
-    }, 10000)
+    // Determine platform from selected platforms
+    const platform = selectedPlatforms.includes('twitter') ? 'twitter' : 'linkedin'
+    
+    try {
+      const response = await fetch('/api/grow/refine-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: postText,
+          preset,
+          customPrompt,
+          platform,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.refinedText) {
+        setPostText(result.refinedText)
+        setRewriteCount(rewriteCount + 1)
+        setCustomRewritePrompt("")
+        
+        // Show undo for 10 seconds
+        setShowUndo(true)
+        setTimeout(() => {
+          setShowUndo(false)
+          setUndoText("")
+        }, 10000)
+      } else {
+        toast.error('Failed to refine text. Please try again.')
+        console.error('Refine text error:', result.error)
+      }
+    } catch (error) {
+      console.error('Error refining text:', error)
+      toast.error('An error occurred while refining the text.')
+    } finally {
+      setIsRewriting(false)
+    }
   }
 
   const handleUndo = () => {
@@ -1319,6 +1834,30 @@ function AIStudioTab({
 
   return (
     <div className="space-y-6">
+      {/* One-time Info Banner */}
+      {showInfoBanner && (
+        <Card className="bg-slate-50 border-slate-200 shadow-sm">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <span className="text-lg flex-shrink-0">ℹ️</span>
+              <div className="flex-1">
+                <p className="text-sm text-slate-600">
+                  Quick note: Jolix can auto-post to LinkedIn. For X, we generate and schedule content, and you publish with 1 click.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDismissBanner}
+                className="flex-shrink-0 text-slate-600 hover:text-slate-900"
+              >
+                Got it
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Prompt Header */}
       <Card className="border-[#3C3CFF]/20 bg-gradient-to-br from-blue-50 to-purple-50 shadow-sm">
         <CardContent className="pt-6">
@@ -1331,22 +1870,85 @@ function AIStudioTab({
               <p className="text-sm text-gray-600">Tell Jolix your idea and it'll create the perfect post</p>
             </div>
           </div>
+
+          {/* Platform Toggle */}
+          <div className="mb-4">
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">Select platform:</Label>
+            <div className="flex gap-2">
+              <Button
+                variant={selectedPlatform === "twitter" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedPlatform("twitter")}
+                className={selectedPlatform === "twitter" ? "bg-black hover:bg-black/90" : ""}
+              >
+                <TwitterIcon className="h-4 w-4 mr-2" />
+                (Twitter)
+              </Button>
+              <Button
+                variant={selectedPlatform === "linkedin" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedPlatform("linkedin")}
+                className={selectedPlatform === "linkedin" ? "bg-blue-700 hover:bg-blue-800" : ""}
+              >
+                <Linkedin className="h-4 w-4 mr-2" />
+                LinkedIn
+              </Button>
+            </div>
+            {/* Helper text */}
+            <div className="mt-2 space-y-0.5">
+              <p className="text-xs font-medium text-slate-500">How posting works</p>
+              <p className="text-xs text-slate-500">LinkedIn posts publish automatically. X posts are sent to Jolix and you publish with 1 click.</p>
+            </div>
+          </div>
           
           <Input
             type="text"
             placeholder='Try: "Share a client tip about..." or "Hot take on pricing"'
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && promptText.trim() && !isGenerating) {
+                generateSuggestions()
+              }
+            }}
             className="w-full p-4 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C3CFF] focus:border-transparent text-lg"
+            disabled={isGenerating}
           />
+          
+          {/* Include Promo Toggle */}
+          <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 mt-3">
+            <Switch
+              id="include-promo"
+              checked={includePromo}
+              onCheckedChange={setIncludePromo}
+            />
+            <div className="flex-1">
+              <Label htmlFor="include-promo" className="text-sm font-medium cursor-pointer">
+                Mention my offer/website in this post
+              </Label>
+              <p className="text-xs text-gray-500 mt-1">
+                Turn this on if you want this post to lightly promote your main offer
+              </p>
+            </div>
+          </div>
           
           <div className="flex justify-end mt-4">
             <Button 
               onClick={generateSuggestions}
               className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+              disabled={!promptText.trim() || isGenerating}
             >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Posts
+              {isGenerating ? (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Posts
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
@@ -1354,30 +1956,21 @@ function AIStudioTab({
 
       {/* AI Suggestions (after generating) */}
       {aiSuggestions.length > 0 && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[#3C3CFF]" />
-            <h3 className="text-xl font-bold text-gray-900">Jolix Suggestions</h3>
+            <Lightbulb className="h-5 w-5 text-[#3C3CFF]" />
+            <h3 className="text-xl font-bold text-gray-900">Jolix suggests:</h3>
           </div>
           
-          {aiSuggestions.length > 1 && (
-            <div className="flex justify-end">
-              <Button className="bg-green-600 hover:bg-green-700">
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Approve All & Add to Plan
-              </Button>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 gap-6">
-            {aiSuggestions.map((post, index) => (
-              <Card key={index} className="shadow-md border-[#3C3CFF]/20 hover:shadow-lg hover:border-[#3C3CFF]/40 transition-all">
+            {localPosts.map((post: any, idx: number) => (
+              <Card key={idx} className="shadow-md border-[#3C3CFF]/20 hover:shadow-lg hover:border-[#3C3CFF]/40 transition-all">
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
                     {/* Post Number Badge */}
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C3CFF] to-[#6366F1] flex items-center justify-center text-white font-bold text-lg">
-                        {index + 1}
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md">
+                        {post.num || `${idx + 1}`}
                       </div>
                     </div>
 
@@ -1394,7 +1987,7 @@ function AIStudioTab({
                           {post.platform === "twitter" ? (
                             <>
                               <TwitterIcon className="h-3 w-3" />
-                              <span className="text-xs font-medium">X</span>
+                              <span className="text-xs font-medium">X (manual post)</span>
                             </>
                           ) : (
                             <>
@@ -1403,38 +1996,50 @@ function AIStudioTab({
                             </>
                           )}
                         </div>
-                        <span className="text-xs text-gray-500">•</span>
-                        <Badge 
-                          className={`text-xs ${
-                            post.impact === "High" 
-                              ? "bg-green-100 text-green-700 border-green-200" 
-                              : "bg-blue-100 text-blue-700 border-blue-200"
-                          }`}
-                        >
-                          {post.impact} impact
-                        </Badge>
                       </div>
                       
                       {/* Post Text */}
                       <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 mb-4">
-                        <p className="text-gray-900 leading-relaxed whitespace-pre-line text-sm">
-                          {post.text}
-                        </p>
+                        {editingPostIndex === idx ? (
+                          <Textarea
+                            value={post.content || ''}
+                            onChange={(e) => handlePostContentChange(idx, e.target.value)}
+                            className="text-gray-900 leading-relaxed text-sm min-h-[150px] resize-y"
+                            autoFocus
+                          />
+                        ) : (
+                          <p className="text-gray-900 leading-relaxed whitespace-pre-line text-sm">
+                            {post.content || post.text}
+                          </p>
+                        )}
                       </div>
 
                       {/* Action Buttons */}
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
-                          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
-                          Edit
-                        </Button>
+                        {editingPostIndex === idx ? (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-gray-300 hover:bg-gray-50"
+                            onClick={() => handleSavePost(idx)}
+                          >
+                            <Save className="h-3.5 w-3.5 mr-1.5" />
+                            Save
+                          </Button>
+                        ) : (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-gray-300 hover:bg-gray-50"
+                            onClick={() => handleEditPost(idx)}
+                          >
+                            <Edit3 className="h-3.5 w-3.5 mr-1.5" />
+                            Edit
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
                           <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
                           Schedule
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-gray-300 hover:bg-gray-50">
-                          <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                          Preview
                         </Button>
                       </div>
                     </div>
@@ -1466,7 +2071,7 @@ function AIStudioTab({
                   title="Post to X (Twitter)"
                 >
                   <TwitterIcon className="h-4 w-4 mr-2" />
-               
+                  (Twitter)
                 </Button>
                 <Button
                   variant={selectedPlatforms.includes("linkedin") ? "default" : "outline"}
@@ -1479,9 +2084,11 @@ function AIStudioTab({
                   LinkedIn
                 </Button>
               </div>
-              <p className="text-xs text-gray-500">
-                Select one or both platforms to post your content to
-              </p>
+              {/* Helper text */}
+              <div className="mt-2 space-y-0.5">
+                <p className="text-xs font-medium text-slate-500">How posting works</p>
+                <p className="text-xs text-slate-500">LinkedIn posts publish automatically. X posts are sent to Jolix and you publish with 1 click.</p>
+              </div>
             </div>
 
             {/* Text Area */}
@@ -1491,43 +2098,298 @@ function AIStudioTab({
                 onChange={(e) => setPostText(e.target.value)}
                 placeholder="What's on your mind?"
                 className="w-full min-h-[200px] p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#3C3CFF] focus:border-transparent"
-                maxLength={maxChars}
               />
-              <div className="flex justify-between items-center text-xs text-gray-500">
-                <span>Auto-saved • Just now</span>
-                <span className={postText.length > maxChars * 0.9 ? "text-red-600 font-medium" : ""}>
-                  {postText.length}/{maxChars}
-                </span>
-              </div>
             </div>
+
+            {/* Local Images Preview */}
+            {localImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                {localImages.map((item, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={item.preview}
+                      alt={`Preview ${idx + 1}`}
+                      className="w-24 h-24 object-cover rounded-lg"
+                    />
+                    <button
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Attachments Row */}
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline">
-                <ImageIcon className="h-4 w-4 mr-2" />
-                Add image
-              </Button>
-              <Button size="sm" variant="outline">
-                <LinkIcon className="h-4 w-4 mr-2" />
-                Add link
-              </Button>
-              <Button size="sm" variant="outline">
-                <Hash className="h-4 w-4 mr-2" />
-                Hashtags
-              </Button>
+              <input
+                type="file"
+                id="image-upload"
+                multiple
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              {selectedPlatforms.includes('twitter') ? (
+                <TooltipProvider delayDuration={100}>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="inline-block">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          disabled
+                          className="cursor-not-allowed opacity-50"
+                        >
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          Add image
+                        </Button>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>For X posts, Jolix can't upload images for you (yet). We'll handle the text — you attach the image when you tweet.</p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
+              ) : (
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => document.getElementById('image-upload')?.click()}
+                >
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  Add image
+                </Button>
+              )}
             </div>
 
             {/* Footer Actions */}
             <Separator />
             <div className="flex gap-2 items-center">
-              <Button className="flex-1 bg-[#3C3CFF] hover:bg-[#2D2DCC]">
+              <Button 
+                className="flex-1 bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                onClick={async () => {
+                  if (!postText.trim()) {
+                    toast.error('Please write something first!')
+                    return
+                  }
+                  
+                  // If platform is X/Twitter, open intent URL and show confirmation modal
+                  if (selectedPlatforms.includes('twitter')) {
+                    const encodedText = encodeURIComponent(postText)
+                    const intentUrl = `https://x.com/intent/tweet?text=${encodedText}`
+                    
+                    // Open X in new tab
+                    window.open(intentUrl, '_blank')
+                    
+                    // Show confirmation modal
+                    setConfirmPostedModalOpen(true)
+                    return
+                  }
+                  
+                  // For LinkedIn, save and post immediately
+                  try {
+                    // Upload images first if any
+                    const imageUrls = await uploadImagesToStorage()
+                    
+                    // Save post to database with status 'posted'
+                    const response = await fetch('/api/grow/save-post', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        content: postText,
+                        platform: 'linkedin',
+                        images: imageUrls,
+                        generation_method: 'manual',
+                        status: 'posted',
+                      }),
+                    })
+
+                    const result = await response.json()
+                    
+                    if (result.success) {
+                      toast.success('Post saved! Social media posting coming soon.')
+                      // Clear the form
+                      setPostText('')
+                      setLocalImages([])
+                    } else {
+                      throw new Error(result.error)
+                    }
+                  } catch (error) {
+                    console.error('Error posting:', error)
+                    toast.error('Failed to post. Please try again.')
+                  }
+                }}
+              >
                 <Send className="h-4 w-4 mr-2" />
                 Post now
               </Button>
-              <Button variant="outline">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  if (!postText.trim()) {
+                    toast.error('Please write something first!')
+                    return
+                  }
+                  setScheduleModalOpen(true)
+                }}
+              >
                 <Calendar className="h-4 w-4 mr-2" />
                 Let's Schedule It
               </Button>
+              
+              {/* Schedule Modal */}
+              <Dialog open={scheduleModalOpen} onOpenChange={setScheduleModalOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle>Schedule Your Post</DialogTitle>
+                    <DialogDescription>
+                      Choose a date and time to schedule your post
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="space-y-6 py-4">
+                    {/* Date Picker */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Select Date</Label>
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={setSelectedDate}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                        className="rounded-md border"
+                      />
+                      {selectedDate && (
+                        <p className="text-sm text-gray-600">
+                          Selected: {format(selectedDate, "PPP")}
+                        </p>
+                      )}
+                    </div>
+                    
+                    {/* Time Picker - Only show after date is selected */}
+                    {selectedDate && (
+                      <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                        <Label className="text-sm font-medium">Select Time</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="time"
+                            value={selectedTime}
+                            onChange={(e) => setSelectedTime(e.target.value)}
+                            className="w-full"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Your post will be scheduled for {format(selectedDate, "PPP")} at {selectedTime}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setScheduleModalOpen(false)
+                        setSelectedDate(undefined)
+                        setSelectedTime("09:00")
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                      onClick={async () => {
+                        if (!selectedDate) {
+                          toast.error('Please select a date first')
+                          return
+                        }
+                        
+                        try {
+                          // Combine date and time
+                          const [hours, minutes] = selectedTime.split(':')
+                          const scheduledDateTime = new Date(selectedDate)
+                          scheduledDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+                          
+                          // Upload images first if any
+                          const imageUrls = await uploadImagesToStorage()
+                          
+                          // Save post to database with status 'scheduled'
+                          const response = await fetch('/api/grow/save-post', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              content: postText,
+                              platform: selectedPlatforms.includes('twitter') ? 'twitter' : 'linkedin',
+                              images: imageUrls,
+                              scheduled_at: scheduledDateTime.toISOString(),
+                              generation_method: 'manual',
+                              status: 'scheduled',
+                            }),
+                          })
+
+                          const result = await response.json()
+                          
+                          if (result.success) {
+                            toast.success('Post scheduled successfully!')
+                            // Clear the form and modal
+                            setPostText('')
+                            setLocalImages([])
+                            setScheduleModalOpen(false)
+                            setSelectedDate(undefined)
+                            setSelectedTime("09:00")
+                          } else {
+                            throw new Error(result.error)
+                          }
+                        } catch (error) {
+                          console.error('Error scheduling:', error)
+                          toast.error('Failed to schedule. Please try again.')
+                        }
+                      }}
+                      disabled={!selectedDate}
+                    >
+                      Schedule Post
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              
+              {/* Confirm Posted Modal for X Posts */}
+              <Dialog open={confirmPostedModalOpen} onOpenChange={setConfirmPostedModalOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <div className="flex flex-col items-center text-center space-y-4 py-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <span className="text-2xl">🚀</span>
+                    </div>
+                    
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">Did you post this on X?</DialogTitle>
+                      <DialogDescription className="text-sm text-slate-600 mt-2">
+                        We just opened X with your post ready to go. Once you've hit Tweet, confirm below so Jolix can mark this as posted and add it to your streak.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <DialogFooter className="flex-row gap-2 w-full sm:justify-center">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setConfirmPostedModalOpen(false)
+                        }}
+                        className="flex-1 sm:flex-none"
+                      >
+                        Not yet
+                      </Button>
+                      <Button 
+                        onClick={handleConfirmXPosted}
+                        className="bg-[#3C3CFF] hover:bg-[#2D2DCC] flex-1 sm:flex-none"
+                      >
+                        Yes, I posted it
+                      </Button>
+                    </DialogFooter>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <TooltipProvider>
                 <UITooltip>
                   <TooltipTrigger asChild>
@@ -1535,11 +2397,15 @@ function AIStudioTab({
                       <DropdownMenuTrigger asChild>
                         <Button 
                           variant="outline"
-                          disabled={rewriteCount >= 3 || !postText.trim()}
+                          disabled={rewriteCount >= 3 || !postText.trim() || isRewriting}
                         >
-                          <Wand2 className="h-4 w-4 mr-2" />
-                          Refine with AI
-                          <ChevronDown className="h-4 w-4 ml-2" />
+                          {isRewriting ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Wand2 className="h-4 w-4 mr-2" />
+                          )}
+                          {isRewriting ? 'Rewriting...' : 'Refine with AI'}
+                          {!isRewriting && <ChevronDown className="h-4 w-4 ml-2" />}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-64 p-3">
@@ -1548,24 +2414,28 @@ function AIStudioTab({
                             <DropdownMenuItem
                               onClick={() => rewriteText("Make clearer")}
                               className="cursor-pointer"
+                              disabled={isRewriting}
                             >
                               Make clearer
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => rewriteText("More engaging")}
                               className="cursor-pointer"
+                              disabled={isRewriting}
                             >
                               More engaging
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => rewriteText("More concise")}
                               className="cursor-pointer"
+                              disabled={isRewriting}
                             >
                               More concise
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => rewriteText("More professional")}
                               className="cursor-pointer"
+                              disabled={isRewriting}
                             >
                               More professional
                             </DropdownMenuItem>
@@ -1587,9 +2457,16 @@ function AIStudioTab({
                               size="sm"
                               className="w-full"
                               onClick={() => rewriteText(undefined, customRewritePrompt)}
-                              disabled={!customRewritePrompt.trim()}
+                              disabled={!customRewritePrompt.trim() || isRewriting}
                             >
-                              Rewrite
+                              {isRewriting ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                  Rewriting...
+                                </>
+                              ) : (
+                                'Rewrite'
+                              )}
                             </Button>
                           </div>
                         </div>
@@ -1601,9 +2478,6 @@ function AIStudioTab({
                   </TooltipContent>
                 </UITooltip>
               </TooltipProvider>
-              <Button variant="outline">
-                <Save className="h-4 w-4" />
-              </Button>
               {showUndo && (
                 <Button
                   variant="ghost"
@@ -1663,9 +2537,34 @@ function AIStudioTab({
                   </div>
                 </div>
               </div>
-              <p className="text-sm whitespace-pre-wrap">
+              <p className="text-sm whitespace-pre-wrap mb-3">
                 {postText || "Your post preview will appear here..."}
               </p>
+              
+              {/* Images Preview */}
+              {localImages.length > 0 && (
+                <div className={`mt-3 ${
+                  localImages.length === 1 
+                    ? 'w-full' 
+                    : localImages.length === 2 
+                    ? 'grid grid-cols-2 gap-2' 
+                    : 'grid grid-cols-2 gap-2'
+                }`}>
+                  {localImages.map((item, idx) => (
+                    <div key={idx} className="relative">
+                      <img
+                        src={item.preview}
+                        alt={`Preview ${idx + 1}`}
+                        className={`w-full object-cover rounded-lg ${
+                          localImages.length === 1 
+                            ? 'h-auto max-h-96' 
+                            : 'h-32'
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1674,29 +2573,158 @@ function AIStudioTab({
   )
 }
 
+// Post Tooltip Component for Month View
+function PostTooltip({ 
+  post, 
+  isAI, 
+  hasImages, 
+  truncatedContent, 
+  onPostClick 
+}: { 
+  post: any
+  isAI: boolean
+  hasImages: boolean
+  truncatedContent: string
+  onPostClick: (post: any) => void
+}) {
+  const [tooltipPos, setTooltipPos] = useState<{ left: number; top: number } | null>(null)
+  const iconRef = useRef<HTMLDivElement>(null)
+  
+  const handleMouseEnter = () => {
+    if (iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect()
+      setTooltipPos({
+        left: rect.right + 8,
+        top: rect.top
+      })
+    }
+  }
+  
+  const handleMouseLeave = () => {
+    // Small delay to allow moving cursor to tooltip
+    setTimeout(() => {
+      const tooltip = document.querySelector(`[data-tooltip-id="${post.id}"]`)
+      if (!iconRef.current?.matches(':hover') && !tooltip?.matches(':hover')) {
+        setTooltipPos(null)
+      }
+    }, 100)
+  }
+  
+  return (
+    <div 
+      className="relative z-10"
+      onClick={(e) => {
+        e.stopPropagation()
+        onPostClick(post)
+      }}
+    >
+      <div 
+        ref={iconRef}
+        className="group/tooltip"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div className={`p-[2px] rounded-full cursor-pointer ${isAI ? "bg-purple-200 ring-2 ring-purple-400" : "bg-blue-200 ring-2 ring-blue-400"}`}>
+          <div className={`w-5 h-5 rounded flex items-center justify-center ${post.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
+            {post.platform === "twitter" ? <TwitterIcon className="h-3 w-3 text-white" /> : <Linkedin className="h-3 w-3 text-white" />}
+          </div>
+        </div>
+      </div>
+      
+      {/* Tooltip positioned fixed to viewport - escapes grid constraints */}
+      {tooltipPos && (
+        <div 
+          className="fixed z-[9999] pointer-events-none"
+          data-tooltip-id={post.id}
+          style={{
+            left: `${tooltipPos.left}px`,
+            top: `${tooltipPos.top}px`
+          }}
+          onMouseEnter={() => setTooltipPos(tooltipPos)}
+          onMouseLeave={handleMouseLeave}
+        >
+          <div className="bg-white border border-gray-200 rounded-lg shadow-xl p-4 w-80 pointer-events-auto">
+            <div className="flex items-center gap-2 mb-2">
+              <Badge className={`text-xs px-2 py-0.5 ${isAI ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>
+                {isAI ? "AI Generated" : "Manual"}
+              </Badge>
+              <span className="text-xs text-gray-500">
+                {new Date(post.scheduled_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </span>
+            </div>
+            
+            <div className="text-sm text-gray-800 mb-3 leading-relaxed whitespace-pre-wrap">
+              {truncatedContent}
+            </div>
+            
+            {hasImages && (
+              <div className="flex items-center gap-1 text-xs text-gray-600 mb-3">
+                <ImageIcon className="h-4 w-4" />
+                <span>{post.images.length} {post.images.length === 1 ? 'image' : 'images'}</span>
+              </div>
+            )}
+            
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="h-8 px-3 text-xs w-full"
+              onClick={(e) => {
+                e.stopPropagation()
+                onPostClick(post)
+              }}
+            >
+              View Details
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 📅 SCHEDULE TAB
 function ScheduleTab({ view, setView }: { 
-  view: "week" | "month" | "list"
-  setView: (view: "week" | "month" | "list") => void
+  view: "week" | "month" | "list" | "past"
+  setView: (view: "week" | "month" | "list" | "past") => void
 }) {
-  // Mock scheduled posts with ISO dates for week/month/list views
-  // Added multiple posts on same days to test UX
-  const scheduledPosts = [
-    { id: 1, date: "2025-11-03T10:00:00", text: "Just wrapped a client project—here's what I learned about scope creep 💡", platform: "twitter", status: "ai-suggested" },
-    { id: 7, date: "2025-11-03T14:00:00", text: "Quick tip: Always send a brief before starting any design project", platform: "linkedin", status: "user-approved" },
-    { id: 8, date: "2025-11-03T18:00:00", text: "Client testimonial: 'This was the smoothest collaboration ever' 🎉", platform: "twitter", status: "ai-suggested" },
-    { id: 2, date: "2025-11-06T10:00:00", text: "3 red flags when a potential client emails you", platform: "linkedin", status: "user-approved" },
-    { id: 9, date: "2025-11-06T16:00:00", text: "Portfolio update: Just added 3 new case studies", platform: "twitter", status: "user-approved" },
-    { id: 3, date: "2025-11-08T09:00:00", text: "Why I stopped charging hourly and never looked back", platform: "twitter", status: "ai-suggested" },
-    { id: 4, date: "2025-11-12T10:00:00", text: "Client onboarding checklist I wish I had sooner", platform: "twitter", status: "ai-suggested" },
-    { id: 10, date: "2025-11-12T15:00:00", text: "Behind the scenes: My design process from concept to delivery", platform: "linkedin", status: "ai-suggested" },
-    { id: 5, date: "2025-11-18T11:00:00", text: "Before/After: subtle typography changes that 2x readability", platform: "linkedin", status: "user-approved" },
-    { id: 11, date: "2025-11-18T14:00:00", text: "5 tools that transformed my freelance workflow this year", platform: "twitter", status: "ai-suggested" },
-    { id: 6, date: "2025-11-22T09:00:00", text: "3 things I automate as a solo designer", platform: "twitter", status: "ai-suggested" },
-  ]
-
-  // Month navigation state
+  const [scheduledPosts, setScheduledPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [selectedPost, setSelectedPost] = useState<any | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+    const [editedContent, setEditedContent] = useState("")
+    const [editedImages, setEditedImages] = useState<string[]>([])
+    const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
+    const [reschedulePostId, setReschedulePostId] = useState<string | null>(null)
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
+    const [selectedTime, setSelectedTime] = useState<string>("09:00")
+    
+    // Confirm posted modal state
+    const [confirmPostedModalOpen, setConfirmPostedModalOpen] = useState(false)
+    const [pendingPostId, setPendingPostId] = useState<string | null>(null)
+  
+    // Fetch scheduled posts from database
+  useEffect(() => {
+    async function fetchScheduledPosts() {
+      try {
+        const response = await fetch('/api/grow/get-scheduled-posts')
+        const result = await response.json()
+        
+        if (result.success) {
+          setScheduledPosts(result.posts)
+        } else {
+          console.error('Failed to fetch scheduled posts:', result.error)
+        }
+      } catch (error) {
+        console.error('Error fetching scheduled posts:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchScheduledPosts()
+  }, [])
 
   const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
   const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0)
@@ -1740,12 +2768,265 @@ function ScheduleTab({ view, setView }: {
     return weeks
   }
 
+  // Show all posts - don't filter by time
+  const activeScheduledPosts = view === "past" 
+    ? scheduledPosts.filter((p) => {
+        if (!p.scheduled_at) return false // Exclude drafts from past posts
+        if (p.status === 'posted') return true // Include posted posts
+        const scheduledTime = new Date(p.scheduled_at)
+        const now = new Date()
+        const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+        // Show posts that are at least 2 hours past their due time
+        return scheduledTime < twoHoursAgo
+      })
+    : scheduledPosts.filter((p) => {
+        if (!p.scheduled_at) return true // Keep posts without scheduled time (drafts)
+        if (p.status === 'posted') return false // Hide posted posts from active views
+        const scheduledTime = new Date(p.scheduled_at)
+        const now = new Date()
+        const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+        // Show posts that haven't passed 2 hours yet
+        return scheduledTime >= twoHoursAgo
+      })
+  
+  // Check if a post is due now (within 15 minutes)
+  const isPostDueNow = (post: any) => {
+    if (!post.scheduled_at || post.platform !== 'twitter') return false
+    const scheduledTime = new Date(post.scheduled_at)
+    const now = new Date()
+    const fifteenMinutes = 15 * 60 * 1000
+    const timeDiff = scheduledTime.getTime() - now.getTime()
+    return timeDiff <= fifteenMinutes && timeDiff > -fifteenMinutes
+  }
+
   const postsOnDate = (d: Date) =>
-    scheduledPosts.filter((p) => isSameDay(new Date(p.date), d))
+    activeScheduledPosts.filter((p) => isSameDay(new Date(p.scheduled_at), d))
 
   const monthLabel = formatDateLabel(currentMonth)
   const goPrevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))
   const goNextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))
+
+  // Check if post can be edited (scheduled and time hasn't passed)
+  const canEditPost = (post: any) => {
+    if (!post.scheduled_at) return false
+    const scheduledTime = new Date(post.scheduled_at)
+    const now = new Date()
+    return scheduledTime > now && post.status === 'scheduled'
+  }
+
+    // Open drawer with post
+    const handlePostClick = (post: any, editMode: boolean = false) => {
+      setSelectedPost(post)
+      setEditedContent(post.content)
+      setEditedImages(post.images || [])
+      setIsEditing(editMode)
+      setDrawerOpen(true)
+    }
+
+  // Remove image from edited images
+  const handleRemoveImage = (index: number) => {
+    setEditedImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Delete post
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm('Are you sure you want to delete this post?')) return
+
+    try {
+      const response = await fetch(`/api/grow/delete-post?id=${postId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setScheduledPosts(prev => prev.filter(p => p.id !== postId))
+        setDrawerOpen(false)
+        toast.success('Post deleted successfully!')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error)
+      toast.error('Failed to delete post. Please try again.')
+    }
+  }
+
+  // Open reschedule modal
+  const handleRescheduleClick = (postId: string) => {
+    const post = scheduledPosts.find(p => p.id === postId)
+    if (post) {
+      const scheduled = new Date(post.scheduled_at)
+      setSelectedDate(scheduled)
+      setSelectedTime(scheduled.toTimeString().slice(0, 5))
+      setReschedulePostId(postId)
+      setRescheduleModalOpen(true)
+    }
+  }
+
+  // Save rescheduled date/time
+  const handleSaveReschedule = async () => {
+    if (!reschedulePostId || !selectedDate) return
+
+    try {
+      const [hours, minutes] = selectedTime.split(':')
+      const scheduledDateTime = new Date(selectedDate)
+      scheduledDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+
+      const response = await fetch('/api/grow/update-post', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: reschedulePostId,
+          scheduled_at: scheduledDateTime.toISOString(),
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setScheduledPosts(prev => 
+          prev.map(p => p.id === reschedulePostId ? { ...p, scheduled_at: scheduledDateTime.toISOString() } : p)
+        )
+        if (selectedPost?.id === reschedulePostId) {
+          setSelectedPost({ ...selectedPost, scheduled_at: scheduledDateTime.toISOString() })
+        }
+        setRescheduleModalOpen(false)
+        setReschedulePostId(null)
+        toast.success('Post rescheduled successfully!')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error rescheduling post:', error)
+      toast.error('Failed to reschedule post. Please try again.')
+    }
+  }
+
+  // Save edited post
+  const handleSaveEdit = async () => {
+    if (!selectedPost) return
+
+    try {
+      const response = await fetch('/api/grow/update-post', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedPost.id,
+          content: editedContent,
+          images: editedImages,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update local state
+        setScheduledPosts(prev => 
+          prev.map(p => p.id === selectedPost.id ? { ...p, content: editedContent, images: editedImages } : p)
+        )
+        setSelectedPost({ ...selectedPost, content: editedContent, images: editedImages })
+        setIsEditing(false)
+        toast.success('Post updated successfully!')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error updating post:', error)
+      toast.error('Failed to update post. Please try again.')
+    }
+  }
+
+  // Handle post now action
+  const handlePostNow = async (post: any) => {
+    // If it's an X/Twitter post, open intent URL and show confirmation modal
+    if (post.platform === 'twitter') {
+      const encodedText = encodeURIComponent(post.content)
+      const intentUrl = `https://x.com/intent/tweet?text=${encodedText}`
+      
+      // Open X in new tab
+      window.open(intentUrl, '_blank')
+      
+      // Show confirmation modal
+      setPendingPostId(post.id)
+      setConfirmPostedModalOpen(true)
+      return
+    }
+
+    // For LinkedIn posts, mark as posted immediately (auto-posted)
+    try {
+      const response = await fetch('/api/grow/update-post', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: post.id,
+          status: 'posted',
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setScheduledPosts(prev => 
+          prev.map(p => p.id === post.id ? { ...p, status: 'posted' } : p)
+        )
+        if (selectedPost?.id === post.id) {
+          setSelectedPost({ ...selectedPost, status: 'posted' })
+        }
+        toast.success('Post published to LinkedIn!')
+        setDrawerOpen(false)
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error posting:', error)
+      toast.error('Failed to mark post as posted. Please try again.')
+    }
+  }
+
+  // Confirm X post was actually posted
+  const handleConfirmPosted = async () => {
+    if (!pendingPostId) return
+
+    try {
+      const response = await fetch('/api/grow/update-post', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: pendingPostId,
+          status: 'posted',
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setScheduledPosts(prev => 
+          prev.map(p => p.id === pendingPostId ? { ...p, status: 'posted' } : p)
+        )
+        if (selectedPost?.id === pendingPostId) {
+          setSelectedPost({ ...selectedPost, status: 'posted' })
+        }
+        setConfirmPostedModalOpen(false)
+        setPendingPostId(null)
+        toast.success('Nice! We\'ve marked this as posted on X.')
+        setDrawerOpen(false)
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error marking post as posted:', error)
+      toast.error('Failed to mark post as posted. Please try again.')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading scheduled posts...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1795,64 +3076,132 @@ function ScheduleTab({ view, setView }: {
             >
               List
             </Button>
+            <Button
+              variant={view === "past" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setView("past")}
+              className={view === "past" ? "bg-[#3C3CFF] hover:bg-[#2D2DCC]" : ""}
+            >
+              Past Posts
+            </Button>
+            </div>
           </div>
         </div>
-        <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-          <Plus className="h-4 w-4 mr-2" />
-          New Post
-        </Button>
-      </div>
 
       {/* Week / Month / List Views */}
       {view === "week" && (
         <Card className="shadow-sm border-gray-100 animate-in fade-in duration-300">
           <CardContent className="p-6">
-            <div className="space-y-4">
-              {scheduledPosts.map((post) => {
-                const d = new Date(post.date)
-                const dayLabel = d.toLocaleDateString("en-US", { weekday: "long" })
-                const timeLabel = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-                return (
-                  <div key={post.id} className="border rounded-xl p-4 hover:border-[#3C3CFF]/50 transition-colors">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0">
-                        <div className="text-center">
-                          <div className="text-sm font-medium text-gray-600">{dayLabel}</div>
-                          <div className="text-lg font-bold text-gray-900">{timeLabel}</div>
+            {activeScheduledPosts.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="font-medium mb-2">No scheduled posts yet</p>
+                <p className="text-sm">Create posts in the AI Studio or Growth Plan tabs to get started.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {activeScheduledPosts.map((post) => {
+                  const d = new Date(post.scheduled_at)
+                  const dayLabel = d.toLocaleDateString("en-US", { weekday: "long" })
+                  const timeLabel = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+                  const statusLabel = post.generation_method === 'ai' ? 'AI Generated' : 'Manually Created'
+                  const statusColor = post.generation_method === 'ai' ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-blue-100 text-blue-700 border-blue-200'
+                  
+                  return (
+                    <div 
+                      key={post.id} 
+                      className="border rounded-xl p-4 hover:border-[#3C3CFF]/50 transition-colors cursor-pointer"
+                      onClick={() => handlePostClick(post)}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0">
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-gray-600">{dayLabel}</div>
+                            <div className="text-lg font-bold text-gray-900">{timeLabel}</div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${post.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
-                            {post.platform === "twitter" ? (
-                              <TwitterIcon className="h-4 w-4 text-white" />
-                            ) : (
-                              <Linkedin className="h-4 w-4 text-white" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${post.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
+                              {post.platform === "twitter" ? (
+                                <TwitterIcon className="h-4 w-4 text-white" />
+                              ) : (
+                                <Linkedin className="h-4 w-4 text-white" />
+                              )}
+                            </div>
+                            <Badge className={`text-xs ${statusColor}`}>
+                              {statusLabel}
+                            </Badge>
+                            {post.status === 'scheduled' && (
+                              <Badge className="text-xs bg-green-100 text-green-700 border-green-200">
+                                Scheduled
+                              </Badge>
+                            )}
+                            {isPostDueNow(post) && (
+                              <Badge className="text-xs bg-orange-100 text-orange-700 border-orange-200 animate-pulse">
+                                🔔 Time to post!
+                              </Badge>
                             )}
                           </div>
-                          <Badge className={`text-xs ${post.status === "ai-suggested" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-green-100 text-green-700 border-green-200"}`}>
-                            {post.status === "ai-suggested" ? "AI Suggested" : "User Approved"}
-                          </Badge>
-                        </div>
-                        {/* Expandable text with focus border on hover */}
-                        <div className="mb-3">
-                          <div className="group border border-transparent hover:border-[#3C3CFF] rounded-md transition-colors">
-                            <div className="max-h-16 overflow-hidden group-hover:max-h-[600px] transition-[max-height] duration-300 ease-out p-2">
-                              <p className="text-sm text-gray-900 whitespace-pre-wrap">{post.text}</p>
+                          {/* Expandable text with focus border on hover */}
+                          <div className="mb-3">
+                            <div className="group border border-transparent hover:border-[#3C3CFF] rounded-md transition-colors">
+                              <div className="max-h-16 overflow-hidden group-hover:max-h-[600px] transition-[max-height] duration-300 ease-out p-2">
+                                <p className="text-sm text-gray-900 whitespace-pre-wrap">{post.content}</p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="ghost"><Edit3 className="h-3 w-3 mr-1" />Edit</Button>
-                          <Button size="sm" variant="ghost"><Clock className="h-3 w-3 mr-1" />Reschedule</Button>
-                          <Button size="sm" variant="ghost"><Send className="h-3 w-3 mr-1" />Post now</Button>
+                          {/* Show images if any */}
+                          {post.images && post.images.length > 0 && (
+                            <div className={`mb-3 ${post.images.length === 1 ? 'w-full' : 'grid grid-cols-2 gap-2'}`}>
+                              {post.images.map((imageUrl: string, idx: number) => (
+                                <img
+                                  key={idx}
+                                  src={imageUrl}
+                                  alt={`Post image ${idx + 1}`}
+                                  className={`object-cover rounded-lg ${post.images.length === 1 ? 'w-full h-auto max-h-64' : 'w-full h-24'}`}
+                                />
+                              ))}
+                            </div>
+                          )}
+                           <div className="flex gap-2">
+                             <Button 
+                               size="sm" 
+                               variant="ghost"
+                               onClick={(e) => { e.stopPropagation(); handlePostClick(post, true) }}
+                             >
+                               <Edit3 className="h-3 w-3 mr-1" />Edit
+                             </Button>
+                             <Button 
+                               size="sm" 
+                               variant="ghost"
+                               onClick={(e) => { e.stopPropagation(); handleRescheduleClick(post.id) }}
+                             >
+                               <Clock className="h-3 w-3 mr-1" />Reschedule
+                             </Button>
+                             <Button 
+                               size="sm" 
+                               variant="ghost"
+                               onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id) }}
+                             >
+                               <Trash2 className="h-3 w-3 mr-1" />Delete
+                             </Button>
+                             <Button 
+                               size="sm" 
+                               variant="default"
+                               className="bg-[#3C3CFF] hover:bg-[#2D2DCC] ml-auto"
+                               onClick={(e) => { e.stopPropagation(); handlePostNow(post) }}
+                             >
+                               <Send className="h-3 w-3 mr-1" />Post Now
+                             </Button>
+                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1869,74 +3218,74 @@ function ScheduleTab({ view, setView }: {
           
           </div>
 
-          {/* Weekday Headers */}
-          <div className="grid grid-cols-7 text-xs font-medium text-gray-600">
-            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((d) => (
-              <div key={d} className="px-2 py-2">{d}</div>
-            ))}
-          </div>
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-purple-200 ring-2 ring-purple-400"></span>
-              <span>AI Suggested</span>
+          {activeScheduledPosts.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p className="font-medium mb-2">No scheduled posts yet</p>
+              <p className="text-sm">Create posts in the AI Studio or Growth Plan tabs to get started.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-green-200 ring-2 ring-green-400"></span>
-              <span>User Approved</span>
-            </div>
-          </div>
+          ) : (
+            <>
+              {/* Weekday Headers */}
+              <div className="grid grid-cols-7 text-xs font-medium text-gray-600">
+                {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((d) => (
+                  <div key={d} className="px-2 py-2">{d}</div>
+                ))}
+              </div>
 
-          {/* Calendar Grid */}
-          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
-            {buildMonthMatrix(currentMonth).flat().map((cellDate, idx) => {
-              const inCurrent = cellDate.getMonth() === currentMonth.getMonth()
-              const today = isSameDay(cellDate, new Date())
-              const posts = postsOnDate(cellDate)
-              return (
-                <div key={idx} className={`relative bg-white min-h-[100px] p-2 ${!inCurrent ? "bg-gray-50 text-gray-400" : ""} ${today ? "bg-gradient-to-br from-blue-50 to-purple-50" : ""}`}>
-                  <div className="text-xs font-medium">{cellDate.getDate()}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {posts.slice(0, 4).map((p) => (
-                      <div key={p.id} className="relative group/item">
-                        <div className={`p-[2px] rounded-full ${p.status === "ai-suggested" ? "bg-purple-200 ring-2 ring-purple-400" : "bg-green-200 ring-2 ring-green-400"}`}>
-                          <div className={`w-5 h-5 rounded flex items-center justify-center ${p.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
-                            {p.platform === "twitter" ? <TwitterIcon className="h-3 w-3 text-white" /> : <Linkedin className="h-3 w-3 text-white" />}
-                          </div>
-                        </div>
-                        {/* Tooltip to the right of the icon - stays visible when hovering over it */}
-                        <div className="absolute left-full top-0 ml-2 z-30 opacity-0 invisible group-hover/item:opacity-100 group-hover/item:visible hover:opacity-100 hover:visible transition-opacity duration-150 pointer-events-none group-hover/item:pointer-events-auto hover:pointer-events-auto">
-                          {/* Invisible bridge area to maintain hover */}
-                          <div className="absolute -left-4 -top-2 -bottom-2 w-4"></div>
-                          <div className="bg-white/95 backdrop-blur border border-gray-200 rounded-lg shadow-lg p-2 w-64 pointer-events-auto">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge className={`text-[10px] ${p.status === "ai-suggested" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-green-100 text-green-700 border-green-200"}`}>
-                                {p.status === "ai-suggested" ? "AI Suggested" : "User Approved"}
-                              </Badge>
-                              <span className="text-[10px] text-gray-500">{new Date(p.date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
-                            </div>
-                            <div className="text-xs text-gray-800 line-clamp-4 mb-2">{p.text}</div>
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]">View</Button>
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]">Reschedule</Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {posts.length > 4 && (
-                      <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium">
-                        +{posts.length - 4}
-                      </div>
-                    )}
-                  </div>
+              {/* Legend */}
+              <div className="flex items-center gap-4 text-xs text-gray-600">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-purple-200 ring-2 ring-purple-400"></span>
+                  <span>AI Generated</span>
                 </div>
-              )
-            })}
-          </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-blue-200 ring-2 ring-blue-400"></span>
+                  <span>Manual</span>
+                </div>
+              </div>
 
-          <p className="text-xs text-gray-600 mt-2">💡 Tip: Use Month view for planning ahead.</p>
+              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-visible">
+                {buildMonthMatrix(currentMonth).flat().map((cellDate, idx) => {
+                  const inCurrent = cellDate.getMonth() === currentMonth.getMonth()
+                  const today = isSameDay(cellDate, new Date())
+                  const posts = postsOnDate(cellDate)
+                  return (
+                    <div key={idx} className={`relative bg-white min-h-[100px] p-2 ${!inCurrent ? "bg-gray-50 text-gray-400" : ""} ${today ? "bg-gradient-to-br from-blue-50 to-purple-50" : ""}`}>
+                      <div className="text-xs font-medium">{cellDate.getDate()}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {posts.slice(0, 4).map((p) => {
+                          const isAI = p.generation_method === 'ai'
+                          const hasImages = p.images && p.images.length > 0
+                          // Truncate content to ~100 characters
+                          const truncatedContent = p.content.length > 100 ? p.content.substring(0, 100) + '...' : p.content
+                          
+                          return (
+                            <PostTooltip
+                              key={p.id}
+                              post={p}
+                              isAI={isAI}
+                              hasImages={hasImages}
+                              truncatedContent={truncatedContent}
+                              onPostClick={handlePostClick}
+                            />
+                          )
+                        })}
+                        {posts.length > 4 && (
+                          <div className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium">
+                            +{posts.length - 4}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-xs text-gray-600 mt-2">💡 Tip: Use Month view for planning ahead.</p>
+            </>
+          )}
         </div>
       )}
 
@@ -1953,75 +3302,434 @@ function ScheduleTab({ view, setView }: {
                   <option>LinkedIn</option>
                 </select>
                 <select className="text-sm border rounded-md px-2 py-1">
-                  <option>All Status</option>
-                  <option>AI Suggested</option>
-                  <option>User Approved</option>
-                  <option>Draft</option>
+                  <option>All Types</option>
+                  <option>AI Generated</option>
+                  <option>Manual</option>
                 </select>
               </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-[480px] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white shadow-sm">
-                  <tr className="text-left text-gray-600">
-                    <th className="px-4 py-3 font-medium">Date / Time</th>
-                    <th className="px-4 py-3 font-medium">Platform</th>
-                    <th className="px-4 py-3 font-medium">Post Preview</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scheduledPosts
-                    .slice()
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map((p) => {
-                      const d = new Date(p.date)
-                      const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                      const timeLabel = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-                      return (
-                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap">{dateLabel} {timeLabel}</td>
-                          <td className="px-4 py-3">
-                            <div className={`inline-flex items-center gap-2 ${p.platform === "twitter" ? "text-black" : "text-blue-700"}`}>
-                              {p.platform === "twitter" ? (
-                                <TwitterIcon className="h-4 w-4" />
-                              ) : (
-                                <>
-                                  <Linkedin className="h-4 w-4" />
-                                  <span>LinkedIn</span>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-800">{p.text.slice(0, 100)}</td>
-                          <td className="px-4 py-3">
-                            <Badge className={`text-xs ${p.status === "ai-suggested" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-green-100 text-green-700 border-green-200"}`}>
-                              {p.status === "ai-suggested" ? "AI Suggested" : "User Approved"}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 opacity-80 hover:opacity-100">
-                              <Button size="sm" variant="outline"><Edit3 className="h-3 w-3 mr-1" />Edit</Button>
-                              <Button size="sm" variant="outline"><Clock className="h-3 w-3 mr-1" />Reschedule</Button>
-                              <Button size="sm" variant="outline"><Send className="h-3 w-3 mr-1" />Post now</Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-4 py-3 text-xs text-gray-600">Showing {scheduledPosts.length} posts from your current Growth Plan.</div>
+            {activeScheduledPosts.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="font-medium mb-2">No scheduled posts yet</p>
+                <p className="text-sm">Create posts in the AI Studio or Growth Plan tabs to get started.</p>
+              </div>
+            ) : (
+              <>
+                 <div className="max-h-[480px] overflow-auto">
+                   <table className="w-full text-sm">
+                     <thead className="sticky top-0 bg-white shadow-sm">
+                       <tr className="text-left text-gray-600">
+                         <th className="px-4 py-3 font-medium">Date / Time</th>
+                         <th className="px-4 py-3 font-medium">Platform</th>
+                         <th className="px-4 py-3 font-medium">Post Preview</th>
+                         <th className="px-4 py-3 font-medium">Type</th>
+                         <th className="px-4 py-3 font-medium">Actions</th>
+                         <th className="px-4 py-3 font-medium">Delete</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                      {activeScheduledPosts
+                        .slice()
+                        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+                        .map((p) => {
+                          const d = new Date(p.scheduled_at)
+                          const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                          const timeLabel = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+                          const isAI = p.generation_method === 'ai'
+                          return (
+                            <tr 
+                              key={p.id} 
+                              className="hover:bg-gray-50 transition-colors cursor-pointer"
+                              onClick={() => handlePostClick(p)}
+                            >
+                               <td className="px-4 py-3 whitespace-nowrap">{dateLabel} {timeLabel}</td>
+                               <td className="px-4 py-3">
+                                 <div className="flex items-center gap-2">
+                                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
+                                     {p.platform === "twitter" ? (
+                                       <TwitterIcon className="h-4 w-4 text-white" />
+                                     ) : (
+                                       <Linkedin className="h-4 w-4 text-white" />
+                                     )}
+                                   </div>
+                                   <span className="text-gray-700">
+                                     {p.platform === "twitter" ? "X (Twitter)" : "LinkedIn"}
+                                   </span>
+                                 </div>
+                               </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                {p.content.slice(0, 100)}
+                                {p.images && p.images.length > 0 && (
+                                  <span className="ml-2 text-xs text-gray-500">📷 {p.images.length}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge className={`text-xs ${isAI ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>
+                                  {isAI ? "AI Generated" : "Manual"}
+                                </Badge>
+                                {isPostDueNow(p) && (
+                                  <Badge className="text-xs bg-orange-100 text-orange-700 border-orange-200 animate-pulse ml-2">
+                                    🔔 Time to post!
+                                  </Badge>
+                                )}
+                              </td>
+                               <td className="px-4 py-3">
+                                 <div className="flex gap-2 opacity-80 hover:opacity-100">
+                                   <Button 
+                                     size="sm" 
+                                     variant="outline"
+                                     onClick={(e) => { e.stopPropagation(); handlePostClick(p, true) }}
+                                   >
+                                     <Edit3 className="h-3 w-3 mr-1" />Edit
+                                   </Button>
+                                   <Button 
+                                     size="sm" 
+                                     variant="outline"
+                                     onClick={(e) => { e.stopPropagation(); handleRescheduleClick(p.id) }}
+                                   >
+                                     <Clock className="h-3 w-3 mr-1" />Reschedule
+                                   </Button>
+                                   <Button 
+                                     size="sm" 
+                                     variant="default"
+                                     className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+                                     onClick={(e) => { e.stopPropagation(); handlePostNow(p) }}
+                                   >
+                                     <Send className="h-3 w-3 mr-1" />Post Now
+                                   </Button>
+                                 </div>
+                               </td>
+                               <td className="px-4 py-3">
+                                 <Button 
+                                   size="sm" 
+                                   variant="outline"
+                                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                   onClick={(e) => { e.stopPropagation(); handleDeletePost(p.id) }}
+                                 >
+                                   <Trash2 className="h-3 w-3" />
+                                 </Button>
+                               </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-4 py-3 text-xs text-gray-600">Showing {activeScheduledPosts.length} scheduled post{activeScheduledPosts.length !== 1 ? 's' : ''}.</div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
-    </div>
-  )
-}
+
+      {/* Post Details Drawer */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          {selectedPost && (
+            <>
+              <SheetHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <SheetTitle className="text-2xl">Post Details</SheetTitle>
+                    <SheetDescription>
+                      {format(new Date(selectedPost.scheduled_at), "PPP 'at' p")}
+                    </SheetDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedPost.platform === "twitter" ? "bg-black" : "bg-blue-700"}`}>
+                      {selectedPost.platform === "twitter" ? (
+                        <TwitterIcon className="h-5 w-5 text-white" />
+                      ) : (
+                        <Linkedin className="h-5 w-5 text-white" />
+                      )}
+                    </div>
+                    <Badge className={`${selectedPost.generation_method === 'ai' ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>
+                      {selectedPost.generation_method === 'ai' ? 'AI Generated' : 'Manual'}
+                    </Badge>
+                  </div>
+                </div>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-6">
+                {/* Post Content - Editable if scheduled and time hasn't passed */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Post Content</Label>
+                    {canEditPost(selectedPost) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (isEditing) {
+                            handleSaveEdit()
+                          } else {
+                            setIsEditing(true)
+                          }
+                        }}
+                      >
+                        {isEditing ? (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Save Changes
+                          </>
+                        ) : (
+                          <>
+                            <Edit3 className="h-4 w-4 mr-2" />
+                            Edit
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <Textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="min-h-[200px]"
+                      placeholder="Enter your post content..."
+                    />
+                  ) : (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <p className="text-sm whitespace-pre-wrap text-gray-900">{selectedPost.content}</p>
+                    </div>
+                  )}
+                  {!canEditPost(selectedPost) && (
+                    <p className="text-xs text-gray-500">
+                      {selectedPost.status === 'posted' 
+                        ? 'This post has already been posted and cannot be edited.'
+                        : 'This post cannot be edited because the scheduled time has passed.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Images */}
+                {((isEditing ? editedImages : selectedPost.images) || []).length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Images ({isEditing ? editedImages.length : (selectedPost.images?.length || 0)})
+                      {isEditing && canEditPost(selectedPost) && (
+                        <span className="text-xs text-gray-500 ml-2">Click X to remove</span>
+                      )}
+                    </Label>
+                    <div className={`grid gap-3 ${(isEditing ? editedImages : selectedPost.images || []).length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {(isEditing ? editedImages : selectedPost.images || []).map((imageUrl: string, idx: number) => (
+                        <div key={idx} className="relative group">
+                          <img
+                            src={imageUrl}
+                            alt={`Post image ${idx + 1}`}
+                            className="w-full h-auto rounded-lg object-cover border"
+                          />
+                          {isEditing && canEditPost(selectedPost) && (
+                            <button
+                              onClick={() => handleRemoveImage(idx)}
+                              className="absolute top-2 right-2 bg-black/70 hover:bg-black text-white rounded-full p-1.5 transition-colors"
+                              type="button"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Post Preview */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Preview</Label>
+                  <div className={`border rounded-lg p-4 ${
+                    selectedPost.platform === "twitter" ? "bg-white" : "bg-gray-50"
+                  }`}>
+                    <div className="flex items-start gap-3 mb-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src="/placeholder-avatar.jpg" />
+                        <AvatarFallback>YN</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">Your Name</span>
+                          <span className="text-gray-500 text-sm">@yourhandle</span>
+                          <span className="text-gray-500 text-sm">• {format(new Date(selectedPost.scheduled_at), "MMM d")}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap mb-3">
+                      {isEditing ? editedContent : selectedPost.content}
+                    </p>
+                    
+                    {/* Images in preview */}
+                    {((isEditing ? editedImages : selectedPost.images) || []).length > 0 && (
+                      <div className={`mt-3 ${
+                        (isEditing ? editedImages : selectedPost.images || []).length === 1 
+                          ? 'w-full' 
+                          : (isEditing ? editedImages : selectedPost.images || []).length === 2 
+                          ? 'grid grid-cols-2 gap-2' 
+                          : 'grid grid-cols-2 gap-2'
+                      }`}>
+                        {(isEditing ? editedImages : selectedPost.images || []).map((imageUrl: string, idx: number) => (
+                          <div key={idx} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`Preview ${idx + 1}`}
+                              className={`w-full object-cover rounded-lg ${
+                                (isEditing ? editedImages : selectedPost.images || []).length === 1 
+                                  ? 'h-auto max-h-96' 
+                                  : 'h-32'
+                              }`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Post Metadata */}
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div>
+                    <Label className="text-xs text-gray-500">Status</Label>
+                    <p className="text-sm font-medium mt-1">
+                      <Badge className={selectedPost.status === 'scheduled' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                        {selectedPost.status.charAt(0).toUpperCase() + selectedPost.status.slice(1)}
+                      </Badge>
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Scheduled For</Label>
+                    <p className="text-sm font-medium mt-1">
+                      {format(new Date(selectedPost.scheduled_at), "MMM d, yyyy 'at' h:mm a")}
+                    </p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-2 pt-4 border-t mt-4">
+                    <Label className="text-sm font-medium">Actions</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      {canEditPost(selectedPost) && (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            onClick={() => handleRescheduleClick(selectedPost.id)}
+                          >
+                            <Clock className="h-4 w-4 mr-2" />
+                            Reschedule
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            onClick={() => handleDeletePost(selectedPost.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Post
+                          </Button>
+                        </>
+                      )}
+                      {selectedPost.status !== 'posted' && (
+                        <Button 
+                          variant="default"
+                          className="bg-[#3C3CFF] hover:bg-[#2D2DCC] ml-auto"
+                          onClick={() => handlePostNow(selectedPost)}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          Post Now
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
+
+        {/* Reschedule Modal */}
+        <Dialog open={rescheduleModalOpen} onOpenChange={setRescheduleModalOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Reschedule Post</DialogTitle>
+              <DialogDescription>
+                Choose a new date and time for this post.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  className="rounded-md border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reschedule-time">Time</Label>
+                <Input
+                  id="reschedule-time"
+                  type="time"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRescheduleModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveReschedule}
+                disabled={!selectedDate}
+                className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+              >
+                Reschedule Post
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Confirm Posted Modal for X Posts */}
+        <Dialog open={confirmPostedModalOpen} onOpenChange={setConfirmPostedModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <div className="flex flex-col items-center text-center space-y-4 py-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <span className="text-2xl">🚀</span>
+              </div>
+              
+              <DialogHeader>
+                <DialogTitle className="text-xl">Did you post this on X?</DialogTitle>
+                <DialogDescription className="text-sm text-slate-600 mt-2">
+                  We just opened X with your post ready to go. Once you've hit Tweet, confirm below so Jolix can mark this as posted and add it to your streak.
+                </DialogDescription>
+              </DialogHeader>
+
+              <DialogFooter className="flex-row gap-2 w-full sm:justify-center">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setConfirmPostedModalOpen(false)
+                    setPendingPostId(null)
+                  }}
+                  className="flex-1 sm:flex-none"
+                >
+                  Not yet
+                </Button>
+                <Button 
+                  onClick={handleConfirmPosted}
+                  className="bg-[#3C3CFF] hover:bg-[#2D2DCC] flex-1 sm:flex-none"
+                >
+                  Yes, I posted it
+                </Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
 
 // 📊 GROWTH INSIGHTS TAB
 function GrowthInsightsTab() {
@@ -2299,6 +4007,110 @@ function TopPostCard({ text, platform, metrics }: {
 
 // 🧠 BRAND PROFILE TAB
 function BrandProfileTab() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [brandName, setBrandName] = useState('')
+  const [aboutBrand, setAboutBrand] = useState('')
+  const [tone, setTone] = useState<'friendly' | 'professional' | 'casual' | 'expert'>('friendly')
+  const [topics, setTopics] = useState<string[]>([])
+  const [newTopic, setNewTopic] = useState('')
+  const [thingsToAvoid, setThingsToAvoid] = useState('')
+  const [website, setWebsite] = useState('')
+  const [pinnedOffer, setPinnedOffer] = useState('')
+  const [pinnedOffers, setPinnedOffers] = useState<string[]>([])
+  const [newOffer, setNewOffer] = useState('')
+
+  // Load brand profile on mount
+  useEffect(() => {
+    async function loadBrandProfile() {
+      try {
+        const response = await fetch('/api/grow/brand-profile')
+        const result = await response.json()
+
+        if (result.success && result.profile) {
+          const profile = result.profile
+          setBrandName(profile.brandName || '')
+          setAboutBrand(profile.aboutBrand || '')
+          setTone(profile.tone || 'friendly')
+          setTopics(profile.topics || [])
+          setThingsToAvoid(profile.thingsToAvoid || '')
+          setWebsite(profile.website || '')
+          setPinnedOffer(profile.pinnedOffer || '')
+          setPinnedOffers(profile.pinnedOffers || [])
+        }
+      } catch (error) {
+        console.error('Error loading brand profile:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadBrandProfile()
+  }, [])
+
+  const handleAddTopic = () => {
+    if (newTopic.trim() && !topics.includes(newTopic.trim())) {
+      setTopics([...topics, newTopic.trim()])
+      setNewTopic('')
+    }
+  }
+
+  const handleRemoveTopic = (topicToRemove: string) => {
+    setTopics(topics.filter(t => t !== topicToRemove))
+  }
+
+  const handleAddOffer = () => {
+    if (newOffer.trim() && !pinnedOffers.includes(newOffer.trim())) {
+      setPinnedOffers([...pinnedOffers, newOffer.trim()])
+      setNewOffer('')
+    }
+  }
+
+  const handleRemoveOffer = (offerToRemove: string) => {
+    setPinnedOffers(pinnedOffers.filter(o => o !== offerToRemove))
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const response = await fetch('/api/grow/brand-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandName,
+          aboutBrand,
+          tone,
+          topics,
+          thingsToAvoid,
+          website,
+          pinnedOffer,
+          pinnedOffers,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Brand profile saved successfully!')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error saving brand profile:', error)
+      toast.error('Failed to save brand profile. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading brand profile...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Understanding Panel */}
@@ -2319,32 +4131,111 @@ function BrandProfileTab() {
         <div className="space-y-6">
           <Card className="shadow-sm border-gray-100">
             <CardHeader>
+              <CardTitle>About Your Brand</CardTitle>
+              <CardDescription>Tell us about your brand to help generate better posts</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Brand Name</label>
+                <Input
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  placeholder="Your Brand Name"
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">About Your Brand</label>
+                <Textarea
+                  value={aboutBrand}
+                  onChange={(e) => setAboutBrand(e.target.value)}
+                  placeholder="Describe your brand, what you do, your values, and target audience..."
+                  className="min-h-[120px] resize-none text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-gray-100">
+            <CardHeader>
               <CardTitle>Tone Selection</CardTitle>
               <CardDescription>Choose your communication style</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-2 gap-3">
-                <button className="px-4 py-3 rounded-lg border-2 border-[#3C3CFF] bg-gradient-to-br from-blue-50/80 to-purple-50/50 text-[#3C3CFF] font-medium transition-all">
-                  Friendly
-                </button>
-                <button className="px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#3C3CFF]/30 bg-white text-gray-700 font-medium transition-all">
-                  Professional
-                </button>
-                <button className="px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#3C3CFF]/30 bg-white text-gray-700 font-medium transition-all">
-                  Casual
-                </button>
-                <button className="px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-[#3C3CFF]/30 bg-white text-gray-700 font-medium transition-all">
-                  Expert
-                </button>
+                {(['friendly', 'professional', 'casual', 'expert'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTone(t)}
+                    className={`px-4 py-3 rounded-lg border-2 font-medium transition-all capitalize ${
+                      tone === t
+                        ? 'border-[#3C3CFF] bg-gradient-to-br from-blue-50/80 to-purple-50/50 text-[#3C3CFF]'
+                        : 'border-gray-200 hover:border-[#3C3CFF]/30 bg-white text-gray-700'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
-              <Button variant="outline" className="w-full">
-                <Sparkles className="h-4 w-4 mr-2" />
-                Analyze voice from my posts
-              </Button>
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-sm text-blue-900">
-                  Sample: "Just shipped a new feature—clients are loving it! Here's what we built..."
+                  {tone === 'friendly' && 'Sample: "Just shipped a new feature—clients are loving it! Here\'s what we built..."'}
+                  {tone === 'professional' && 'Sample: "We are pleased to announce the launch of our latest feature..."'}
+                  {tone === 'casual' && 'Sample: "Hey! So I just wrapped up this cool project and..."'}
+                  {tone === 'expert' && 'Sample: "After analyzing the data patterns, I discovered three key insights..."'}
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right: Links & Info */}
+        <div className="space-y-6">
+          <Card className="shadow-sm border-gray-100">
+            <CardHeader>
+              <CardTitle>Links & Info</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Website</label>
+                <Input
+                  type="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://yourwebsite.com"
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pinned Offers</label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Add multiple offers - one will be randomly selected for promotional posts
+                </p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {pinnedOffers.map((offer) => (
+                    <Badge
+                      key={offer}
+                      className="bg-green-600 text-white hover:bg-green-700 cursor-pointer max-w-full"
+                      onClick={() => handleRemoveOffer(offer)}
+                    >
+                      <span className="truncate">{offer}</span>
+                      <X className="h-3 w-3 ml-1 flex-shrink-0" />
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={newOffer}
+                    onChange={(e) => setNewOffer(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddOffer()}
+                    placeholder="e.g., Free consultation"
+                    className="text-sm flex-1"
+                  />
+                  <Button size="sm" variant="outline" onClick={handleAddOffer}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -2356,76 +4247,38 @@ function BrandProfileTab() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2 mb-4">
-                <Badge className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC]">Freelancing</Badge>
-                <Badge className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC]">Design</Badge>
-                <Badge className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC]">Client Management</Badge>
-                <Badge className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC]">Pricing</Badge>
-                <Badge className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC]">Tools</Badge>
-                <Button size="sm" variant="outline">
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add topic
-                </Button>
+                {topics.map((topic) => (
+                  <Badge
+                    key={topic}
+                    className="bg-[#3C3CFF] text-white hover:bg-[#2D2DCC] cursor-pointer"
+                    onClick={() => handleRemoveTopic(topic)}
+                  >
+                    {topic}
+                    <X className="h-3 w-3 ml-1" />
+                  </Badge>
+                ))}
+                <div className="flex gap-2">
+                  <Input
+                    value={newTopic}
+                    onChange={(e) => setNewTopic(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddTopic()}
+                    placeholder="Add a topic..."
+                    className="h-7 text-xs w-32"
+                  />
+                  <Button size="sm" variant="outline" onClick={handleAddTopic} className="h-7">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
               <Separator className="my-4" />
               <div className="space-y-2">
                 <label className="text-sm font-medium">Things to avoid</label>
-                <textarea
+                <Textarea
+                  value={thingsToAvoid}
+                  onChange={(e) => setThingsToAvoid(e.target.value)}
                   placeholder="e.g., Politics, controversial topics..."
-                  className="w-full p-2 border rounded-lg text-sm min-h-[80px] resize-none"
+                  className="min-h-[80px] resize-none text-sm"
                 />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right: Links & Goals */}
-        <div className="space-y-6">
-          <Card className="shadow-sm border-gray-100">
-            <CardHeader>
-              <CardTitle>Links & Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Website</label>
-                <input
-                  type="url"
-                  placeholder="https://yourwebsite.com"
-                  className="w-full p-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Portfolio</label>
-                <input
-                  type="url"
-                  placeholder="https://yourportfolio.com"
-                  className="w-full p-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Pinned Offers</label>
-                <textarea
-                  placeholder="e.g., Free consultation, Portfolio review..."
-                  className="w-full p-2 border rounded-lg text-sm min-h-[60px] resize-none"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm border-gray-100">
-            <CardHeader>
-              <CardTitle>Posting Goals</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Posts per week</label>
-                <input
-                  type="number"
-                  defaultValue="3"
-                  min="1"
-                  max="10"
-                  className="w-full p-2 border rounded-lg text-sm"
-                />
-                <p className="text-xs text-gray-500">We recommend 3-10 posts per week for optimal growth</p>
               </div>
             </CardContent>
           </Card>
@@ -2434,10 +4287,36 @@ function BrandProfileTab() {
 
       {/* Footer */}
       <div className="flex justify-end gap-3">
-        <Button variant="outline">Reset to defaults</Button>
-        <Button className="bg-[#3C3CFF] hover:bg-[#2D2DCC]">
-          <CheckCircle2 className="h-4 w-4 mr-2" />
-          Save changes
+        <Button
+          variant="outline"
+          onClick={() => {
+            setBrandName('')
+            setAboutBrand('')
+            setTone('friendly')
+            setTopics([])
+            setThingsToAvoid('')
+            setWebsite('')
+            setPinnedOffer('')
+          }}
+        >
+          Reset to defaults
+        </Button>
+        <Button
+          className="bg-[#3C3CFF] hover:bg-[#2D2DCC]"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Save changes
+            </>
+          )}
         </Button>
       </div>
     </div>

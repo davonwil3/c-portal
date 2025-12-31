@@ -12,3 +12,5 @@ COMMENT ON COLUMN public.accounts.phone IS 'Company phone number';
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_accounts_email ON public.accounts(email);
 
+
+

@@ -1303,8 +1303,8 @@ export default function JolixLanding() {
               <span className="text-xl font-bold">Jolix</span>
                 </div>
             <div className="flex space-x-6 text-sm text-gray-400">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <a href="#" className="hover:text-white transition-colors">Contact</a>
               </div>
             </div>
